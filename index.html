@@ -654,7 +654,7 @@ $('#xImp').onchange=async ev=>{
     const nd=JSON.parse(JSON.stringify(db)),done=[],warn=[];
     let r;
     if(r=rows('Departments')){nd.depts=r.filter(x=>S(x['Dept.No'])).map(x=>({id:S(x['Dept.No']),name:S(x['Dept.Name']),active:true}));done.push('Departments '+nd.depts.length)}
-    if(r=rows('Employees')){nd.employees=r.filter(x=>S(x['Emp.No'])).map(x=>({id:S(x['Emp.No']),name:S(x.Name),nick:S(x.Nickname),dept:S(x.Dept||x['Dept.No']),level:S(x.Level),position:S(x.Position),email:S(x.Email),username:S(x.Username),role:S(x.Role).toLowerCase()==='admin'?'admin':'user',workSat:B(x.WorkSat)&&S(x.WorkSat)!=='',active:x.Active===''?true:B(x.Active)}));nd.employees.forEach(e=>{const o=find(db.employees,e.id);if(o){e.salt=o.salt;e.hash=o.hash;e.linked=o.linked;e.uid=o.uid;e.mustChange=o.mustChange;if(!e.username)e.username=o.username}});const noMail=nd.employees.filter(e=>!e.email).length;if(noMail)warn.push('พนักงาน '+noMail+' คนไม่มีอีเมล (ต้องมีอีเมลก่อนจึงตั้งบัญชีสมาชิกได้)');done.push('Employees '+nd.employees.length)}
+    if(r=rows('Employees')){nd.employees=r.filter(x=>S(x['Emp.No'])).map(x=>({id:S(x['Emp.No']),name:S(x.Name),nick:S(x.Nickname),dept:S(x.Dept||x['Dept.No']),level:S(x.Level),position:S(x.Position),email:S(x.Email),username:S(x.Username),role:S(x.Role).toLowerCase()==='admin'?'admin':'user',workSat:B(x.WorkSat)&&S(x.WorkSat)!=='',active:x.Active===''?true:B(x.Active)}));nd.employees.forEach(e=>{const o=find(db.employees,e.id);if(o){e.salt=o.salt;e.hash=o.hash;e.linked=o.linked;e.uid=o.uid;e.approved=o.approved;e.mustChange=o.mustChange;if(!e.username)e.username=o.username}});const noMail=nd.employees.filter(e=>!e.email).length;if(noMail)warn.push('พนักงาน '+noMail+' คนไม่มีอีเมล (ต้องมีอีเมลก่อนจึงตั้งบัญชีสมาชิกได้)');done.push('Employees '+nd.employees.length)}
     if(r=rows('Projects')){nd.projects=r.filter(x=>S(x['Project Code'])).map(x=>({id:S(x['Project Code']),name:S(x['Project Name']),kind:['mt','backlog'].includes(S(x.Kind).toLowerCase())?S(x.Kind).toLowerCase():'cost',active:x.Active===''?true:B(x.Active)}));done.push('Projects '+nd.projects.length)}
     if(r=rows('SalesContracts')){nd.contracts=r.filter(x=>S(x['Sales Contract No.'])).map(x=>({id:S(x['Sales Contract No.']),name:S(x['Sales Contract Name']),active:x.Active===''?true:B(x.Active)}));done.push('SalesContracts '+nd.contracts.length)}
     if(r=rows('Holidays')){nd.holidays=r.filter(x=>S(x.Date)).map(x=>({id:xDate(x.Date),name:S(x.Name)}));done.push('Holidays '+nd.holidays.length)}
@@ -1078,8 +1078,8 @@ if(CLOUD&&window.supabase){
 }
 const TBL={
   employees:{t:'employees',pk:'id',admin:true,key:r=>r.id,
-    to:e=>({id:e.id,name:e.name||'',nick:e.nick||'',dept:e.dept||'',level:e.level||'',position:e.position||'',email:lc(e.email),role:e.role==='admin'?'admin':'user',work_sat:!!e.workSat,active:e.active!==false}),
-    from:r=>({id:r.id,name:r.name,nick:r.nick||'',dept:r.dept||'',level:r.level||'',position:r.position||'',email:r.email,role:r.role,workSat:!!r.work_sat,active:r.active!==false,linked:!!r.user_id,uid:r.user_id,hash:r.user_id?'linked':undefined})},
+    to:e=>({id:e.id,name:e.name||'',nick:e.nick||'',dept:e.dept||'',level:e.level||'',position:e.position||'',email:lc(e.email),role:e.role==='admin'?'admin':'user',work_sat:!!e.workSat,active:e.active!==false,approved:e.approved===true}),
+    from:r=>({id:r.id,name:r.name,nick:r.nick||'',dept:r.dept||'',level:r.level||'',position:r.position||'',email:r.email,role:r.role,workSat:!!r.work_sat,active:r.active!==false,linked:!!r.user_id,uid:r.user_id,approved:!!r.approved,hash:r.user_id?'linked':undefined})},
   depts:{t:'departments',pk:'id',admin:true,key:r=>r.id,
     to:d=>({id:d.id,name:d.name||'',active:d.active!==false}),from:r=>({id:r.id,name:r.name,active:r.active!==false})},
   projects:{t:'projects',pk:'id',admin:true,key:r=>r.id,
@@ -1163,12 +1163,13 @@ if(CLOUD){
   restoreSession=function(){};
   (function tweakLoginUi(){
     $('#lgUser').previousElementSibling.textContent='อีเมลบริษัท';$('#lgUser').type='email';$('#lgUser').autocomplete='email';
-    ['#rgEmp','#rgUser'].forEach(s=>{const i=$(s);i.required=false;i.classList.add('hide');if(i.previousElementSibling)i.previousElementSibling.classList.add('hide')});
-    const h=$('#regBox .hint');if(h)h.textContent='สมัครสมาชิกด้วยอีเมลบริษัทที่ Admin เพิ่มไว้ในรายชื่อพนักงานแล้ว ระบบจะส่งลิงก์ยืนยันไปที่อีเมล';
+    ['#rgUser'].forEach(s=>{const i=$(s);i.required=false;i.classList.add('hide');if(i.previousElementSibling)i.previousElementSibling.classList.add('hide')});
+    $('#rgEmp').previousElementSibling.textContent='รหัสพนักงาน (Emp.No)';
+    const h=$('#regBox .hint');if(h)h.textContent='สมัครสมาชิกด้วยรหัสพนักงานและอีเมลบริษัท ที่ตรงกับรายชื่อซึ่ง Admin เพิ่มไว้ — หลังสมัคร ต้องรอ Admin อนุมัติก่อนจึงเข้าใช้งานได้';
     $('#rgEmail').previousElementSibling.textContent='อีเมลบริษัท';
   })();
   const _finish=finishEnter;
-  finishEnter=function(l,f){_finish(l,f);$('#navAdm').classList.add('hide')};
+  finishEnter=function(l,f){_finish(l,f);$('#navAdm').classList.add('hide');const pend=isAdmin?db.employees.filter(e=>e.linked&&!e.approved).length:0;$('#navMem').textContent=pend?'สมาชิก ('+pend+')':'สมาชิก'};
 
   async function onSignedIn(session){
     sbEmail=session.user.email||'';
@@ -1176,6 +1177,7 @@ if(CLOUD){
     catch(e){try{await sb.auth.signOut()}catch(_){}resetCloud();return loginMsg('โหลดข้อมูลไม่สำเร็จ: '+(e.message||e))}
     me=db.employees.find(e=>e.uid===session.user.id)||null;
     if(!me||me.active===false){try{await sb.auth.signOut()}catch(_){}resetCloud();return loginMsg('บัญชีนี้ยังไม่ผูกกับรหัสพนักงานที่ใช้งานอยู่ กรุณาติดต่อ Admin')}
+    if(!me.approved){try{await sb.auth.signOut()}catch(_){}resetCloud();return loginMsg('สมัครสมาชิกแล้ว — รอ Admin อนุมัติก่อนจึงจะเข้าใช้งานได้ กรุณาลองเข้าสู่ระบบใหม่ภายหลัง')}
     isAdmin=me.role==='admin';user={name:me.name,email:me.email};
     cur={kind:'cloud',cred:{username:sbEmail}};
     finishEnter(me.name+(isAdmin?' (admin)':''),false);
@@ -1191,14 +1193,16 @@ if(CLOUD){
     await onSignedIn(data.session);
   };
   $('#regBox').onsubmit=async ev=>{ev.preventDefault();
-    const email=$('#rgEmail').value.trim(),p1=$('#rgPass').value,p2=$('#rgPass2').value;
+    const empId=$('#rgEmp').value.trim(),email=$('#rgEmail').value.trim(),p1=$('#rgPass').value,p2=$('#rgPass2').value;
     if(!/^\S+@\S+\.\S+$/.test(email))return loginMsg('กรุณากรอกอีเมลบริษัทให้ถูกต้อง');
     if(!pwOk(p1))return loginMsg(PWRULE);
     if(p1!==p2)return loginMsg('รหัสผ่านทั้งสองช่องไม่ตรงกัน');
-    const {error}=await sb.auth.signUp({email,password:p1,options:{emailRedirectTo:location.origin+location.pathname}});
-    if(error)return loginMsg(/already|registered/i.test(error.message)?'อีเมลนี้สมัครแล้ว — เข้าสู่ระบบ หรือกด "ลืมรหัสผ่าน?"':'สมัครไม่สำเร็จ: อีเมลนี้ต้องอยู่ในรายชื่อพนักงานที่ Admin เพิ่มไว้ก่อน (หรือรหัสผ่านไม่ผ่านเงื่อนไข)');
-    ['#rgEmail','#rgPass','#rgPass2'].forEach(s=>$(s).value='');
-    showMode('login');loginMsg('ส่งอีเมลยืนยันแล้ว — กดลิงก์ในอีเมลก่อน จึงจะเข้าสู่ระบบได้',true);
+    if(!empId)return loginMsg('กรุณากรอกรหัสพนักงาน');
+    const {data,error}=await sb.auth.signUp({email,password:p1,options:{emailRedirectTo:location.origin+location.pathname,data:{emp_id:empId}}});
+    if(error)return loginMsg(/already|registered/i.test(error.message)?'อีเมลนี้สมัครแล้ว — เข้าสู่ระบบ หรือกด "ลืมรหัสผ่าน?"':'สมัครไม่สำเร็จ: รหัสพนักงานและอีเมลต้องตรงกับรายชื่อที่ Admin เพิ่มไว้ (หรือรหัสผ่านไม่ผ่านเงื่อนไข)');
+    ['#rgEmp','#rgEmail','#rgPass','#rgPass2'].forEach(s=>$(s).value='');
+    if(data&&data.session){await onSignedIn(data.session);return}
+    showMode('login');loginMsg('สมัครสำเร็จ — รอ Admin อนุมัติก่อน จึงจะเข้าสู่ระบบได้',true);
   };
   $('#fgBox').onsubmit=async ev=>{ev.preventDefault();
     const email=$('#fgEmail').value.trim();
@@ -1241,15 +1245,20 @@ if(CLOUD){
   /* ----- แท็บ สมาชิก: ซ่อนส่วนบัญชีแบบเดิม ใช้ปุ่มส่งอีเมลรีเซ็ตแทน ----- */
   const _mem=renderMem;
   renderMem=function(){_mem();
+    {const pend=db.employees.filter(e=>e.linked&&!e.approved).length;$('#navMem').textContent=pend?'สมาชิก ('+pend+')':'สมาชิก'}
     [...document.querySelectorAll('#tab-mem .card')].forEach(c=>{
       const t=c.querySelector('h2')?.textContent||'';
       if(/ตั้งค่าการสมัคร|คำขอสมัคร|ตั้งชื่อผู้ใช้/.test(t))c.classList.add('hide')});
     if(!$('#cloudMemNote')){const n=document.createElement('div');n.id='cloudMemNote';n.className='notice';n.style.margin='0 0 16px';
-      n.textContent='เพิ่มรายชื่อสมาชิก (พร้อมอีเมล) ที่นี่ก่อน แล้วให้พนักงานกด "สมัครสมาชิก" ที่หน้า login ด้วยอีเมลเดียวกัน — ระบบผูกบัญชีให้อัตโนมัติ ไม่มีการเก็บรหัสผ่านในแอป';
+      n.textContent='เพิ่มรายชื่อสมาชิก (พร้อมอีเมล) ที่นี่ก่อน แล้วให้พนักงานกด "สมัครสมาชิก" ที่หน้า login ด้วยรหัสพนักงานและอีเมลเดียวกัน แล้วกด "อนุมัติ" ที่แถวของเขาก่อนจึงจะใช้งานได้ (ไม่มีการเก็บรหัสผ่านในแอป)';
       $('#tab-mem').insertBefore(n,$('#tab-mem').firstChild)}
     [...$('#memList').children].forEach((tr,i)=>{const e=db.employees[i],td=tr.lastElementChild;if(!e||!td)return;
-      td.innerHTML=`<button class="x" style="color:var(--pri)" data-medit="${esc(e.id)}" title="แก้ไขชื่อ/อีเมล/ข้อมูล">✎</button> `+(e.linked?`<button class="btn" style="padding:4px 10px" data-cmail="${esc(e.id)}" title="ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่">✉ รีเซ็ต</button>`:'');
+      const stc=tr.children[4];if(stc)stc.innerHTML=!e.linked?'<span class="tag st">ยังไม่สมัคร</span>'+(e.approved?' <span class="hint">(อนุมัติล่วงหน้า)</span>':''):(e.approved?'<span class="tag cost">ใช้งานได้</span>':'<span class="tag sga">รออนุมัติ</span>');
+      const selfRow=me&&me.id===e.id;
+      const apBtn=selfRow?'':(e.approved?`<button class="btn" style="padding:4px 10px" data-capp="${esc(e.id)}" title="ระงับการใช้งาน">ระงับ</button> `:`<button class="btn ok" style="padding:4px 10px" data-capp="${esc(e.id)}">อนุมัติ</button> `);
+      td.innerHTML=apBtn+`<button class="x" style="color:var(--pri)" data-medit="${esc(e.id)}" title="แก้ไขชื่อ/อีเมล/ข้อมูล">✎</button> `+(e.linked?`<button class="btn" style="padding:4px 10px" data-cmail="${esc(e.id)}" title="ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่">✉ รีเซ็ต</button>`:'');
       td.querySelectorAll('[data-medit]').forEach(b=>b.onclick=()=>startEditMember(b.dataset.medit));
+      td.querySelectorAll('[data-capp]').forEach(b=>b.onclick=()=>{e.approved=!e.approved;save();renderMem()});
       td.querySelectorAll('[data-cmail]').forEach(b=>b.onclick=async()=>{
         if(!confirm(`ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่ไปที่ ${e.email}?`))return;
         const {error}=await sb.auth.resetPasswordForEmail(e.email,{redirectTo:location.origin+location.pathname});

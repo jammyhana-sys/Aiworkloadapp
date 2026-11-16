@@ -31,10 +31,10 @@
 1. สมัคร supabase.com → New project (แนะนำ region Singapore) → จดรหัสฐานข้อมูลไว้
 2. SQL Editor → วางเนื้อหาไฟล์ `supabase_schema.sql` ทั้งไฟล์ → Run
 3. เพิ่ม Admin คนแรก: แก้ค่าในคอมเมนต์ท้ายไฟล์ SQL (insert into employees ... role 'admin') แล้ว Run (ต้องใส่อีเมลบริษัทของ Admin)
-4. Authentication → Providers → Email: เปิด "Confirm email" · Authentication → URL Configuration: ตั้ง Site URL และ Redirect URLs เป็น `https://jammyhana-sys.github.io/Aiworkloadapp/`
+4. Authentication → Providers → Email: **ปิด "Confirm email"** (สมัครแล้วเข้าได้ทันที) · Authentication → URL Configuration: ตั้ง Site URL และ Redirect URLs เป็น `https://jammyhana-sys.github.io/Aiworkloadapp/` (ใช้กับลิงก์ลืมรหัสผ่าน)
 5. Project Settings → API: คัดลอก **Project URL** และ **anon public key** ใส่ใน `CONFIG.supabaseUrl` / `CONFIG.supabaseKey` ใน `index.html` (ห้ามใช้ service_role key) แล้วอัปโหลด `index.html` ขึ้น GitHub
-6. เปิดแอป → "สมัครสมาชิก" ด้วยอีเมล Admin → กดลิงก์ยืนยันในอีเมล → เข้าสู่ระบบ → แท็บ "สมาชิก"/"ตั้งค่าข้อมูล" เพิ่มพนักงาน (ต้องมีอีเมล), โครงการ, assign
-7. พนักงานแต่ละคนกด "สมัครสมาชิก" ด้วยอีเมลที่ Admin เพิ่มไว้ → ระบบผูกบัญชีกับรหัสพนักงานอัตโนมัติ
+6. เปิดแอป → "สมัครสมาชิก" ด้วยรหัสพนักงาน + อีเมลของ Admin → เข้าสู่ระบบได้ทันที → แท็บ "สมาชิก"/"ตั้งค่าข้อมูล" เพิ่มพนักงาน (ต้องมีอีเมล), โครงการ, assign
+7. พนักงานแต่ละคนกด "สมัครสมาชิก" ด้วยรหัสพนักงาน + อีเมลที่ Admin เพิ่มไว้ (ต้องตรงทั้งคู่) → ระบบผูกบัญชีอัตโนมัติ แล้ว **Admin กด "อนุมัติ" ในแท็บสมาชิก** (ป้าย "สมาชิก (N)" แสดงจำนวนที่รออนุมัติ) ก่อนจึงเข้าใช้งานได้ · ฐานข้อมูลที่สร้างไว้แล้วให้รัน `supabase_update_signup.sql` แล้วตามด้วย `supabase_update_approval.sql` อย่างละหนึ่งครั้ง
 
 หมายเหตุ: อีเมลยืนยัน/รีเซ็ตรหัสผ่านใช้ระบบอีเมลของ Supabase (ฟรีมีโควตาจำกัด ~ไม่กี่ฉบับ/ชั่วโมง — ถ้าใช้จริงแนะนำตั้ง Custom SMTP ใน Authentication → SMTP)
 ความปลอดภัย: พนักงานเห็น/แก้ได้เฉพาะข้อมูลตัวเอง และเห็นเฉพาะโครงการที่ถูก assign (บังคับที่ฐานข้อมูลด้วย Row Level Security) · Admin จัดการได้ทั้งหมด

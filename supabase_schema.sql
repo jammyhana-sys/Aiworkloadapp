@@ -16,6 +16,7 @@ create table if not exists public.employees (
   role      text not null default 'user' check (role in ('user','admin')),
   work_sat  boolean not null default false,
   active    boolean not null default true,
+  approved  boolean not null default false,                         -- Admin ต้องอนุมัติก่อนจึงใช้งานได้
   user_id   uuid unique references auth.users(id) on delete set null   -- ผูกอัตโนมัติเมื่อสมัครด้วยอีเมลตรงกัน
 );
 create unique index if not exists employees_email_lower on public.employees (lower(email));
@@ -53,22 +54,24 @@ create index if not exists timesheets_day_idx on public.timesheets (day);
 -- ---------- ฟังก์ชันช่วย (security definer เพื่อไม่ให้ policy วนซ้ำ) ----------
 create or replace function public.my_emp_id() returns text
 language sql stable security definer set search_path = public as $$
-  select id from public.employees where user_id = auth.uid() and active limit 1
+  select id from public.employees where user_id = auth.uid() and active and approved limit 1
 $$;
 
 create or replace function public.is_admin() returns boolean
 language sql stable security definer set search_path = public as $$
-  select coalesce((select role = 'admin' from public.employees where user_id = auth.uid() and active limit 1), false)
+  select coalesce((select role = 'admin' from public.employees where user_id = auth.uid() and active and approved limit 1), false)
 $$;
 
 -- ---------- สมัครสมาชิก: อนุญาตเฉพาะอีเมลที่ Admin เพิ่มไว้ในตาราง employees ----------
 create or replace function public.handle_new_user() returns trigger
 language plpgsql security definer set search_path = public as $$
+declare v_emp text := nullif(trim(new.raw_user_meta_data->>'emp_id'), '');
 begin
+  -- ต้องตรงทั้ง "รหัสพนักงาน" และ "อีเมล" กับรายชื่อที่ Admin เพิ่มไว้ (ไม่ต้องยืนยันอีเมล)
   update public.employees set user_id = new.id
-   where lower(email) = lower(new.email) and user_id is null and active;
+   where id = v_emp and lower(email) = lower(new.email) and user_id is null and active;
   if not found then
-    raise exception 'EMAIL_NOT_IN_EMPLOYEE_LIST';
+    raise exception 'EMPLOYEE_NOT_MATCHED';
   end if;
   return new;
 end $$;
@@ -160,8 +163,8 @@ on conflict (id) do nothing;
 -- =====================================================================
 -- ขั้นตอนถัดไป: เพิ่ม Admin คนแรก (แก้ค่าแล้วรันแยกอีกครั้ง — ต้องทำก่อนสมัครสมาชิกในแอป)
 -- =====================================================================
--- insert into public.employees (id, name, email, role, dept, position)
--- values ('รหัสพนักงานของคุณ', 'ชื่อ นามสกุล', 'อีเมลบริษัทของคุณ@demco.co.th', 'admin', '65002', 'ตำแหน่ง');
+-- insert into public.employees (id, name, email, role, dept, position, approved)
+-- values ('รหัสพนักงานของคุณ', 'ชื่อ นามสกุล', 'อีเมลบริษัทของคุณ@demco.co.th', 'admin', '65002', 'ตำแหน่ง', true);
 --
 -- จากนั้นเปิดแอป > "สมัครสมาชิก" ด้วยอีเมลเดียวกัน > กดลิงก์ยืนยันในอีเมล > เข้าสู่ระบบ
 -- พนักงานคนอื่น: Admin เพิ่มรายชื่อ (พร้อมอีเมล) ในแท็บ "สมาชิก" ก่อน แล้วให้พนักงานสมัครเอง
