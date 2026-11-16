@@ -13,6 +13,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>DEMCO Workload Timesheet</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -96,7 +97,7 @@ td.n,th.n{text-align:right;white-space:nowrap}
   #entries td,#hList td{font-size:13px}
   .x{padding:8px 12px;font-size:18px}
 }
-@media (display-mode:standalone){body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}}.meBox{padding:10px 12px;border-radius:11px;background:var(--pri-soft);font-weight:600;min-height:46px;display:flex;align-items:center}.pwbox{text-align:left;margin-top:14px}.pwbox label{margin-top:0}</style>
+@media (display-mode:standalone){body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}}.meBox{padding:10px 12px;border-radius:11px;background:var(--pri-soft);font-weight:600;min-height:46px;display:flex;align-items:center}.pwbox{text-align:left;margin-top:14px}.pwbox label{margin-top:0}#syncState{font-size:12px;opacity:.9}</style>
 </head>
 <body>
 <div id="login"><div class="box">
@@ -153,7 +154,7 @@ td.n,th.n{text-align:right;white-space:nowrap}
     <button data-tab="adm" id="navAdm">ผู้ดูแล</button>
     <button data-tab="acct" id="navAcct">บัญชี</button>
   </nav>
-  <div id="who"><span id="whoName"></span><button class="btn" id="logout" style="padding:4px 10px">ออกจากระบบ</button></div>
+  <div id="who"><span id="syncState" class="hide"></span><span id="whoName"></span><button class="btn" id="logout" style="padding:4px 10px">ออกจากระบบ</button></div>
 </header>
 <main>
 
@@ -214,7 +215,7 @@ td.n,th.n{text-align:right;white-space:nowrap}
     <div class="row">
       <div><label>เดือน</label><input type="month" id="hMonth"></div>
       <div><label>พนักงาน</label><select id="hEmp"></select></div>
-      <div style="align-self:end"><button class="btn" id="csv">⬇ ส่งออก CSV (ทุกรายการ)</button></div>
+      <div style="align-self:end;display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" id="xlsxLog">⬇ ส่งออก Excel (บันทึกงาน)</button><button class="btn" id="csv">⬇ CSV</button></div>
     </div>
   </div>
   <div class="card">
@@ -248,6 +249,7 @@ td.n,th.n{text-align:right;white-space:nowrap}
       <button class="btn" id="xTpl">⬇ ดาวน์โหลดไฟล์ต้นแบบ</button>
       <button class="btn pri" id="xExp">⬇ ส่งออกข้อมูลทั้งหมด (.xlsx)</button>
       <label class="btn" style="display:inline-block;cursor:pointer">⬆ นำเข้า .xlsx<input type="file" id="xImp" accept=".xlsx,.xls" class="hide"></label>
+      <label class="btn" style="display:inline-block;cursor:pointer" title="เลือกไฟล์ WorkLog ที่พนักงานส่งออกมาได้หลายไฟล์พร้อมกัน แล้วรวมเข้าแอป">⬆ รวมบันทึกงานจากหลายไฟล์<input type="file" id="xMerge" accept=".xlsx,.xls" multiple class="hide"></label>
     </div>
     <div class="hint" id="xMsg" style="margin-top:8px"></div>
   </div>
@@ -354,8 +356,14 @@ const CONFIG={
      provider:'webhook'  → URL ของ Power Automate (HTTP request trigger) รับ JSON {to, subject, body, link} แล้วส่งผ่าน Outlook
      provider:'console'  → ทดสอบบน localhost เท่านั้น พิมพ์ลิงก์ที่ Console แทนการส่งอีเมล
      เว้นว่าง = ปิดฟีเจอร์ (หน้า login จะบอกให้ติดต่อ Admin) */
-  mail:{provider:'',serviceId:'',templateId:'',publicKey:'',url:''}
+  mail:{provider:'',serviceId:'',templateId:'',publicKey:'',url:''},
+  /* ฐานข้อมูลกลาง Supabase — Project Settings > API: ใส่ Project URL และ anon public key (เป็นค่าสาธารณะ ไม่ใช่ความลับ)
+     ห้ามใส่ service_role key เด็ดขาด | เว้นว่าง = ใช้โหมดเก็บในเบราว์เซอร์เครื่องเดียว (ไม่ซิงก์) */
+  supabaseUrl:'https://vhhekmpkcqlgesojvlws.supabase.co',
+  supabaseKey:'sb_publishable_I5aGYPaJKemi6HP8Liijeg_Hb_M7-SQ'
 };
+const CLOUD=!!(CONFIG.supabaseUrl&&CONFIG.supabaseKey);
+const REC_URL=/type=recovery/.test(location.hash);   // เปิดจากลิงก์รีเซ็ตรหัสผ่านใน Supabase
 let user=null, me=null, isAdmin=false;
 const KEY='demco_workload_v2', TARGET=8;
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -402,8 +410,9 @@ const seed=()=>({
 });
 let db; try{db=JSON.parse(localStorage.getItem(KEY))}catch(e){db=null}
 if(!db||!db.employees||!db.assign) db=seed();
+if(CLOUD){const s0=seed();db={...s0,employees:[],depts:[],projects:[],contracts:[],assign:[],holidays:[],timesheets:[]}}   // โหมดคลาวด์: ไม่ใช้ข้อมูลในเครื่อง
 let warned=false;
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){if(!warned){warned=true;console.warn('localStorage unavailable; in-memory only')}}};
+const save=()=>{if(CLOUD){cloudSave();return}try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){if(!warned){warned=true;console.warn('localStorage unavailable; in-memory only')}}};
 
 const find=(arr,id)=>arr.find(x=>x.id===id);
 const emp=()=>find(db.employees,$('#emp').value);
@@ -537,6 +546,13 @@ function renderHist(){
   $$('[data-open]').forEach(b=>b.onclick=()=>{const t=find(db.timesheets,b.dataset.open);$('#emp').value=t.empId;$('#date').value=t.date;$('nav button[data-tab=log]').click();syncForm();renderLog()});
 }
 $('#hMonth').onchange=$('#hEmp').onchange=renderHist;
+$('#xlsxLog').onclick=()=>{
+  if(!xlsxReady())return;
+  let rows=sheetsFromDb().WorkLog;
+  if(!isAdmin)rows=rows.filter(r=>r['Emp.No']===me?.id);          // พนักงานทั่วไปได้เฉพาะของตัวเอง
+  if(!rows.length)return alert('ยังไม่มีบันทึกงานในเครื่องนี้ให้ส่งออก');
+  writeXlsx({WorkLog:rows},'WorkLog_'+(isAdmin?'all':(me?.id||'me'))+'_'+todayStr()+'.xlsx');
+};
 $('#csv').onclick=()=>{
   const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
   const rows=[['Transaction No.','Date','Emp.No','Name','Nickname','Dept.No','Level','Position','PL Type','SG&A Type','Hours','Project Code','Project Name','Text','Status']];
@@ -638,7 +654,7 @@ $('#xImp').onchange=async ev=>{
     const nd=JSON.parse(JSON.stringify(db)),done=[],warn=[];
     let r;
     if(r=rows('Departments')){nd.depts=r.filter(x=>S(x['Dept.No'])).map(x=>({id:S(x['Dept.No']),name:S(x['Dept.Name']),active:true}));done.push('Departments '+nd.depts.length)}
-    if(r=rows('Employees')){nd.employees=r.filter(x=>S(x['Emp.No'])).map(x=>({id:S(x['Emp.No']),name:S(x.Name),nick:S(x.Nickname),dept:S(x.Dept||x['Dept.No']),level:S(x.Level),position:S(x.Position),email:S(x.Email),username:S(x.Username),role:S(x.Role).toLowerCase()==='admin'?'admin':'user',workSat:B(x.WorkSat)&&S(x.WorkSat)!=='',active:x.Active===''?true:B(x.Active)}));nd.employees.forEach(e=>{const o=find(db.employees,e.id);if(o){e.salt=o.salt;e.hash=o.hash;e.mustChange=o.mustChange;if(!e.username)e.username=o.username}});const noMail=nd.employees.filter(e=>!e.email).length;if(noMail)warn.push('พนักงาน '+noMail+' คนไม่มีอีเมล (ต้องมีอีเมลก่อนจึงตั้งบัญชีสมาชิกได้)');done.push('Employees '+nd.employees.length)}
+    if(r=rows('Employees')){nd.employees=r.filter(x=>S(x['Emp.No'])).map(x=>({id:S(x['Emp.No']),name:S(x.Name),nick:S(x.Nickname),dept:S(x.Dept||x['Dept.No']),level:S(x.Level),position:S(x.Position),email:S(x.Email),username:S(x.Username),role:S(x.Role).toLowerCase()==='admin'?'admin':'user',workSat:B(x.WorkSat)&&S(x.WorkSat)!=='',active:x.Active===''?true:B(x.Active)}));nd.employees.forEach(e=>{const o=find(db.employees,e.id);if(o){e.salt=o.salt;e.hash=o.hash;e.linked=o.linked;e.uid=o.uid;e.mustChange=o.mustChange;if(!e.username)e.username=o.username}});const noMail=nd.employees.filter(e=>!e.email).length;if(noMail)warn.push('พนักงาน '+noMail+' คนไม่มีอีเมล (ต้องมีอีเมลก่อนจึงตั้งบัญชีสมาชิกได้)');done.push('Employees '+nd.employees.length)}
     if(r=rows('Projects')){nd.projects=r.filter(x=>S(x['Project Code'])).map(x=>({id:S(x['Project Code']),name:S(x['Project Name']),kind:['mt','backlog'].includes(S(x.Kind).toLowerCase())?S(x.Kind).toLowerCase():'cost',active:x.Active===''?true:B(x.Active)}));done.push('Projects '+nd.projects.length)}
     if(r=rows('SalesContracts')){nd.contracts=r.filter(x=>S(x['Sales Contract No.'])).map(x=>({id:S(x['Sales Contract No.']),name:S(x['Sales Contract Name']),active:x.Active===''?true:B(x.Active)}));done.push('SalesContracts '+nd.contracts.length)}
     if(r=rows('Holidays')){nd.holidays=r.filter(x=>S(x.Date)).map(x=>({id:xDate(x.Date),name:S(x.Name)}));done.push('Holidays '+nd.holidays.length)}
@@ -663,6 +679,42 @@ $('#xImp').onchange=async ev=>{
     if(!confirm('นำเข้าและแทนที่ข้อมูลชีต: '+done.join(', ')+(warn.length?'\n\nคำเตือน:\n'+warn.slice(0,6).join('\n'):'')+'\n\nดำเนินการต่อ?'))return;
     db=nd;save();rebind();init();renderSetup();$('#xMsg').textContent='นำเข้าสำเร็จ: '+done.join(', ')+(warn.length?` (คำเตือน ${warn.length} รายการ)`:'');
   }catch(e){$('#xMsg').textContent='นำเข้าไม่สำเร็จ: '+e.message}
+};
+/* รวมบันทึกงานจากไฟล์ WorkLog หลายไฟล์ (พนักงานส่งออกแล้วอัปโหลดไว้ที่ SharePoint) — ไม่แตะข้อมูลหลัก */
+$('#xMerge').onchange=async ev=>{
+  const files=[...ev.target.files];ev.target.value='';if(!files.length||!xlsxReady())return;
+  const msg=m=>$('#xMsg').textContent=m;
+  try{
+    const merged={},skipped=new Set();let rowsN=0,bad=0;
+    for(const file of files){
+      const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});
+      const sheet=wb.SheetNames.includes('WorkLog')?'WorkLog':wb.SheetNames[0];
+      const fileMap={};
+      for(const x of XLSX.utils.sheet_to_json(wb.Sheets[sheet],{defval:''})){
+        const empId=S(x['Emp.No']),date=xDate(x.Date);
+        if(!empId||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!(Math.round(+x.Hours)>=1)){bad++;continue}
+        if(!find(db.employees,empId)){skipped.add(empId);continue}
+        const t=fileMap[empId+'|'+date]=fileMap[empId+'|'+date]||{id:empId+'-'+date,empId,date,status:S(x.Status)==='Submitted'?'Submitted':'Draft',submittedAt:null,entries:[]};
+        const cat=S(x['PL Type'])==='Cost'?'Cost':'SG&A',code=S(x['Project Code']);
+        const en={id:'E'+Math.random().toString(36).slice(2,9),cat,hours:Math.round(+x.Hours),note:S(x.Text)};
+        if(cat==='SG&A')en.sgaId=S(x['SG&A Type']).split(':')[0];
+        if(code&&code!=='-')en.code=code;
+        t.entries.push(en);rowsN++;
+      }
+      Object.assign(merged,fileMap);   // ไฟล์หลังชนะไฟล์ก่อน ถ้ามีใบของพนักงานคนเดียวกันวันเดียวกัน
+    }
+    const list=Object.values(merged);
+    if(!list.length)return msg('ไม่พบแถวบันทึกงานที่นำเข้าได้ในไฟล์ที่เลือก'+(skipped.size?' (รหัสพนักงานที่ไม่อยู่ในระบบ: '+[...skipped].join(', ')+')':''));
+    let over=0;
+    list.forEach(t=>{if(t.status==='Submitted'){if(totals(t).all===TARGET)t.submittedAt=new Date().toISOString();else t.status='Draft'}if(totals(t).all>TARGET)over++});
+    const exists=list.filter(t=>db.timesheets.some(x=>x.id===t.id)).length;
+    const text=`รวม ${list.length} ใบบันทึกงาน (${rowsN} แถว) จาก ${files.length} ไฟล์\n- ใบที่มีอยู่แล้วในแอป (พนักงาน+วันที่เดียวกัน) จะถูกแทนที่: ${exists} ใบ\n- ใบใหม่: ${list.length-exists} ใบ`
+      +(skipped.size?`\n- ข้ามรหัสพนักงานที่ไม่อยู่ในระบบ: ${[...skipped].slice(0,8).join(', ')}`:'')+(bad?`\n- ข้ามแถวที่ข้อมูลไม่ครบ ${bad} แถว`:'')+(over?`\n- คำเตือน: ${over} ใบมีชั่วโมงเกิน 8`:'')+'\n\nดำเนินการต่อ?';
+    if(!confirm(text))return msg('ยกเลิกการรวมข้อมูล');
+    list.forEach(t=>{const i=db.timesheets.findIndex(x=>x.id===t.id);if(i>=0)db.timesheets[i]=t;else db.timesheets.push(t)});
+    save();init();
+    msg(`รวมบันทึกงานสำเร็จ: ${list.length} ใบ (แทนที่ ${exists}, ใหม่ ${list.length-exists})`+(skipped.size?` · ข้าม ${skipped.size} รหัสที่ไม่อยู่ในระบบ`:''));
+  }catch(e){msg('รวมข้อมูลไม่สำเร็จ: '+e.message)}
 };
 $('#bk').onclick=()=>dl('workload_backup_'+todayStr()+'.json',JSON.stringify(db,null,1),'application/json');
 $('#rs').onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!d.employees||!d.timesheets||!d.assign)throw 0;db=d;save();rebind();init()}catch{alert('ไฟล์ไม่ถูกต้อง')}};
@@ -1013,6 +1065,213 @@ $('#rsBox').onsubmit=async ev=>{ev.preventDefault();
   }catch(er){loginMsg(er.message)}
 };
 
+/* =====================================================================
+   โหมดคลาวด์ (Supabase) — ทำงานเมื่อใส่ CONFIG.supabaseUrl + supabaseKey
+   - ล็อกอิน/สมัคร/ลืมรหัสผ่าน ผ่าน Supabase Auth (อีเมล + รหัสผ่าน)
+   - ข้อมูลทั้งหมดอยู่ที่ Postgres (ตารางตาม supabase_schema.sql) ป้องกันด้วย Row Level Security
+   - โค้ดเดิมยังแก้ข้อมูลใน db (หน่วยความจำ) แล้วเรียก save() → ซิงก์เฉพาะส่วนที่เปลี่ยนขึ้นเซิร์ฟเวอร์
+   ===================================================================== */
+let sb=null,sbEmail='',recovery=REC_URL,snap={},syncing=false,syncAgain=false,cloudT=null;
+if(CLOUD&&window.supabase){
+  try{sb=window.supabase.createClient(CONFIG.supabaseUrl,CONFIG.supabaseKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}})}
+  catch(e){console.error('supabase init failed',e)}
+}
+const TBL={
+  employees:{t:'employees',pk:'id',admin:true,key:r=>r.id,
+    to:e=>({id:e.id,name:e.name||'',nick:e.nick||'',dept:e.dept||'',level:e.level||'',position:e.position||'',email:lc(e.email),role:e.role==='admin'?'admin':'user',work_sat:!!e.workSat,active:e.active!==false}),
+    from:r=>({id:r.id,name:r.name,nick:r.nick||'',dept:r.dept||'',level:r.level||'',position:r.position||'',email:r.email,role:r.role,workSat:!!r.work_sat,active:r.active!==false,linked:!!r.user_id,uid:r.user_id,hash:r.user_id?'linked':undefined})},
+  depts:{t:'departments',pk:'id',admin:true,key:r=>r.id,
+    to:d=>({id:d.id,name:d.name||'',active:d.active!==false}),from:r=>({id:r.id,name:r.name,active:r.active!==false})},
+  projects:{t:'projects',pk:'id',admin:true,key:r=>r.id,
+    to:p=>({id:p.id,name:p.name||'',kind:['mt','backlog'].includes(p.kind)?p.kind:'cost',active:p.active!==false}),from:r=>({id:r.id,name:r.name,kind:r.kind,active:r.active!==false})},
+  contracts:{t:'contracts',pk:'id',admin:true,key:r=>r.id,
+    to:c=>({id:c.id,name:c.name||'',active:c.active!==false}),from:r=>({id:r.id,name:r.name,active:r.active!==false})},
+  assign:{t:'assignments',pk:'emp_id',admin:true,key:r=>r.emp_id+'|'+r.code,conf:'emp_id,code',
+    to:a=>({emp_id:a.empId,code:a.code}),from:r=>({empId:r.emp_id,code:r.code})},
+  holidays:{t:'holidays',pk:'day',admin:true,key:r=>r.day,conf:'day',
+    to:h=>({day:h.id,name:h.name||''}),from:r=>({id:r.day,name:r.name||''})},
+  timesheets:{t:'timesheets',pk:'id',admin:false,key:r=>r.id,
+    to:t=>({id:t.id,emp_id:t.empId,day:t.date,status:t.status==='Submitted'?'Submitted':'Draft',submitted_at:t.submittedAt||null,entries:t.entries||[]}),
+    from:r=>({id:r.id,empId:r.emp_id,date:r.day,status:r.status,submittedAt:r.submitted_at,entries:r.entries||[]})}
+};
+function emptyCloudDb(){const s=seed();return{...s,employees:[],depts:[],projects:[],contracts:[],assign:[],holidays:[],timesheets:[],regs:[],admins:[],settings:{regOpen:true,autoApprove:false}}}
+function rowsOf(k){const s=TBL[k];return new Map(db[k].map(x=>s.to(x)).filter(r=>k!=='employees'||r.email).map(r=>[s.key(r),r]))}
+function takeSnap(){snap={};Object.keys(TBL).forEach(k=>{snap[k]=Object.fromEntries([...rowsOf(k)].map(([key,r])=>[key,JSON.stringify(r)]))})}
+function setSync(st,msg){
+  const el=$('#syncState');if(!el)return;el.classList.remove('hide');
+  el.textContent=st==='saving'?'☁ กำลังบันทึก…':st==='ok'?'☁ บันทึกแล้ว':'⚠ บันทึกไม่สำเร็จ';
+  el.title=msg||'';el.style.color=st==='err'?'#ffd0d0':'';
+}
+async function fetchAll(t,pk,filter){
+  let out=[],from=0;const size=1000;
+  for(;;){let q=sb.from(t).select('*').order(pk);if(filter)q=filter(q);
+    const {data,error}=await q.range(from,from+size-1);if(error)throw error;
+    out=out.concat(data||[]);if(!data||data.length<size)break;from+=size}
+  return out;
+}
+async function loadCloud(){
+  const cut=new Date();cut.setMonth(cut.getMonth()-18);const cutS=cut.toISOString().slice(0,10);   // โหลดบันทึกงานย้อนหลัง 18 เดือน
+  const keys=Object.keys(TBL);
+  const res=await Promise.all(keys.map(k=>fetchAll(TBL[k].t,TBL[k].pk,k==='timesheets'?q=>q.gte('day',cutS):null)));
+  db=emptyCloudDb();keys.forEach((k,i)=>{db[k]=res[i].map(TBL[k].from)});takeSnap();
+}
+function cloudSave(){if(!sb||!cur)return;clearTimeout(cloudT);setSync('saving');cloudT=setTimeout(syncUp,300)}
+async function syncUp(){
+  if(syncing){syncAgain=true;return}
+  syncing=true;
+  try{
+    for(const k of Object.keys(TBL)){
+      const s=TBL[k];if(s.admin&&!isAdmin)continue;
+      const now=rowsOf(k),old=snap[k]||{};
+      const up=[...now].filter(([key,r])=>old[key]!==JSON.stringify(r)).map(([,r])=>r);
+      const gone=Object.keys(old).filter(key=>!now.has(key));
+      if(up.length){const {error}=await sb.from(s.t).upsert(up,{onConflict:s.conf||s.pk});if(error)throw error}
+      if(gone.length){
+        if(k==='employees'){   // ไม่ลบพนักงานจริง (กันบันทึกงานหาย) — ปิดการใช้งานแทน
+          const off=gone.map(key=>({...JSON.parse(old[key]),active:false}));
+          const {error}=await sb.from(s.t).upsert(off,{onConflict:s.pk});if(error)throw error;
+        }else if(k==='assign'){
+          for(const key of gone){const [e,c]=key.split('|');const {error}=await sb.from(s.t).delete().eq('emp_id',e).eq('code',c);if(error)throw error}
+        }else{const {error}=await sb.from(s.t).delete().in(s.pk,gone);if(error)throw error}
+      }
+      snap[k]=Object.fromEntries([...now].map(([key,r])=>[key,JSON.stringify(r)]));
+      if(k==='employees'&&gone.length){gone.forEach(id=>{const e=find(db.employees,id);if(e)e.active=false})}
+    }
+    setSync('ok');
+  }catch(e){setSync('err',e.message||String(e));console.error('sync failed',e)}
+  finally{syncing=false;if(syncAgain){syncAgain=false;syncUp()}}
+}
+
+if(CLOUD){
+  /* ----- หน้า login: ใช้อีเมลแทนชื่อผู้ใช้ ----- */
+  showMode=function(m){ // login | reg | forgot | reset
+    $('#pwBox').classList.toggle('hide',m!=='login');
+    $('#regBox').classList.toggle('hide',m!=='reg');
+    $('#fgBox').classList.toggle('hide',m!=='forgot');
+    $('#rsBox').classList.toggle('hide',m!=='reset');
+    $('#regLink').textContent=m==='reg'?'← กลับไปเข้าสู่ระบบ':'สมัครสมาชิก';
+    $('#regLink').classList.toggle('hide',m==='forgot'||m==='reset');
+    $('#fgLink').textContent=m==='forgot'?'← กลับไปเข้าสู่ระบบ':'ลืมรหัสผ่าน?';
+    $('#fgLink').classList.toggle('hide',m==='reg'||m==='reset');
+    loginMsg('');
+  };
+  showLoginView=function(){
+    $('#login').classList.remove('hide');
+    $('#setupBox').classList.add('hide');$('#devBox').classList.add('hide');
+    showMode(recovery?'reset':'login');
+  };
+  restoreSession=function(){};
+  (function tweakLoginUi(){
+    $('#lgUser').previousElementSibling.textContent='อีเมลบริษัท';$('#lgUser').type='email';$('#lgUser').autocomplete='email';
+    ['#rgEmp','#rgUser'].forEach(s=>{const i=$(s);i.required=false;i.classList.add('hide');if(i.previousElementSibling)i.previousElementSibling.classList.add('hide')});
+    const h=$('#regBox .hint');if(h)h.textContent='สมัครสมาชิกด้วยอีเมลบริษัทที่ Admin เพิ่มไว้ในรายชื่อพนักงานแล้ว ระบบจะส่งลิงก์ยืนยันไปที่อีเมล';
+    $('#rgEmail').previousElementSibling.textContent='อีเมลบริษัท';
+  })();
+  const _finish=finishEnter;
+  finishEnter=function(l,f){_finish(l,f);$('#navAdm').classList.add('hide')};
+
+  async function onSignedIn(session){
+    sbEmail=session.user.email||'';
+    try{await loadCloud()}
+    catch(e){try{await sb.auth.signOut()}catch(_){}resetCloud();return loginMsg('โหลดข้อมูลไม่สำเร็จ: '+(e.message||e))}
+    me=db.employees.find(e=>e.uid===session.user.id)||null;
+    if(!me||me.active===false){try{await sb.auth.signOut()}catch(_){}resetCloud();return loginMsg('บัญชีนี้ยังไม่ผูกกับรหัสพนักงานที่ใช้งานอยู่ กรุณาติดต่อ Admin')}
+    isAdmin=me.role==='admin';user={name:me.name,email:me.email};
+    cur={kind:'cloud',cred:{username:sbEmail}};
+    finishEnter(me.name+(isAdmin?' (admin)':''),false);
+    setSync('ok');
+  }
+  function resetCloud(){db=emptyCloudDb();snap={};user=me=cur=null;isAdmin=false;forceChange=false;const el=$('#syncState');if(el)el.classList.add('hide')}
+
+  $('#pwBox').onsubmit=async ev=>{ev.preventDefault();
+    const email=$('#lgUser').value.trim(),pw=$('#lgPass').value;
+    const {data,error}=await sb.auth.signInWithPassword({email,password:pw});
+    if(error)return loginMsg(/confirm/i.test(error.message)?'ยังไม่ได้ยืนยันอีเมล — กดลิงก์ในอีเมลที่ระบบส่งให้ก่อน':'อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+    $('#lgPass').value='';loginMsg('');
+    await onSignedIn(data.session);
+  };
+  $('#regBox').onsubmit=async ev=>{ev.preventDefault();
+    const email=$('#rgEmail').value.trim(),p1=$('#rgPass').value,p2=$('#rgPass2').value;
+    if(!/^\S+@\S+\.\S+$/.test(email))return loginMsg('กรุณากรอกอีเมลบริษัทให้ถูกต้อง');
+    if(!pwOk(p1))return loginMsg(PWRULE);
+    if(p1!==p2)return loginMsg('รหัสผ่านทั้งสองช่องไม่ตรงกัน');
+    const {error}=await sb.auth.signUp({email,password:p1,options:{emailRedirectTo:location.origin+location.pathname}});
+    if(error)return loginMsg(/already|registered/i.test(error.message)?'อีเมลนี้สมัครแล้ว — เข้าสู่ระบบ หรือกด "ลืมรหัสผ่าน?"':'สมัครไม่สำเร็จ: อีเมลนี้ต้องอยู่ในรายชื่อพนักงานที่ Admin เพิ่มไว้ก่อน (หรือรหัสผ่านไม่ผ่านเงื่อนไข)');
+    ['#rgEmail','#rgPass','#rgPass2'].forEach(s=>$(s).value='');
+    showMode('login');loginMsg('ส่งอีเมลยืนยันแล้ว — กดลิงก์ในอีเมลก่อน จึงจะเข้าสู่ระบบได้',true);
+  };
+  $('#fgBox').onsubmit=async ev=>{ev.preventDefault();
+    const email=$('#fgEmail').value.trim();
+    await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+    $('#fgEmail').value='';showMode('login');
+    loginMsg('หากอีเมลนี้มีบัญชีในระบบ จะได้รับอีเมลลิงก์ตั้งรหัสผ่านใหม่ภายในไม่กี่นาที',true);
+  };
+  $('#rsBox').onsubmit=async ev=>{ev.preventDefault();
+    const p1=$('#rsPass').value,p2=$('#rsPass2').value;
+    if(!pwOk(p1))return loginMsg(PWRULE);
+    if(p1!==p2)return loginMsg('รหัสผ่านทั้งสองช่องไม่ตรงกัน');
+    const {error}=await sb.auth.updateUser({password:p1});
+    if(error)return loginMsg('ตั้งรหัสผ่านไม่สำเร็จ: '+error.message);
+    recovery=false;$('#rsPass').value=$('#rsPass2').value='';
+    try{await sb.auth.signOut()}catch(_){}
+    resetCloud();showLoginView();loginMsg('ตั้งรหัสผ่านใหม่เรียบร้อย — เข้าสู่ระบบด้วยรหัสผ่านใหม่ได้เลย',true);
+  };
+  $('#logout').onclick=async()=>{try{await sb.auth.signOut()}catch(_){}resetCloud();logoutUi()};
+
+  /* ----- แท็บ บัญชี: เปลี่ยนรหัสผ่านผ่าน Supabase ----- */
+  const _acct=renderAcct;
+  renderAcct=function(){_acct();
+    $('#pwCard').classList.remove('hide');$('#sessCard').classList.add('hide');
+    $('#myUser').value=sbEmail;$('#forceNote').classList.add('hide');
+  };
+  $('#pwForm').onsubmit=async ev=>{ev.preventDefault();
+    const m=$('#pwMsg');m.className='err';m.style.color='';
+    const old=$('#pwOld').value,n1=$('#pwNew').value,n2=$('#pwNew2').value;
+    if(!pwOk(n1))return m.textContent=PWRULE;
+    if(n1!==n2)return m.textContent='รหัสผ่านใหม่สองช่องไม่ตรงกัน';
+    if(n1===old)return m.textContent='รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสเดิม';
+    const {error:e1}=await sb.auth.signInWithPassword({email:sbEmail,password:old});
+    if(e1)return m.textContent='รหัสผ่านปัจจุบันไม่ถูกต้อง';
+    const {error}=await sb.auth.updateUser({password:n1});
+    if(error)return m.textContent='เปลี่ยนรหัสผ่านไม่สำเร็จ: '+error.message;
+    ['#pwOld','#pwNew','#pwNew2'].forEach(s=>$(s).value='');
+    m.className='hint';m.style.color='var(--cost)';m.textContent='เปลี่ยนรหัสผ่านเรียบร้อยแล้ว ✓';
+  };
+
+  /* ----- แท็บ สมาชิก: ซ่อนส่วนบัญชีแบบเดิม ใช้ปุ่มส่งอีเมลรีเซ็ตแทน ----- */
+  const _mem=renderMem;
+  renderMem=function(){_mem();
+    [...document.querySelectorAll('#tab-mem .card')].forEach(c=>{
+      const t=c.querySelector('h2')?.textContent||'';
+      if(/ตั้งค่าการสมัคร|คำขอสมัคร|ตั้งชื่อผู้ใช้/.test(t))c.classList.add('hide')});
+    if(!$('#cloudMemNote')){const n=document.createElement('div');n.id='cloudMemNote';n.className='notice';n.style.margin='0 0 16px';
+      n.textContent='เพิ่มรายชื่อสมาชิก (พร้อมอีเมล) ที่นี่ก่อน แล้วให้พนักงานกด "สมัครสมาชิก" ที่หน้า login ด้วยอีเมลเดียวกัน — ระบบผูกบัญชีให้อัตโนมัติ ไม่มีการเก็บรหัสผ่านในแอป';
+      $('#tab-mem').insertBefore(n,$('#tab-mem').firstChild)}
+    [...$('#memList').children].forEach((tr,i)=>{const e=db.employees[i],td=tr.lastElementChild;if(!e||!td)return;
+      td.innerHTML=`<button class="x" style="color:var(--pri)" data-medit="${esc(e.id)}" title="แก้ไขชื่อ/อีเมล/ข้อมูล">✎</button> `+(e.linked?`<button class="btn" style="padding:4px 10px" data-cmail="${esc(e.id)}" title="ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่">✉ รีเซ็ต</button>`:'');
+      td.querySelectorAll('[data-medit]').forEach(b=>b.onclick=()=>startEditMember(b.dataset.medit));
+      td.querySelectorAll('[data-cmail]').forEach(b=>b.onclick=async()=>{
+        if(!confirm(`ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่ไปที่ ${e.email}?`))return;
+        const {error}=await sb.auth.resetPasswordForEmail(e.email,{redirectTo:location.origin+location.pathname});
+        alert(error?'ส่งอีเมลไม่สำเร็จ: '+error.message:'ส่งอีเมลรีเซ็ตรหัสผ่านแล้ว')});
+    });
+  };
+
+  /* ----- ปิดฟังก์ชันที่เสี่ยงทำข้อมูลกลางเสียหาย ----- */
+  $('#reset').onclick=()=>alert('ปิดใช้งานในโหมดคลาวด์ — ข้อมูลอยู่ที่ฐานข้อมูลกลาง (ลบ/แก้ที่ Supabase เท่านั้น)');
+  $('#rs').onchange=e=>{e.target.value='';alert('ปิดใช้งานในโหมดคลาวด์ — ใช้นำเข้า Excel แทน')};
+}
+
+async function cloudInit(){
+  if(!window.supabase||!sb){loginMsg('โหลดตัวเชื่อมต่อ Supabase ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต หรือค่า supabaseUrl/supabaseKey)');return}
+  sb.auth.onAuthStateChange((ev)=>{
+    if(ev==='PASSWORD_RECOVERY'){recovery=true;setTimeout(()=>{if(cur)resetCloud();showLoginView()},0)}
+    else if(ev==='SIGNED_OUT'&&cur){setTimeout(()=>{resetCloud();logoutUi()},0)}
+  });
+  const {data}=await sb.auth.getSession();
+  if(data&&data.session&&!recovery)await onSignedIn(data.session);
+}
+
 async function boot(){
   $('#date').value=todayStr();
   showLoginView();
@@ -1025,6 +1284,7 @@ if('serviceWorker' in navigator && (location.protocol==='https:'||['localhost','
   window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 }
 boot();
+if(CLOUD)cloudInit();
 </script>
 </body>
 </html>

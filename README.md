@@ -24,3 +24,17 @@
 - เว้นว่าง = ปิดฟีเจอร์ หน้า login จะบอกให้ติดต่อ Admin
 
 ลิงก์รีเซ็ตใช้ได้ 30 นาที ครั้งเดียว และต้องเปิดบนอุปกรณ์เครื่องเดียวกับที่สร้างบัญชี (ข้อมูลเก็บในเบราว์เซอร์)
+
+## ฐานข้อมูลกลาง Supabase (ทำให้ทุกคนใช้ข้อมูลชุดเดียวกัน)
+แอปรองรับ 2 โหมด — เว้น `supabaseUrl/supabaseKey` ใน `index.html` ว่างไว้ = โหมดเก็บในเบราว์เซอร์ (เดิม) / ใส่ค่า = โหมดคลาวด์
+
+1. สมัคร supabase.com → New project (แนะนำ region Singapore) → จดรหัสฐานข้อมูลไว้
+2. SQL Editor → วางเนื้อหาไฟล์ `supabase_schema.sql` ทั้งไฟล์ → Run
+3. เพิ่ม Admin คนแรก: แก้ค่าในคอมเมนต์ท้ายไฟล์ SQL (insert into employees ... role 'admin') แล้ว Run (ต้องใส่อีเมลบริษัทของ Admin)
+4. Authentication → Providers → Email: เปิด "Confirm email" · Authentication → URL Configuration: ตั้ง Site URL และ Redirect URLs เป็น `https://jammyhana-sys.github.io/Aiworkloadapp/`
+5. Project Settings → API: คัดลอก **Project URL** และ **anon public key** ใส่ใน `CONFIG.supabaseUrl` / `CONFIG.supabaseKey` ใน `index.html` (ห้ามใช้ service_role key) แล้วอัปโหลด `index.html` ขึ้น GitHub
+6. เปิดแอป → "สมัครสมาชิก" ด้วยอีเมล Admin → กดลิงก์ยืนยันในอีเมล → เข้าสู่ระบบ → แท็บ "สมาชิก"/"ตั้งค่าข้อมูล" เพิ่มพนักงาน (ต้องมีอีเมล), โครงการ, assign
+7. พนักงานแต่ละคนกด "สมัครสมาชิก" ด้วยอีเมลที่ Admin เพิ่มไว้ → ระบบผูกบัญชีกับรหัสพนักงานอัตโนมัติ
+
+หมายเหตุ: อีเมลยืนยัน/รีเซ็ตรหัสผ่านใช้ระบบอีเมลของ Supabase (ฟรีมีโควตาจำกัด ~ไม่กี่ฉบับ/ชั่วโมง — ถ้าใช้จริงแนะนำตั้ง Custom SMTP ใน Authentication → SMTP)
+ความปลอดภัย: พนักงานเห็น/แก้ได้เฉพาะข้อมูลตัวเอง และเห็นเฉพาะโครงการที่ถูก assign (บังคับที่ฐานข้อมูลด้วย Row Level Security) · Admin จัดการได้ทั้งหมด

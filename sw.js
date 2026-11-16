@@ -1,5 +1,5 @@
 // Service worker: ทำให้แอปเปิดได้แม้ไม่มีเน็ต (ข้อมูลบันทึกงานอยู่ใน localStorage อยู่แล้ว)
-const VER = 'timesheet-v10';
+const VER = 'timesheet-v14';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
@@ -12,7 +12,7 @@ self.addEventListener('fetch', e => {
   const req = e.request, url = new URL(req.url);
   if (req.method !== 'GET') return;
   // การล็อกอิน Microsoft ต้องไปที่เครือข่ายเสมอ ห้ามแคช
-  if (/login\.microsoftonline\.com|login\.live\.com|graph\.microsoft\.com/.test(url.hostname)) return;
+  if (/login\.microsoftonline\.com|login\.live\.com|graph\.microsoft\.com|supabase\.co|supabase\.in/.test(url.hostname)) return;
   // เปิดหน้าแอป: ลองเครือข่ายก่อนเพื่อรับเวอร์ชันใหม่ ถ้าไม่ได้ใช้แคช
   if (req.mode === 'navigate') {
     e.respondWith(fetch(req).then(r => { caches.open(VER).then(c => c.put('./index.html', r.clone())); return r; })
