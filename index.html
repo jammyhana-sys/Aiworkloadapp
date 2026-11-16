@@ -86,7 +86,7 @@ td.n,th.n{text-align:right;white-space:nowrap}
   header h1{font-size:16px;min-width:0}
   header h1 .hint{display:none}
   nav{position:fixed;left:0;right:0;bottom:0;z-index:10;border-radius:0;background:var(--card);padding:6px 8px calc(6px + env(safe-area-inset-bottom));gap:6px;box-shadow:0 -4px 20px rgba(34,48,73,.12);border-top:1px solid var(--line)}
-  nav button{flex:1;color:var(--mut);padding:10px 4px;font-size:13px;border-radius:12px}
+  nav button{flex:1;color:var(--mut);padding:10px 2px;font-size:12px;border-radius:12px}
   nav button.on{background:var(--pri-soft);color:var(--pri);box-shadow:none;font-weight:600}
   nav button:hover{background:none}
   input,select,textarea{font-size:16px;min-height:46px}
@@ -150,6 +150,7 @@ td.n,th.n{text-align:right;white-space:nowrap}
     <button data-tab="hist">ประวัติ/สรุป</button>
     <button data-tab="setup" id="navSetup">ตั้งค่าข้อมูล</button>
     <button data-tab="mem" id="navMem">สมาชิก</button>
+    <button data-tab="adm" id="navAdm">ผู้ดูแล</button>
     <button data-tab="acct" id="navAcct">บัญชี</button>
   </nav>
   <div id="who"><span id="whoName"></span><button class="btn" id="logout" style="padding:4px 10px">ออกจากระบบ</button></div>
@@ -254,6 +255,31 @@ td.n,th.n{text-align:right;white-space:nowrap}
     <button class="btn" id="bk">⬇ สำรองข้อมูล (JSON)</button>
     <label class="btn" style="display:inline-block;cursor:pointer">⬆ นำเข้า JSON<input type="file" id="rs" accept=".json" class="hide"></label>
     <button class="btn" id="reset" style="color:var(--bad)">ล้างข้อมูลทั้งหมด</button>
+  </div>
+</section>
+
+<!-- ===== ADMINS ===== -->
+<section id="tab-adm" class="hide">
+  <div class="card"><h2>บัญชีผู้ดูแลระบบ</h2>
+    <p class="hint">เก็บชื่อผู้ใช้และรหัสผ่านของผู้ดูแลระบบ — ระบบเก็บเฉพาะ <b>ค่าแฮช</b> ของรหัสผ่าน (เข้ารหัสทางเดียว) จึงดูรหัสผ่านเดิมไม่ได้ ถ้าลืมให้รีเซ็ตเป็นรหัสชั่วคราวใหม่</p>
+    <div class="scroll"><table><thead><tr><th>ชื่อผู้ใช้</th><th>ชื่อที่แสดง</th><th>อีเมล</th><th>สถานะ</th><th>สร้างเมื่อ</th><th></th></tr></thead><tbody id="admList"></tbody></table></div>
+  </div>
+  <div class="card"><h2 id="adTitle">เพิ่มผู้ดูแลระบบ</h2>
+    <form id="adForm">
+      <div class="row">
+        <div><label>ชื่อที่แสดง *</label><input id="adName" required></div>
+        <div><label>อีเมล (ถ้ามี)</label><input id="adEmail" type="email" autocapitalize="none"></div>
+        <div><label>ชื่อผู้ใช้ *</label><input id="adUser" autocapitalize="none" spellcheck="false" autocomplete="off" required></div>
+        <div><label>รหัสผ่านชั่วคราว * (≥8 ตัว มีตัวอักษรและตัวเลข)</label><input id="adPass" autocomplete="off" required></div>
+      </div>
+      <div class="err" id="adMsg" style="margin-top:8px"></div>
+      <div class="notice hide" id="adResult"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" class="btn" id="adGen">สุ่มรหัส</button><button class="btn pri" id="adSubmit">+ เพิ่มผู้ดูแลระบบ</button><button type="button" class="btn hide" id="adCancel">ยกเลิก</button></div>
+    </form>
+  </div>
+  <div class="card"><h2>สมาชิกที่มีสิทธิ์ admin</h2>
+    <p class="hint">สมาชิกที่ถูกตั้งสิทธิ์เป็น admin ในแท็บ "สมาชิก" — จัดการชื่อผู้ใช้/รหัสผ่านของพวกเขาที่แท็บนั้น</p>
+    <div class="scroll"><table><thead><tr><th>Emp.No</th><th>ชื่อ</th><th>อีเมล</th><th>ชื่อผู้ใช้</th></tr></thead><tbody id="admMembers"></tbody></table></div>
   </div>
 </section>
 
@@ -397,8 +423,8 @@ function dayInfo(e,ds){
 $$('nav button').forEach(b=>b.onclick=()=>{
   if(forceChange&&b.dataset.tab!=='acct')return;   // ต้องเปลี่ยนรหัสผ่านชั่วคราวก่อน
   $$('nav button').forEach(x=>x.classList.toggle('on',x===b));
-  ['log','hist','setup','mem','acct'].forEach(t=>$('#tab-'+t).classList.toggle('hide',t!==b.dataset.tab));
-  if(b.dataset.tab==='hist')renderHist(); if(b.dataset.tab==='setup')renderSetup(); if(b.dataset.tab==='acct')renderAcct(); if(b.dataset.tab==='mem')renderMem();
+  ['log','hist','setup','mem','adm','acct'].forEach(t=>$('#tab-'+t).classList.toggle('hide',t!==b.dataset.tab));
+  if(b.dataset.tab==='hist')renderHist(); if(b.dataset.tab==='setup')renderSetup(); if(b.dataset.tab==='acct')renderAcct(); if(b.dataset.tab==='mem')renderMem(); if(b.dataset.tab==='adm')renderAdm();
 });
 
 /* ---- log ---- */
@@ -642,7 +668,7 @@ $('#bk').onclick=()=>dl('workload_backup_'+todayStr()+'.json',JSON.stringify(db,
 $('#rs').onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!d.employees||!d.timesheets||!d.assign)throw 0;db=d;save();rebind();init()}catch{alert('ไฟล์ไม่ถูกต้อง')}};
 $('#reset').onclick=()=>{if(confirm('ล้างข้อมูลทั้งหมดและกลับเป็นข้อมูลตัวอย่าง?')){db=seed();save();logoutUi();init()}};
 
-function init(){fillEmp();syncForm();renderLog();if(!$('#tab-setup').classList.contains('hide'))renderSetup();if(!$('#tab-acct').classList.contains('hide'))renderAcct();if(!$('#tab-mem').classList.contains('hide'))renderMem()}
+function init(){fillEmp();syncForm();renderLog();if(!$('#tab-setup').classList.contains('hide'))renderSetup();if(!$('#tab-acct').classList.contains('hide'))renderAcct();if(!$('#tab-mem').classList.contains('hide'))renderMem();if(!$('#tab-adm').classList.contains('hide'))renderAdm()}
 
 /* ---- Username / Password: เก็บเฉพาะค่าแฮช PBKDF2-SHA256 + salt (ไม่เก็บรหัสจริง) ---- */
 const enc=new TextEncoder();
@@ -665,16 +691,17 @@ const SKEY='demco_session_v1';
 let cur=null, forceChange=false, fails=0, lockUntil=0;
 const lc=s=>String(s||'').trim().toLowerCase();
 const loginMsg=(m,ok)=>{const el=$('#loginMsg');el.textContent=m||'';el.style.color=ok?'var(--cost)':''};
-function normDb(){db.regs=db.regs||[];db.settings=Object.assign({regOpen:true,autoApprove:false},db.settings||{})}
+function normDb(){db.regs=db.regs||[];db.settings=Object.assign({regOpen:true,autoApprove:false},db.settings||{});
+  if(!db.admins){db.admins=db.admin?[Object.assign({id:'A1',name:'ผู้ดูแลระบบ',active:true,at:new Date().toISOString()},db.admin)]:[];delete db.admin}}
 normDb();
-const usernameTaken=(un,exceptEmpId)=>(db.admin&&lc(db.admin.username)===lc(un))||db.employees.some(e=>e.id!==exceptEmpId&&e.username&&lc(e.username)===lc(un));
+const usernameTaken=(un,exceptEmpId)=>db.admins.some(a=>lc(a.username)===lc(un))||db.employees.some(e=>e.id!==exceptEmpId&&e.username&&lc(e.username)===lc(un));
 function findAcct(un){
-  if(db.admin&&lc(db.admin.username)===un)return{kind:'admin',cred:db.admin};
+  const ad=db.admins.find(a=>a.active!==false&&lc(a.username)===un);if(ad)return{kind:'admin',cred:ad};
   const e=db.employees.find(x=>x.active!==false&&x.username&&x.hash&&lc(x.username)===un);
   return e?{kind:'emp',emp:e,cred:e}:null;
 }
 function showMode(m){ // login | reg | forgot | reset
-  if(!db.admin)return;
+  if(!db.admins.length)return;
   $('#pwBox').classList.toggle('hide',m!=='login');
   $('#regBox').classList.toggle('hide',m!=='reg');
   $('#fgBox').classList.toggle('hide',m!=='forgot');
@@ -690,7 +717,7 @@ $('#regLink').onclick=ev=>{ev.preventDefault();showMode($('#regBox').classList.c
 $('#fgLink').onclick=ev=>{ev.preventDefault();showMode($('#fgBox').classList.contains('hide')?'forgot':'login')};
 function showLoginView(){
   normDb();
-  const fresh=!db.admin;
+  const fresh=!db.admins.length;
   $('#login').classList.remove('hide');
   $('#setupBox').classList.toggle('hide',!fresh);
   ['#pwBox','#regBox','#fgBox','#rsBox'].forEach(s=>$(s).classList.add('hide'));
@@ -705,19 +732,20 @@ function finishEnter(label,force){
   $('#whoName').textContent=label;
   $('#navSetup').classList.toggle('hide',!isAdmin);
   $('#navMem').classList.toggle('hide',!isAdmin);
+  $('#navAdm').classList.toggle('hide',!isAdmin);
   init();
   $(`nav button[data-tab=${force?'acct':'log'}]`).click();
 }
 function enter(a){
-  if(a.kind==='admin'){me=null;user={name:'ผู้ดูแลระบบ',email:''};isAdmin=true}
+  if(a.kind==='admin'){me=null;user={name:a.cred.name||'ผู้ดูแลระบบ',email:a.cred.email||''};isAdmin=true}
   else{me=a.emp;user={name:me.name,email:me.email||''};isAdmin=me.role==='admin'}
   cur=a;
-  try{sessionStorage.setItem(SKEY,JSON.stringify(a.kind==='admin'?{k:'a'}:{k:'e',id:me.id}))}catch(e){}
-  finishEnter((me?me.name:'ผู้ดูแลระบบ')+(isAdmin?' (admin)':''),a.kind==='emp'&&me.mustChange);
+  try{sessionStorage.setItem(SKEY,JSON.stringify(a.kind==='admin'?{k:'a',id:a.cred.id}:{k:'e',id:me.id}))}catch(e){}
+  finishEnter((me?me.name:(a.cred.name||'ผู้ดูแลระบบ'))+(isAdmin?' (admin)':''),a.kind==='emp'?me.mustChange:!!a.cred.mustChange);
 }
 function restoreSession(){
   try{const s=JSON.parse(sessionStorage.getItem(SKEY)||'null');if(!s)return;
-    if(s.k==='a'&&db.admin)enter({kind:'admin',cred:db.admin});
+    if(s.k==='a'){const ad=db.admins.find(x=>x.id===s.id&&x.active!==false);if(ad)enter({kind:'admin',cred:ad})}
     else if(s.k==='e'){const e=find(db.employees,s.id);if(e&&e.hash&&e.active!==false)enter({kind:'emp',emp:e,cred:e})}}catch(e){}
 }
 function rebind(){ // หลังนำเข้าข้อมูลที่แทนที่รายชื่อพนักงาน
@@ -746,12 +774,56 @@ $('#setupBox').onsubmit=async ev=>{ev.preventDefault();
   if(usernameTaken(un))return loginMsg('ชื่อผู้ใช้นี้ถูกใช้แล้ว');
   if(!pwOk(p1))return loginMsg(PWRULE);
   if(p1!==p2)return loginMsg('รหัสผ่านทั้งสองช่องไม่ตรงกัน');
-  try{const h=await hashPw(p1);db.admin={username:un,...h};save();loginMsg('');$('#suPass').value=$('#suPass2').value='';enter({kind:'admin',cred:db.admin})}
+  try{const h=await hashPw(p1);const ad={id:'A'+Date.now().toString(36),name:'ผู้ดูแลระบบ',username:un,...h,active:true,at:new Date().toISOString()};db.admins.push(ad);save();loginMsg('');$('#suPass').value=$('#suPass2').value='';enter({kind:'admin',cred:ad})}
   catch(e){loginMsg(e.message)}
 };
 $('#devBtn').onclick=()=>{const v=$('#devUser').value;cur={kind:'dev'};
   if(v==='__admin'){me=null;user={name:'Admin (ทดลอง)',email:''};isAdmin=true;finishEnter('Admin (ทดลอง)',false)}
   else{const e=find(db.employees,v);user={name:e.name,email:e.email||''};me=e;isAdmin=e.role==='admin';finishEnter(e.name+' (ทดลอง)',false)}};
+
+/* ---- แท็บ ผู้ดูแล: จัดการบัญชีผู้ดูแลระบบ ---- */
+let adEdit=null;
+function resetAd(){adEdit=null;$('#adForm').reset();$('#adUser').readOnly=false;$('#adTitle').textContent='เพิ่มผู้ดูแลระบบ';$('#adSubmit').textContent='+ เพิ่มผู้ดูแลระบบ';$('#adCancel').classList.add('hide');$('#adMsg').textContent=''}
+function renderAdm(){
+  normDb();
+  $('#admList').innerHTML=db.admins.map(a=>{const self=cur?.cred===a;
+    return `<tr><td>${esc(a.username)}${self?' <span class="tag sub">คุณ</span>':''}</td><td>${esc(a.name||'')}</td><td>${esc(a.email||'—')}</td>
+    <td>${a.mustChange?'<span class="tag sga">รอเปลี่ยนรหัส</span>':'<span class="tag cost">ใช้งานได้</span>'}</td>
+    <td class="hint">${a.at?new Date(a.at).toLocaleDateString('th-TH'):''}</td>
+    <td style="white-space:nowrap"><button class="btn" style="padding:4px 10px" data-adreset="${esc(a.id)}">รีเซ็ตรหัส</button> ${self||db.admins.length<2?'':`<button class="x" data-addel="${esc(a.id)}" title="ลบบัญชีนี้">✕</button>`}</td></tr>`}).join('');
+  $$('[data-adreset]').forEach(b=>b.onclick=()=>{const a=db.admins.find(x=>x.id===b.dataset.adreset);if(!a)return;
+    adEdit=a.id;$('#adName').value=a.name||'';$('#adEmail').value=a.email||'';$('#adUser').value=a.username;$('#adUser').readOnly=true;$('#adPass').value='';
+    $('#adTitle').textContent='รีเซ็ตรหัสผ่าน '+a.username;$('#adSubmit').textContent='บันทึกรหัสผ่านใหม่';$('#adCancel').classList.remove('hide');$('#adMsg').textContent='';
+    $('#adForm').scrollIntoView({behavior:'smooth',block:'center'});$('#adPass').focus()});
+  $$('[data-addel]').forEach(b=>b.onclick=()=>{const a=db.admins.find(x=>x.id===b.dataset.addel);
+    if(!a||db.admins.length<2||cur?.cred===a)return;
+    if(confirm(`ลบบัญชีผู้ดูแลระบบ ${a.username}? (ผู้ใช้นี้จะ login ไม่ได้อีก)`)){db.admins=db.admins.filter(x=>x!==a);save();renderAdm()}});
+  $('#admMembers').innerHTML=db.employees.filter(e=>e.role==='admin').map(e=>`<tr><td>${esc(e.id)}</td><td>${esc(e.name)}</td><td>${esc(e.email||'—')}</td><td>${esc(e.username||'— (ยังไม่มีบัญชี)')}</td></tr>`).join('')||'<tr><td colspan="4" class="hint">ยังไม่มีสมาชิกที่เป็น admin</td></tr>';
+}
+$('#adCancel').onclick=resetAd;
+$('#adGen').onclick=()=>{
+  const A='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz',D='23456789',r=crypto.getRandomValues(new Uint32Array(12));let s='';
+  for(let i=0;i<12;i++){const set=i%3===2?D:A;s+=set[r[i]%set.length]}$('#adPass').value=s;
+};
+$('#adForm').onsubmit=async ev=>{ev.preventDefault();normDb();
+  const m=$('#adMsg');m.className='err';m.style.color='';
+  const name=$('#adName').value.trim(),email=$('#adEmail').value.trim(),un=$('#adUser').value.trim(),pw=$('#adPass').value;
+  if(!name)return m.textContent='กรุณากรอกชื่อที่แสดง';
+  if(email&&!/^\S+@\S+\.\S+$/.test(email))return m.textContent='อีเมลไม่ถูกต้อง';
+  if(!validUser(un))return m.textContent=USERRULE;
+  if(!adEdit&&usernameTaken(un))return m.textContent='ชื่อผู้ใช้นี้ถูกใช้แล้ว';
+  if(!pwOk(pw))return m.textContent=PWRULE;
+  try{
+    const h=await hashPw(pw),wasEdit=!!adEdit;
+    if(wasEdit){const a=db.admins.find(x=>x.id===adEdit);if(!a){resetAd();return}
+      a.name=name;a.email=email;a.salt=h.salt;a.hash=h.hash;a.mustChange=true}
+    else db.admins.push({id:'A'+Date.now().toString(36),name,email,username:un,salt:h.salt,hash:h.hash,mustChange:true,active:true,at:new Date().toISOString()});
+    save();resetAd();
+    const r=$('#adResult');r.classList.remove('hide');
+    r.textContent=`${wasEdit?'รีเซ็ตรหัสผ่าน':'เพิ่มผู้ดูแลระบบ'}แล้ว — ชื่อผู้ใช้: ${un} | รหัสผ่านชั่วคราว: ${pw} (แจ้งผู้ใช้ด้วยตนเอง ระบบจะไม่แสดงรหัสนี้อีก และบังคับเปลี่ยนเมื่อ login ครั้งถัดไป)`;
+    renderAdm();
+  }catch(er){m.textContent=er.message}
+};
 
 /* ---- แท็บ บัญชี ---- */
 function renderAcct(){
@@ -947,7 +1019,7 @@ async function boot(){
   restoreSession();
   const rm=location.hash.match(/^#reset=([^.]+)\.(.+)$/);
   if(rm){history.replaceState(null,'',location.pathname+location.search);   // ลบโทเค็นออกจากแถบที่อยู่ทันที
-    if(db.admin){pendingReset={id:decodeURIComponent(rm[1]),tok:rm[2]};if(cur)logoutUi();showMode('reset')}}
+    if(db.admins.length){pendingReset={id:decodeURIComponent(rm[1]),tok:rm[2]};if(cur)logoutUi();showMode('reset')}}
 }
 if('serviceWorker' in navigator && (location.protocol==='https:'||['localhost','127.0.0.1'].includes(location.hostname))){
   window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
