@@ -109,6 +109,28 @@ td.n,th.n{text-align:right;white-space:nowrap}
     <label style="margin-top:10px">รหัสผ่าน (Password)</label><input id="lgPass" type="password" autocomplete="current-password" required>
     <button class="btn pri" style="width:100%;margin-top:14px">เข้าสู่ระบบ</button>
   </form>
+  <form id="regBox" class="pwbox hide">
+    <div class="hint" style="margin-bottom:10px">สมัครสมาชิกสำหรับพนักงาน — ต้องมีรหัสพนักงานอยู่ในระบบแล้ว และรอ Admin อนุมัติ</div>
+    <label>รหัสพนักงาน (Emp.No)</label><input id="rgEmp" autocomplete="off" required>
+    <label style="margin-top:10px">อีเมลบริษัท</label><input id="rgEmail" type="email" autocomplete="email" required>
+    <label style="margin-top:10px">ชื่อผู้ใช้ที่ต้องการ</label><input id="rgUser" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label style="margin-top:10px">ตั้งรหัสผ่าน (≥8 ตัว มีตัวอักษรและตัวเลข)</label><input id="rgPass" type="password" autocomplete="new-password" required>
+    <label style="margin-top:10px">ยืนยันรหัสผ่าน</label><input id="rgPass2" type="password" autocomplete="new-password" required>
+    <button class="btn pri" style="width:100%;margin-top:14px">สมัครสมาชิก</button>
+  </form>
+  <form id="fgBox" class="pwbox hide">
+    <div class="hint" style="margin-bottom:10px">กรอกอีเมลบริษัทที่ลงทะเบียนไว้ ระบบจะส่งลิงก์ตั้งรหัสผ่านใหม่ให้ (ใช้ได้ 30 นาที)</div>
+    <label>อีเมลบริษัท</label><input id="fgEmail" type="email" autocomplete="email" autocapitalize="none" required>
+    <button class="btn pri" style="width:100%;margin-top:14px">ส่งลิงก์รีเซ็ตรหัสผ่าน</button>
+  </form>
+  <form id="rsBox" class="pwbox hide">
+    <div class="hint" style="margin-bottom:10px">ตั้งรหัสผ่านใหม่</div>
+    <label>รหัสผ่านใหม่ (≥8 ตัว มีตัวอักษรและตัวเลข)</label><input id="rsPass" type="password" autocomplete="new-password" required>
+    <label style="margin-top:10px">ยืนยันรหัสผ่านใหม่</label><input id="rsPass2" type="password" autocomplete="new-password" required>
+    <button class="btn pri" style="width:100%;margin-top:14px">บันทึกรหัสผ่านใหม่</button>
+  </form>
+  <a href="#" id="fgLink" class="hide" style="display:block;margin-top:14px;color:var(--pri);font-weight:600;text-decoration:none">ลืมรหัสผ่าน?</a>
+  <a href="#" id="regLink" class="hide" style="display:block;margin-top:14px;color:var(--pri);font-weight:600;text-decoration:none">สมัครสมาชิก</a>
   <form id="setupBox" class="pwbox hide">
     <div class="notice" style="margin:0 0 10px">ยังไม่มีบัญชีผู้ดูแลระบบ — ตั้งชื่อผู้ใช้และรหัสผ่านสำหรับ Admin คนแรก</div>
     <label>ชื่อผู้ใช้ Admin</label><input id="suUser" autocomplete="username" autocapitalize="none" spellcheck="false" required>
@@ -129,6 +151,7 @@ td.n,th.n{text-align:right;white-space:nowrap}
     <button data-tab="log" class="on">บันทึกงาน</button>
     <button data-tab="hist">ประวัติ/สรุป</button>
     <button data-tab="setup" id="navSetup">ตั้งค่าข้อมูล</button>
+    <button data-tab="mem" id="navMem">สมาชิก</button>
     <button data-tab="acct" id="navAcct">บัญชี</button>
   </nav>
   <div id="who"><span id="whoName"></span><button class="btn" id="logout" style="padding:4px 10px">ออกจากระบบ</button></div>
@@ -252,17 +275,48 @@ td.n,th.n{text-align:right;white-space:nowrap}
     </form>
   </div>
   <div class="card hide" id="sessCard"><h2>บัญชีของฉัน</h2><div class="hint" id="sessNote"></div></div>
-  <div class="card hide" id="adminAcct"><h2>จัดการบัญชีผู้ใช้ของพนักงาน (Admin)</h2>
-    <p class="hint">ตั้งชื่อผู้ใช้และรหัสผ่านชั่วคราวให้พนักงาน — เมื่อ login ครั้งแรกระบบจะบังคับให้เปลี่ยนรหัสผ่าน ระบบเก็บเฉพาะค่าแฮชของรหัสผ่าน ไม่เก็บรหัสจริง</p>
+</section>
+
+<!-- ===== MEMBERS (admin) ===== -->
+<section id="tab-mem" class="hide">
+  <div class="card"><h2>ตั้งค่าการสมัครสมาชิก</h2>
+    <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink)"><input type="checkbox" id="stReg" style="width:auto;min-height:0;margin-top:4px"> <span>เปิดให้พนักงานสมัครสมาชิกเองจากหน้า login</span></label>
+    <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink);margin-top:8px"><input type="checkbox" id="stAuto" style="width:auto;min-height:0;margin-top:4px"> <span>อนุมัติอัตโนมัติเมื่ออีเมลที่สมัครตรงกับอีเมลในข้อมูลพนักงาน<br><span class="hint">ความเสี่ยง: ใครที่รู้รหัสพนักงานและอีเมลของคนอื่นก็สมัครแทนได้ แนะนำให้ปิดไว้และอนุมัติด้วยตนเอง</span></span></label>
+  </div>
+  <div class="card"><h2>คำขอสมัครที่รออนุมัติ <span id="regCount" class="tag sga" style="margin-left:4px"></span></h2>
+    <div class="scroll"><table><thead><tr><th>Emp.No</th><th>ชื่อ</th><th>อีเมลที่สมัคร</th><th>ชื่อผู้ใช้</th><th>เมื่อ</th><th></th></tr></thead><tbody id="regList"></tbody></table></div>
+  </div>
+  <div class="card"><h2>สมาชิกทั้งหมด</h2>
+    <div class="scroll"><table><thead><tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th>อีเมล</th><th>ชื่อผู้ใช้</th><th>บัญชี</th><th>สิทธิ์</th><th>ใช้งาน</th><th></th></tr></thead><tbody id="memList"></tbody></table></div>
+  </div>
+  <div class="card"><h2 id="nmTitle">เพิ่มสมาชิกใหม่</h2>
+    <form id="nmForm">
+      <div class="row">
+        <div><label>รหัสพนักงาน (Emp.No) *</label><input id="nmId" required autocomplete="off"></div>
+        <div><label>ชื่อ-นามสกุล *</label><input id="nmName" required></div>
+        <div><label>อีเมลบริษัท *</label><input id="nmEmail" type="email" required autocapitalize="none" autocomplete="off"></div>
+        <div><label>ฝ่าย</label><select id="nmDept"></select></div>
+        <div><label>ชื่อเล่น</label><input id="nmNick"></div>
+        <div><label>Level</label><input id="nmLevel"></div>
+        <div><label>ตำแหน่ง</label><input id="nmPos"></div>
+        <div><label>สิทธิ์</label><select id="nmRole"><option value="user">user</option><option value="admin">admin</option></select></div>
+      </div>
+      <label style="display:flex;gap:8px;align-items:center;color:var(--ink);margin-top:10px"><input type="checkbox" id="nmSat" style="width:auto;min-height:0"> <span>ทำงานวันเสาร์ (พนักงาน Site)</span></label>
+      <div class="err" id="nmMsg" style="margin-top:8px"></div>
+      <div style="display:flex;gap:8px"><button class="btn pri" id="nmSubmit">+ เพิ่มสมาชิก</button><button type="button" class="btn hide" id="nmCancel">ยกเลิกการแก้ไข</button></div>
+    </form>
+  </div>
+  <div class="card"><h2>ตั้งชื่อผู้ใช้ / รีเซ็ตรหัสผ่านให้สมาชิก</h2>
+    <p class="hint">ใช้กับพนักงานที่ไม่ได้สมัครเอง หรือลืมรหัสผ่าน — เมื่อ login ครั้งแรกระบบจะบังคับให้เปลี่ยนรหัสผ่าน ระบบเก็บเฉพาะค่าแฮชของรหัสผ่าน</p>
     <form id="uaForm" class="row" style="align-items:end">
       <div><label>พนักงาน</label><select id="uaEmp"></select></div>
+      <div><label>อีเมลบริษัท *</label><input id="uaEmail" type="email" autocapitalize="none" required></div>
       <div><label>ชื่อผู้ใช้</label><input id="uaUser" autocapitalize="none" spellcheck="false" required></div>
       <div><label>รหัสผ่านชั่วคราว</label><input id="uaPass" required></div>
       <div style="display:flex;gap:8px"><button class="btn" type="button" id="uaGen">สุ่มรหัส</button><button class="btn pri">ตั้งค่า/รีเซ็ต</button></div>
     </form>
     <div class="err" id="uaMsg" style="margin-top:8px"></div>
     <div class="notice hide" id="uaResult"></div>
-    <div class="scroll" style="margin-top:12px"><table><thead><tr><th>Emp.No</th><th>ชื่อ</th><th>ชื่อผู้ใช้</th><th>สถานะ</th><th></th></tr></thead><tbody id="uaList"></tbody></table></div>
   </div>
 </section>
 </main>
@@ -277,6 +331,13 @@ const CONFIG={
   clientId:'',          // Application (client) ID
   tenantId:'',          // Directory (tenant) ID
   redirectUri:'',       // เว้นว่าง = ใช้ URL ปัจจุบัน
+  /* ส่งอีเมลรีเซ็ตรหัสผ่าน (เลือกอย่างใดอย่างหนึ่ง) — หน้าเว็บส่งอีเมลเองไม่ได้ ต้องผ่านบริการส่งอีเมล
+     provider:'emailjs'  → สมัคร emailjs.com แล้วใส่ serviceId, templateId, publicKey
+                           (เทมเพลตใช้ตัวแปร {{to_email}} {{subject}} {{message}} {{reset_link}})
+     provider:'webhook'  → URL ของ Power Automate (HTTP request trigger) รับ JSON {to, subject, body, link} แล้วส่งผ่าน Outlook
+     provider:'console'  → ทดสอบบน localhost เท่านั้น พิมพ์ลิงก์ที่ Console แทนการส่งอีเมล
+     เว้นว่าง = ปิดฟีเจอร์ (หน้า login จะบอกให้ติดต่อ Admin) */
+  mail:{provider:'',serviceId:'',templateId:'',publicKey:'',url:''},
   adminEmails:[]        // เช่น ['hr.admin@demco.co.th'] — เป็น admin เสมอ
 };
 let user=null, me=null, isAdmin=false, msalApp=null;
@@ -296,9 +357,9 @@ const seed=()=>({
    ['73001','ฝ่ายบำรุงรักษา ทดสอบระบบไฟฟ้าและพลังงานทดแทน'],['41004','ฝ่ายบริหารงานก่อสร้างวิศวกรรมนวัตกรรม'],['60001','ฝ่ายความปลอดภัยและสิ่งแวดล้อม']]
    .map(([id,name])=>({id,name,active:true})),
   employees:[
-    {id:'01726',name:'นายAAA',nick:'A',dept:'31001',level:'L9',position:'ผู้จัดการฝ่าย',workSat:false,active:true},
-    {id:'02326',name:'นายBBB',nick:'B',dept:'31002',level:'L3',position:'admin',workSat:false,active:true},
-    {id:'03100',name:'นายCCC',nick:'C',dept:'31003',level:'L5',position:'วิศวกร',workSat:true,active:true}],
+    {id:'01726',email:'aaa@example.com',name:'นายAAA',nick:'A',dept:'31001',level:'L9',position:'ผู้จัดการฝ่าย',workSat:false,active:true},
+    {id:'02326',email:'bbb@example.com',name:'นายBBB',nick:'B',dept:'31002',level:'L3',position:'admin',workSat:false,active:true},
+    {id:'03100',email:'ccc@example.com',name:'นายCCC',nick:'C',dept:'31003',level:'L5',position:'วิศวกร',workSat:true,active:true}],
   projects:[ // kind: cost | mt | backlog
     {id:'CSP2601',name:'บ้านบึง',kind:'cost',active:true},
     {id:'CSP2602',name:'แหลมฉบัง',kind:'cost',active:true},
@@ -346,8 +407,8 @@ function dayInfo(e,ds){
 $$('nav button').forEach(b=>b.onclick=()=>{
   if(forceChange&&b.dataset.tab!=='acct')return;   // ต้องเปลี่ยนรหัสผ่านชั่วคราวก่อน
   $$('nav button').forEach(x=>x.classList.toggle('on',x===b));
-  ['log','hist','setup','acct'].forEach(t=>$('#tab-'+t).classList.toggle('hide',t!==b.dataset.tab));
-  if(b.dataset.tab==='hist')renderHist(); if(b.dataset.tab==='setup')renderSetup(); if(b.dataset.tab==='acct')renderAcct();
+  ['log','hist','setup','mem','acct'].forEach(t=>$('#tab-'+t).classList.toggle('hide',t!==b.dataset.tab));
+  if(b.dataset.tab==='hist')renderHist(); if(b.dataset.tab==='setup')renderSetup(); if(b.dataset.tab==='acct')renderAcct(); if(b.dataset.tab==='mem')renderMem();
 });
 
 /* ---- log ---- */
@@ -473,13 +534,14 @@ function dl(name,text,type){const a=document.createElement('a');a.href=URL.creat
 // f: [key,label,kind] kind: text | dept | pk | bool
 const MASTERS=[
   {key:'depts',title:'ฝ่าย',f:[]},
-  {key:'employees',title:'พนักงาน (รหัส = Emp.No)',f:[['email','อีเมลบริษัท (ใช้จับคู่กับ SSO)'],['role','สิทธิ์','role'],['nick','ชื่อเล่น'],['dept','ฝ่าย','dept'],['level','Level'],['position','ตำแหน่ง'],['workSat','ทำงานวันเสาร์ (Site)','bool']]},
+  {key:'employees',title:'พนักงาน (รหัส = Emp.No)',f:[['email','อีเมลบริษัท * (ใช้จับคู่กับ SSO)'],['role','สิทธิ์','role'],['nick','ชื่อเล่น'],['dept','ฝ่าย','dept'],['level','Level'],['position','ตำแหน่ง'],['workSat','ทำงานวันเสาร์ (Site)','bool']]},
   {key:'projects',title:'รหัสโครงการ (Cost / MT / Backlog)',f:[['kind','ประเภท','kind']]},
   {key:'contracts',title:'Sales Contract',f:[]},
   {key:'holidays',title:'วันหยุด (ไม่นับเป็นวันทำการ)',f:[],date:true},
 ];
 const fv=(r,f)=>f[2]==='bool'?(r[f[0]]?'✓':'—'):esc(r[f[0]]);
 function fInput(f){
+  if(f[0]==='email')return `<input name="email" type="email" required autocapitalize="none">`;
   if(f[2]==='dept')return `<select name="dept">${opt(db.depts,d=>`${d.id} ${d.name}`)}</select>`;
   if(f[2]==='kind')return `<select name="kind"><option value="cost">cost</option><option value="mt">mt (MT Project Code)</option><option value="backlog">backlog (DP)</option></select>`;
   if(f[2]==='role')return `<select name="role"><option value="user">user (เห็นเฉพาะของตนเอง)</option><option value="admin">admin</option></select>`;
@@ -508,6 +570,7 @@ function renderSetup(){
     const m=MASTERS.find(x=>x.key===k);const r={id:d.id.trim(),name:d.name.trim(),active:true};
     m.f.forEach(x=>r[x[0]]=x[2]==='bool'?!!d[x[0]]:(d[x[0]]||'').trim());
     if(find(db[k],r.id))return alert('รหัสนี้มีอยู่แล้ว');
+    if(k==='employees'&&db.employees.some(x=>x.email&&lc(x.email)===lc(r.email)))return alert('อีเมลนี้ถูกใช้โดยพนักงานคนอื่นแล้ว');
     db[k].push(r);save();fillEmp();syncForm();renderSetup();renderLog()});
   // assignments
   const codes=[...db.projects.map(p=>({id:p.id,name:`${p.name} [${p.kind}]`})),...db.contracts.map(c=>({id:c.id,name:`${c.name} [Sales Contract]`}))];
@@ -559,7 +622,7 @@ $('#xImp').onchange=async ev=>{
     const nd=JSON.parse(JSON.stringify(db)),done=[],warn=[];
     let r;
     if(r=rows('Departments')){nd.depts=r.filter(x=>S(x['Dept.No'])).map(x=>({id:S(x['Dept.No']),name:S(x['Dept.Name']),active:true}));done.push('Departments '+nd.depts.length)}
-    if(r=rows('Employees')){nd.employees=r.filter(x=>S(x['Emp.No'])).map(x=>({id:S(x['Emp.No']),name:S(x.Name),nick:S(x.Nickname),dept:S(x.Dept||x['Dept.No']),level:S(x.Level),position:S(x.Position),email:S(x.Email),username:S(x.Username),role:S(x.Role).toLowerCase()==='admin'?'admin':'user',workSat:B(x.WorkSat)&&S(x.WorkSat)!=='',active:x.Active===''?true:B(x.Active)}));nd.employees.forEach(e=>{const o=find(db.employees,e.id);if(o){e.salt=o.salt;e.hash=o.hash;e.mustChange=o.mustChange;if(!e.username)e.username=o.username}});done.push('Employees '+nd.employees.length)}
+    if(r=rows('Employees')){nd.employees=r.filter(x=>S(x['Emp.No'])).map(x=>({id:S(x['Emp.No']),name:S(x.Name),nick:S(x.Nickname),dept:S(x.Dept||x['Dept.No']),level:S(x.Level),position:S(x.Position),email:S(x.Email),username:S(x.Username),role:S(x.Role).toLowerCase()==='admin'?'admin':'user',workSat:B(x.WorkSat)&&S(x.WorkSat)!=='',active:x.Active===''?true:B(x.Active)}));nd.employees.forEach(e=>{const o=find(db.employees,e.id);if(o){e.salt=o.salt;e.hash=o.hash;e.mustChange=o.mustChange;if(!e.username)e.username=o.username}});const noMail=nd.employees.filter(e=>!e.email).length;if(noMail)warn.push('พนักงาน '+noMail+' คนไม่มีอีเมล (ต้องมีอีเมลก่อนจึงตั้งบัญชีสมาชิกได้)');done.push('Employees '+nd.employees.length)}
     if(r=rows('Projects')){nd.projects=r.filter(x=>S(x['Project Code'])).map(x=>({id:S(x['Project Code']),name:S(x['Project Name']),kind:['mt','backlog'].includes(S(x.Kind).toLowerCase())?S(x.Kind).toLowerCase():'cost',active:x.Active===''?true:B(x.Active)}));done.push('Projects '+nd.projects.length)}
     if(r=rows('SalesContracts')){nd.contracts=r.filter(x=>S(x['Sales Contract No.'])).map(x=>({id:S(x['Sales Contract No.']),name:S(x['Sales Contract Name']),active:x.Active===''?true:B(x.Active)}));done.push('SalesContracts '+nd.contracts.length)}
     if(r=rows('Holidays')){nd.holidays=r.filter(x=>S(x.Date)).map(x=>({id:xDate(x.Date),name:S(x.Name)}));done.push('Holidays '+nd.holidays.length)}
@@ -589,7 +652,7 @@ $('#bk').onclick=()=>dl('workload_backup_'+todayStr()+'.json',JSON.stringify(db,
 $('#rs').onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!d.employees||!d.timesheets||!d.assign)throw 0;db=d;save();rebind();init()}catch{alert('ไฟล์ไม่ถูกต้อง')}};
 $('#reset').onclick=()=>{if(confirm('ล้างข้อมูลทั้งหมดและกลับเป็นข้อมูลตัวอย่าง?')){db=seed();save();logoutUi();init()}};
 
-function init(){fillEmp();syncForm();renderLog();if(!$('#tab-setup').classList.contains('hide'))renderSetup();if(!$('#tab-acct').classList.contains('hide'))renderAcct()}
+function init(){fillEmp();syncForm();renderLog();if(!$('#tab-setup').classList.contains('hide'))renderSetup();if(!$('#tab-acct').classList.contains('hide'))renderAcct();if(!$('#tab-mem').classList.contains('hide'))renderMem()}
 
 /* ---- Username / Password: เก็บเฉพาะค่าแฮช PBKDF2-SHA256 + salt (ไม่เก็บรหัสจริง) ---- */
 const enc=new TextEncoder();
@@ -611,18 +674,38 @@ const USERRULE='ชื่อผู้ใช้ 3–40 ตัว ใช้ได�
 const SKEY='demco_session_v1';
 let cur=null, forceChange=false, fails=0, lockUntil=0;
 const lc=s=>String(s||'').trim().toLowerCase();
-const loginMsg=m=>{$('#loginMsg').textContent=m||''};
+const loginMsg=(m,ok)=>{const el=$('#loginMsg');el.textContent=m||'';el.style.color=ok?'var(--cost)':''};
+function normDb(){db.regs=db.regs||[];db.settings=Object.assign({regOpen:true,autoApprove:false},db.settings||{})}
+normDb();
 const usernameTaken=(un,exceptEmpId)=>(db.admin&&lc(db.admin.username)===lc(un))||db.employees.some(e=>e.id!==exceptEmpId&&e.username&&lc(e.username)===lc(un));
 function findAcct(un){
   if(db.admin&&lc(db.admin.username)===un)return{kind:'admin',cred:db.admin};
   const e=db.employees.find(x=>x.active!==false&&x.username&&x.hash&&lc(x.username)===un);
   return e?{kind:'emp',emp:e,cred:e}:null;
 }
+function showMode(m){ // login | reg | forgot | reset
+  if(!db.admin)return;
+  $('#pwBox').classList.toggle('hide',m!=='login');
+  $('#regBox').classList.toggle('hide',m!=='reg');
+  $('#fgBox').classList.toggle('hide',m!=='forgot');
+  $('#rsBox').classList.toggle('hide',m!=='reset');
+  $('#regLink').textContent=m==='reg'?'← กลับไปเข้าสู่ระบบ':'สมัครสมาชิก';
+  $('#regLink').classList.toggle('hide',!db.settings.regOpen||m==='forgot'||m==='reset');
+  $('#fgLink').textContent=m==='forgot'?'← กลับไปเข้าสู่ระบบ':'ลืมรหัสผ่าน?';
+  $('#fgLink').classList.toggle('hide',m==='reg'||m==='reset');
+  loginMsg('');
+}
+const showReg=on=>showMode(on?'reg':'login');
+$('#regLink').onclick=ev=>{ev.preventDefault();showMode($('#regBox').classList.contains('hide')?'reg':'login')};
+$('#fgLink').onclick=ev=>{ev.preventDefault();showMode($('#fgBox').classList.contains('hide')?'forgot':'login')};
 function showLoginView(){
+  normDb();
   const fresh=!db.admin;
   $('#login').classList.remove('hide');
   $('#setupBox').classList.toggle('hide',!fresh);
-  $('#pwBox').classList.toggle('hide',fresh);
+  ['#pwBox','#regBox','#fgBox','#rsBox'].forEach(s=>$(s).classList.add('hide'));
+  $('#regLink').classList.add('hide');$('#fgLink').classList.add('hide');
+  if(!fresh)showMode('login');
   $('#devBox').classList.toggle('hide',!fresh);
   $('#ssoBtn').classList.toggle('hide',!(CONFIG.clientId&&CONFIG.tenantId));
   if(fresh)$('#devUser').innerHTML=`<option value="__admin">ผู้ดูแลระบบ (admin ทดลอง)</option>`+db.employees.map(e=>`<option value="${esc(e.id)}">${esc(e.id+' — '+e.name)}</option>`).join('');
@@ -632,6 +715,7 @@ function finishEnter(label,force){
   $('#login').classList.add('hide');
   $('#whoName').textContent=label;
   $('#navSetup').classList.toggle('hide',!isAdmin);
+  $('#navMem').classList.toggle('hide',!isAdmin);
   init();
   $(`nav button[data-tab=${force?'acct':'log'}]`).click();
 }
@@ -705,18 +789,100 @@ function renderAcct(){
   $('#myUser').value=canPw?cur.cred.username:'';
   $('#forceNote').classList.toggle('hide',!forceChange);
   $('#pwMsg').textContent='';
-  $('#adminAcct').classList.toggle('hide',!isAdmin);
-  if(!isAdmin)return;
-  const keep=$('#uaEmp').value;
-  $('#uaEmp').innerHTML=opt(db.employees,e=>`${e.id} — ${e.name}`);if(keep&&find(db.employees,keep))$('#uaEmp').value=keep;
-  fillUaUser();
-  $('#uaList').innerHTML=db.employees.map(e=>`<tr><td>${esc(e.id)}</td><td>${esc(e.name)}</td><td>${esc(e.username||'—')}</td>
-    <td>${e.hash?(e.mustChange?'<span class="tag sga">รอเปลี่ยนรหัส</span>':'<span class="tag cost">ใช้งานได้</span>'):'<span class="tag st">ยังไม่ตั้ง</span>'}</td>
-    <td>${e.hash?`<button class="x" data-uadel="${esc(e.id)}" title="ลบบัญชี">✕</button>`:''}</td></tr>`).join('')||'<tr><td colspan="5" class="hint">ยังไม่มีพนักงาน</td></tr>';
-  $$('[data-uadel]').forEach(b=>b.onclick=()=>{const e=find(db.employees,b.dataset.uadel);
-    if(e&&confirm(`ลบชื่อผู้ใช้/รหัสผ่านของ ${e.name}? (พนักงานจะ login ไม่ได้จนกว่าจะตั้งใหม่)`)){delete e.username;delete e.salt;delete e.hash;delete e.mustChange;save();renderAcct()}});
 }
-function fillUaUser(){const e=find(db.employees,$('#uaEmp').value);$('#uaUser').value=e?(e.username||e.id):''}
+
+/* ---- สมัครสมาชิก (self-registration) ---- */
+$('#regBox').onsubmit=async ev=>{ev.preventDefault();normDb();
+  const empId=$('#rgEmp').value.trim(),email=$('#rgEmail').value.trim(),un=$('#rgUser').value.trim(),p1=$('#rgPass').value,p2=$('#rgPass2').value;
+  const e=find(db.employees,empId);
+  if(!db.settings.regOpen)return loginMsg('ขณะนี้ปิดรับสมัครสมาชิก กรุณาติดต่อ Admin');
+  if(!e||e.active===false)return loginMsg('ไม่พบรหัสพนักงานนี้ในระบบ กรุณาตรวจสอบหรือติดต่อ Admin');
+  if(e.hash)return loginMsg('รหัสพนักงานนี้มีบัญชีอยู่แล้ว — เข้าสู่ระบบ หรือให้ Admin รีเซ็ตรหัสผ่าน');
+  if(db.regs.some(r=>r.empId===empId))return loginMsg('มีคำขอสมัครของรหัสพนักงานนี้รออนุมัติอยู่แล้ว');
+  if(!/^\S+@\S+\.\S+$/.test(email))return loginMsg('กรุณากรอกอีเมลบริษัทให้ถูกต้อง');
+  if(db.employees.some(x=>x.id!==empId&&x.email&&lc(x.email)===lc(email)))return loginMsg('อีเมลนี้ถูกใช้โดยพนักงานคนอื่นแล้ว');
+  if(!validUser(un))return loginMsg(USERRULE);
+  if(usernameTaken(un)||db.regs.some(r=>lc(r.username)===lc(un)))return loginMsg('ชื่อผู้ใช้นี้ถูกใช้แล้ว');
+  if(!pwOk(p1))return loginMsg(PWRULE);
+  if(p1!==p2)return loginMsg('รหัสผ่านทั้งสองช่องไม่ตรงกัน');
+  try{
+    const h=await hashPw(p1);
+    const auto=db.settings.autoApprove&&e.email&&lc(e.email)===lc(email);
+    if(auto){e.username=un;e.salt=h.salt;e.hash=h.hash;delete e.mustChange;save();showReg(false);loginMsg('สมัครสมาชิกสำเร็จ — เข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่านที่ตั้งไว้ได้เลย',true)}
+    else{db.regs.push({id:'R'+Date.now().toString(36),empId,email,username:un,salt:h.salt,hash:h.hash,at:new Date().toISOString()});save();showReg(false);loginMsg('ส่งคำขอสมัครแล้ว — รอผู้ดูแลระบบอนุมัติก่อนจึงจะเข้าสู่ระบบได้',true)}
+    ['#rgEmp','#rgEmail','#rgUser','#rgPass','#rgPass2'].forEach(s=>$(s).value='');
+  }catch(er){loginMsg(er.message)}
+};
+
+/* ---- แท็บ สมาชิก (Admin) ---- */
+function renderMem(){
+  normDb();
+  $('#stReg').checked=!!db.settings.regOpen;$('#stAuto').checked=!!db.settings.autoApprove;
+  $('#regCount').textContent=db.regs.length?db.regs.length+' รายการ':'';
+  $('#regList').innerHTML=db.regs.map(r=>{const e=find(db.employees,r.empId)||{};
+    return `<tr><td>${esc(r.empId)}</td><td>${esc(e.name||'(ไม่พบในรายชื่อ)')}</td><td>${esc(r.email)}${e.email?(lc(e.email)===lc(r.email)?' <span class="tag cost">ตรงกับข้อมูลพนักงาน</span>':' <span class="tag sga">ไม่ตรงกับข้อมูลพนักงาน</span>'):''}</td><td>${esc(r.username)}</td><td class="hint">${new Date(r.at).toLocaleString('th-TH')}</td>
+    <td style="white-space:nowrap"><button class="btn ok" style="padding:6px 12px" data-rgok="${r.id}">อนุมัติ</button> <button class="btn" style="padding:6px 12px;color:var(--bad)" data-rgno="${r.id}">ปฏิเสธ</button></td></tr>`}).join('')||'<tr><td colspan="6" class="hint">ไม่มีคำขอที่รออนุมัติ</td></tr>';
+  $$('[data-rgok]').forEach(b=>b.onclick=()=>{const r=db.regs.find(x=>x.id===b.dataset.rgok),e=r&&find(db.employees,r.empId);
+    if(!e)return alert('ไม่พบพนักงานรหัสนี้ในรายชื่อแล้ว ปฏิเสธคำขอนี้แทน');
+    if(e.hash)return alert('พนักงานคนนี้มีบัญชีอยู่แล้ว');
+    if(!e.email&&db.employees.some(x=>x.email&&lc(x.email)===lc(r.email)))return alert('อีเมลที่สมัครถูกใช้โดยพนักงานคนอื่นแล้ว ให้ปฏิเสธคำขอนี้');
+    if(usernameTaken(r.username,e.id))return alert('ชื่อผู้ใช้นี้ถูกใช้แล้ว ให้ปฏิเสธและให้พนักงานสมัครใหม่');
+    e.username=r.username;e.salt=r.salt;e.hash=r.hash;delete e.mustChange;if(!e.email)e.email=r.email;
+    db.regs=db.regs.filter(x=>x!==r);save();renderMem()});
+  $$('[data-rgno]').forEach(b=>b.onclick=()=>{if(confirm('ปฏิเสธคำขอสมัครนี้?')){db.regs=db.regs.filter(x=>x.id!==b.dataset.rgno);save();renderMem()}});
+  $('#memList').innerHTML=db.employees.map((e,i)=>{const self=me&&me.id===e.id;
+    return `<tr><td>${esc(e.id)}</td><td>${esc(e.name)}</td><td>${esc(e.dept)}</td><td>${e.email?esc(e.email):'<span class="tag sga">ไม่มีอีเมล</span>'}</td><td>${esc(e.username||'—')}</td>
+    <td>${e.hash?(e.mustChange?'<span class="tag sga">รอเปลี่ยนรหัส</span>':'<span class="tag cost">มีบัญชี</span>'):'<span class="tag st">ยังไม่มีบัญชี</span>'}</td>
+    <td><select data-role="${i}" style="min-height:0;padding:5px 8px" ${self?'disabled title="เปลี่ยนสิทธิ์ตัวเองไม่ได้"':''}><option value="user" ${e.role!=='admin'?'selected':''}>user</option><option value="admin" ${e.role==='admin'?'selected':''}>admin</option></select></td>
+    <td><input type="checkbox" data-mact="${i}" ${e.active!==false?'checked':''} ${self?'disabled':''} style="width:auto;min-height:0"></td>
+    <td style="white-space:nowrap"><button class="x" style="color:var(--pri)" data-medit="${esc(e.id)}" title="แก้ไขชื่อ/อีเมล/ข้อมูล">✎</button> ${e.hash&&e.email&&mailReady()?`<button class="btn" style="padding:4px 10px" data-rsmail="${esc(e.id)}" title="ส่งลิงก์รีเซ็ตรหัสผ่านทางอีเมล">✉ รีเซ็ต</button> `:''}${e.hash?`<button class="x" data-uadel="${esc(e.id)}" title="ลบชื่อผู้ใช้/รหัสผ่าน">✕</button>`:''}</td></tr>`}).join('')||'<tr><td colspan="9" class="hint">ยังไม่มีพนักงาน (เพิ่มในแท็บตั้งค่าข้อมูล หรือนำเข้า Excel)</td></tr>';
+  $$('[data-role]').forEach(s=>s.onchange=()=>{db.employees[s.dataset.role].role=s.value;save();renderMem()});
+  $$('[data-mact]').forEach(c=>c.onchange=()=>{db.employees[c.dataset.mact].active=c.checked;save();renderMem()});
+  $$('[data-medit]').forEach(b=>b.onclick=()=>startEditMember(b.dataset.medit));
+  $$('[data-rsmail]').forEach(b=>b.onclick=async()=>{const e=find(db.employees,b.dataset.rsmail);if(!e)return;
+    if(!confirm(`ส่งลิงก์รีเซ็ตรหัสผ่านไปที่ ${e.email}?`))return;
+    try{const r=await requestReset(e);alert(r==='wait'?'เพิ่งส่งไปแล้ว กรุณารอ 1 นาทีก่อนส่งซ้ำ':'ส่งอีเมลรีเซ็ตรหัสผ่านแล้ว')}catch(er){alert('ส่งอีเมลไม่สำเร็จ: '+er.message)}});
+  $$('[data-uadel]').forEach(b=>b.onclick=()=>{const e=find(db.employees,b.dataset.uadel);
+    if(e&&confirm(`ลบชื่อผู้ใช้/รหัสผ่านของ ${e.name}? (พนักงานจะ login ไม่ได้จนกว่าจะตั้งหรือสมัครใหม่)`)){delete e.username;delete e.salt;delete e.hash;delete e.mustChange;save();renderMem()}});
+  const keep=$('#uaEmp').value;
+  $('#uaEmp').innerHTML=opt(db.employees.filter(e=>e.active!==false),e=>`${e.id} — ${e.name}`);if(keep&&find(db.employees,keep))$('#uaEmp').value=keep;
+  fillUaUser();fillNm();
+}
+/* ---- เพิ่ม/แก้ไขสมาชิก ---- */
+let nmEdit=null;
+function fillNm(){
+  const d=$('#nmDept'),keep=d.value;
+  d.innerHTML='<option value="">—</option>'+db.depts.map(x=>`<option value="${esc(x.id)}">${esc(x.id+' '+x.name)}</option>`).join('');d.value=keep;
+}
+function resetNm(){nmEdit=null;$('#nmForm').reset();$('#nmId').readOnly=false;$('#nmTitle').textContent='เพิ่มสมาชิกใหม่';$('#nmSubmit').textContent='+ เพิ่มสมาชิก';$('#nmCancel').classList.add('hide');$('#nmMsg').textContent=''}
+function startEditMember(id){
+  const e=find(db.employees,id);if(!e)return;nmEdit=id;fillNm();
+  $('#nmId').value=e.id;$('#nmId').readOnly=true;$('#nmName').value=e.name||'';$('#nmEmail').value=e.email||'';$('#nmDept').value=e.dept||'';
+  $('#nmNick').value=e.nick||'';$('#nmLevel').value=e.level||'';$('#nmPos').value=e.position||'';$('#nmRole').value=e.role==='admin'?'admin':'user';$('#nmSat').checked=!!e.workSat;
+  $('#nmTitle').textContent='แก้ไขสมาชิก '+e.id;$('#nmSubmit').textContent='บันทึกการแก้ไข';$('#nmCancel').classList.remove('hide');$('#nmMsg').textContent='';
+  $('#nmForm').scrollIntoView({behavior:'smooth',block:'center'});
+}
+$('#nmCancel').onclick=resetNm;
+$('#nmForm').onsubmit=ev=>{ev.preventDefault();normDb();
+  const m=$('#nmMsg');m.className='err';m.style.color='';
+  const id=$('#nmId').value.trim(),name=$('#nmName').value.trim(),email=$('#nmEmail').value.trim();
+  if(!id||!name)return m.textContent='กรุณากรอกรหัสพนักงานและชื่อ';
+  if(!/^\S+@\S+\.\S+$/.test(email))return m.textContent='สมาชิกต้องมีอีเมลบริษัทที่ถูกต้อง';
+  if(db.employees.some(x=>x.id!==id&&x.email&&lc(x.email)===lc(email)))return m.textContent='อีเมลนี้ถูกใช้โดยพนักงานคนอื่นแล้ว';
+  const data={name,email,dept:$('#nmDept').value,nick:$('#nmNick').value.trim(),level:$('#nmLevel').value.trim(),position:$('#nmPos').value.trim(),role:$('#nmRole').value,workSat:$('#nmSat').checked};
+  const wasEdit=!!nmEdit;
+  if(wasEdit){const e=find(db.employees,nmEdit);if(!e){resetNm();return}
+    if(me&&e.id===me.id&&e.role==='admin'&&data.role!=='admin')return m.textContent='เปลี่ยนสิทธิ์ของตัวเองไม่ได้';
+    Object.assign(e,data)}
+  else{if(find(db.employees,id))return m.textContent='รหัสพนักงานนี้มีอยู่แล้ว';
+    db.employees.push(Object.assign({id,active:true},data))}
+  save();resetNm();renderMem();fillEmp();
+  m.className='hint';m.style.color='var(--cost)';
+  m.textContent=wasEdit?'บันทึกการแก้ไขแล้ว':'เพิ่มสมาชิกแล้ว — ตั้งชื่อผู้ใช้/รหัสผ่านให้ในส่วนด้านล่าง หรือให้พนักงานสมัครสมาชิกเอง';
+};
+$('#stReg').onchange=()=>{normDb();db.settings.regOpen=$('#stReg').checked;save()};
+$('#stAuto').onchange=()=>{normDb();db.settings.autoApprove=$('#stAuto').checked;save()};
+function fillUaUser(){const e=find(db.employees,$('#uaEmp').value);$('#uaUser').value=e?(e.username||e.id):'';$('#uaEmail').value=e?(e.email||''):''}
 $('#uaEmp').onchange=fillUaUser;
 $('#uaGen').onclick=()=>{
   const A='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz',D='23456789',r=crypto.getRandomValues(new Uint32Array(10));let s='';
@@ -725,13 +891,16 @@ $('#uaGen').onclick=()=>{
 $('#uaForm').onsubmit=async ev=>{ev.preventDefault();
   const m=$('#uaMsg'),e=find(db.employees,$('#uaEmp').value),un=$('#uaUser').value.trim(),pw=$('#uaPass').value;m.textContent='';
   if(!e)return m.textContent='กรุณาเลือกพนักงาน';
+  const em=$('#uaEmail').value.trim();
+  if(!/^\S+@\S+\.\S+$/.test(em))return m.textContent='สมาชิกต้องมีอีเมลบริษัทที่ถูกต้อง';
+  if(db.employees.some(x=>x.id!==e.id&&x.email&&lc(x.email)===lc(em)))return m.textContent='อีเมลนี้ถูกใช้โดยพนักงานคนอื่นแล้ว';
   if(!validUser(un))return m.textContent=USERRULE;
   if(usernameTaken(un,e.id))return m.textContent='ชื่อผู้ใช้นี้ถูกใช้แล้ว';
   if(!pwOk(pw))return m.textContent=PWRULE;
-  try{const h=await hashPw(pw);e.username=un;e.salt=h.salt;e.hash=h.hash;e.mustChange=true;save();
+  try{const h=await hashPw(pw);e.email=em;e.username=un;e.salt=h.salt;e.hash=h.hash;e.mustChange=true;save();
     const r=$('#uaResult');r.classList.remove('hide');
     r.textContent=`ตั้งค่าบัญชี ${e.id} แล้ว — ชื่อผู้ใช้: ${un} | รหัสผ่านชั่วคราว: ${pw} (แจ้งพนักงานด้วยตนเอง ระบบจะไม่แสดงรหัสนี้อีก และบังคับเปลี่ยนเมื่อ login ครั้งแรก)`;
-    $('#uaPass').value='';renderAcct()}catch(er){m.textContent=er.message}
+    $('#uaPass').value='';renderMem()}catch(er){m.textContent=er.message}
 };
 $('#pwForm').onsubmit=async ev=>{ev.preventDefault();
   const m=$('#pwMsg'),c=cur?.cred;m.className='err';m.style.color='';if(!c)return;
@@ -748,10 +917,64 @@ $('#pwForm').onsubmit=async ev=>{ev.preventDefault();
   }catch(e){m.textContent=e.message}
 };
 
+/* ---- ลืมรหัสผ่าน: ส่งลิงก์รีเซ็ตทางอีเมล (เก็บเฉพาะแฮชของโทเค็น, หมดอายุ 30 นาที, ลองผิดได้ 5 ครั้ง) ---- */
+const RESET_TTL=30*60*1000;
+let pendingReset=null;
+const b64u=a=>b64(a).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const sha256=async s=>b64(await crypto.subtle.digest('SHA-256',enc.encode(s)));
+const isLocal=()=>['localhost','127.0.0.1'].includes(location.hostname);
+function mailReady(){const m=CONFIG.mail||{};
+  if(m.provider==='emailjs')return !!(m.serviceId&&m.templateId&&m.publicKey);
+  if(m.provider==='webhook')return !!m.url;
+  return m.provider==='console'&&isLocal();}
+async function sendMail(to,subject,text,link){
+  const m=CONFIG.mail||{};let r;
+  if(m.provider==='emailjs')r=await fetch('https://api.emailjs.com/api/v1.0/email/send',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({service_id:m.serviceId,template_id:m.templateId,user_id:m.publicKey,template_params:{to_email:to,subject,message:text,reset_link:link}})});
+  else if(m.provider==='webhook')r=await fetch(m.url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to,subject,body:text,link})});
+  else if(m.provider==='console'&&isLocal()){console.log('[DEMCO reset link]',to,link);return}
+  else throw new Error('mail not configured');
+  if(!r.ok)throw new Error('mail send failed '+r.status);
+}
+async function requestReset(e){
+  db.resets=db.resets||{};
+  const prev=db.resets[e.id];if(prev&&Date.now()-prev.at<60000)return 'wait';
+  const tok=b64u(crypto.getRandomValues(new Uint8Array(32)));
+  db.resets[e.id]={hash:await sha256(tok),exp:Date.now()+RESET_TTL,at:Date.now(),tries:0};save();
+  const link=location.origin+location.pathname+'#reset='+encodeURIComponent(e.id)+'.'+tok;
+  const body=`เรียน ${e.name}\n\nมีการขอรีเซ็ตรหัสผ่านของระบบ DEMCO Timesheet กรุณากดลิงก์ด้านล่างเพื่อตั้งรหัสผ่านใหม่ (ลิงก์ใช้ได้ 30 นาที ใช้ได้ครั้งเดียว และต้องเปิดบนอุปกรณ์เครื่องเดียวกับที่สร้างบัญชี)\n\n${link}\n\nหากคุณไม่ได้เป็นผู้ขอ ให้ละเว้นอีเมลนี้ รหัสผ่านเดิมจะยังใช้งานได้ตามปกติ`;
+  try{await sendMail(e.email,'รีเซ็ตรหัสผ่าน DEMCO Timesheet',body,link)}catch(er){delete db.resets[e.id];save();throw er}
+  return 'sent';
+}
+$('#fgBox').onsubmit=async ev=>{ev.preventDefault();normDb();
+  if(!mailReady())return loginMsg('ระบบส่งอีเมลยังไม่ได้ตั้งค่า กรุณาติดต่อ Admin เพื่อรีเซ็ตรหัสผ่าน');
+  const em=lc($('#fgEmail').value);
+  const e=db.employees.find(x=>x.active!==false&&x.hash&&x.email&&lc(x.email)===em);
+  try{if(e)await requestReset(e)}catch(er){return loginMsg('ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่ภายหลังหรือติดต่อ Admin')}
+  $('#fgEmail').value='';showMode('login');
+  loginMsg('หากอีเมลนี้มีบัญชีอยู่ในระบบ จะได้รับอีเมลลิงก์รีเซ็ตรหัสผ่านภายในไม่กี่นาที (ลิงก์ใช้ได้ 30 นาที และต้องเปิดบนอุปกรณ์เครื่องเดียวกับที่สร้างบัญชี)',true);
+};
+$('#rsBox').onsubmit=async ev=>{ev.preventDefault();
+  const p1=$('#rsPass').value,p2=$('#rsPass2').value,bad='ลิงก์รีเซ็ตไม่ถูกต้องหรือหมดอายุ กรุณาขอลิงก์ใหม่';
+  const e=find(db.employees,pendingReset?.id),r=db.resets?.[pendingReset?.id];
+  if(!e||!r||!e.hash||Date.now()>r.exp||r.tries>=5){if(r)delete db.resets[pendingReset.id];save();pendingReset=null;showMode('login');return loginMsg(bad)}
+  if(!pwOk(p1))return loginMsg(PWRULE);
+  if(p1!==p2)return loginMsg('รหัสผ่านทั้งสองช่องไม่ตรงกัน');
+  try{
+    if(await sha256(pendingReset.tok)!==r.hash){r.tries++;save();return loginMsg(bad)}
+    const h=await hashPw(p1);e.salt=h.salt;e.hash=h.hash;delete e.mustChange;delete db.resets[e.id];save();
+    pendingReset=null;$('#rsPass').value=$('#rsPass2').value='';showMode('login');
+    loginMsg('ตั้งรหัสผ่านใหม่เรียบร้อย — เข้าสู่ระบบด้วยรหัสผ่านใหม่ได้เลย',true);
+  }catch(er){loginMsg(er.message)}
+};
+
 async function boot(){
   $('#date').value=todayStr();
   showLoginView();
   restoreSession();
+  const rm=location.hash.match(/^#reset=([^.]+)\.(.+)$/);
+  if(rm){history.replaceState(null,'',location.pathname+location.search);   // ลบโทเค็นออกจากแถบที่อยู่ทันที
+    if(db.admin){pendingReset={id:decodeURIComponent(rm[1]),tok:rm[2]};if(cur)logoutUi();showMode('reset')}}
   if(!CONFIG.clientId||!CONFIG.tenantId)return;
   if(!window.msal){loginMsg('โหลดตัวเชื่อมต่อ SSO ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต) — ยังใช้ Username/Password ได้');return}
   if(location.protocol==='file:'){loginMsg('SSO ใช้ไม่ได้เมื่อเปิดไฟล์ตรงๆ (file://) — ใช้ Username/Password แทน หรือโฮสต์ผ่านเว็บเซิร์ฟเวอร์');return}

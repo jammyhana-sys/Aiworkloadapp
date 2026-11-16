@@ -16,3 +16,11 @@
 ## หมายเหตุ
 - Service worker จะทำงานเฉพาะบน https หรือ localhost ถ้าเปลี่ยนไฟล์แอปให้แก้เลข VER ใน sw.js เพื่อบังคับอัปเดตแคช
 - ข้อมูลบันทึกงานเก็บในเครื่องมือถือของแต่ละคน (localStorage) ใช้ส่งออก Excel จากแท็บตั้งค่า (admin)
+
+## ลืมรหัสผ่าน (ส่งอีเมลรีเซ็ต)
+หน้าเว็บส่งอีเมลเองไม่ได้ ต้องตั้งค่า `CONFIG.mail` ใน index.html อย่างใดอย่างหนึ่ง:
+- `provider:'emailjs'` — สมัคร emailjs.com ใส่ serviceId / templateId / publicKey (เทมเพลตใช้ {{to_email}} {{subject}} {{message}} {{reset_link}})
+- `provider:'webhook'` — URL ของ Power Automate (HTTP request trigger) รับ JSON {to, subject, body, link} แล้วส่งผ่าน Outlook (ควรให้ Flow ตรวจว่า to ลงท้าย @demco.co.th)
+- เว้นว่าง = ปิดฟีเจอร์ หน้า login จะบอกให้ติดต่อ Admin
+
+ลิงก์รีเซ็ตใช้ได้ 30 นาที ครั้งเดียว และต้องเปิดบนอุปกรณ์เครื่องเดียวกับที่สร้างบัญชี (ข้อมูลเก็บในเบราว์เซอร์)
