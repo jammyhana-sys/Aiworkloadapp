@@ -13,7 +13,6 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>DEMCO Workload Timesheet</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -138,7 +137,6 @@ td.n,th.n{text-align:right;white-space:nowrap}
     <label style="margin-top:10px">ยืนยันรหัสผ่าน</label><input id="suPass2" type="password" autocomplete="new-password" required>
     <button class="btn pri" style="width:100%;margin-top:14px">สร้างบัญชี Admin</button>
   </form>
-  <button class="btn" id="ssoBtn" style="width:100%;margin-top:12px">เข้าสู่ระบบด้วย Microsoft</button>
   <div id="devBox" class="hide" style="margin-top:18px;text-align:left">
     <div class="notice">ยังไม่ได้ตั้งบัญชี Admin — <b>โหมดทดลองเท่านั้น</b> (ปุ่มนี้จะหายไปเมื่อสร้างบัญชี Admin แล้ว)</div>
     <label style="margin-top:10px">เข้าใช้งานเป็น</label><select id="devUser"></select>
@@ -322,25 +320,17 @@ td.n,th.n{text-align:right;white-space:nowrap}
 </main>
 
 <script>
-/* ===== SSO CONFIG (Microsoft Entra ID) — ต้องให้ IT ลงทะเบียนแอปแล้วนำค่ามาใส่ =====
-   1) Azure portal > Entra ID > App registrations > New registration
-   2) Platform = "Single-page application (SPA)"  Redirect URI = URL ที่โฮสต์ไฟล์นี้ (https://... หรือ http://localhost:PORT/...)
-      ไม่รองรับ file:// ต้องเปิดผ่านเว็บเซิร์ฟเวอร์
-   3) นำ Application (client) ID และ Directory (tenant) ID มาใส่ด้านล่าง */
+/* ===== CONFIG (การเข้าสู่ระบบใช้ Username/Password เท่านั้น — ไม่ใช้ Microsoft SSO) ===== */
 const CONFIG={
-  clientId:'',          // Application (client) ID
-  tenantId:'',          // Directory (tenant) ID
-  redirectUri:'',       // เว้นว่าง = ใช้ URL ปัจจุบัน
   /* ส่งอีเมลรีเซ็ตรหัสผ่าน (เลือกอย่างใดอย่างหนึ่ง) — หน้าเว็บส่งอีเมลเองไม่ได้ ต้องผ่านบริการส่งอีเมล
      provider:'emailjs'  → สมัคร emailjs.com แล้วใส่ serviceId, templateId, publicKey
                            (เทมเพลตใช้ตัวแปร {{to_email}} {{subject}} {{message}} {{reset_link}})
      provider:'webhook'  → URL ของ Power Automate (HTTP request trigger) รับ JSON {to, subject, body, link} แล้วส่งผ่าน Outlook
      provider:'console'  → ทดสอบบน localhost เท่านั้น พิมพ์ลิงก์ที่ Console แทนการส่งอีเมล
      เว้นว่าง = ปิดฟีเจอร์ (หน้า login จะบอกให้ติดต่อ Admin) */
-  mail:{provider:'',serviceId:'',templateId:'',publicKey:'',url:''},
-  adminEmails:[]        // เช่น ['hr.admin@demco.co.th'] — เป็น admin เสมอ
+  mail:{provider:'',serviceId:'',templateId:'',publicKey:'',url:''}
 };
-let user=null, me=null, isAdmin=false, msalApp=null;
+let user=null, me=null, isAdmin=false;
 const KEY='demco_workload_v2', TARGET=8;
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -534,7 +524,7 @@ function dl(name,text,type){const a=document.createElement('a');a.href=URL.creat
 // f: [key,label,kind] kind: text | dept | pk | bool
 const MASTERS=[
   {key:'depts',title:'ฝ่าย',f:[]},
-  {key:'employees',title:'พนักงาน (รหัส = Emp.No)',f:[['email','อีเมลบริษัท * (ใช้จับคู่กับ SSO)'],['role','สิทธิ์','role'],['nick','ชื่อเล่น'],['dept','ฝ่าย','dept'],['level','Level'],['position','ตำแหน่ง'],['workSat','ทำงานวันเสาร์ (Site)','bool']]},
+  {key:'employees',title:'พนักงาน (รหัส = Emp.No)',f:[['email','อีเมลบริษัท *'],['role','สิทธิ์','role'],['nick','ชื่อเล่น'],['dept','ฝ่าย','dept'],['level','Level'],['position','ตำแหน่ง'],['workSat','ทำงานวันเสาร์ (Site)','bool']]},
   {key:'projects',title:'รหัสโครงการ (Cost / MT / Backlog)',f:[['kind','ประเภท','kind']]},
   {key:'contracts',title:'Sales Contract',f:[]},
   {key:'holidays',title:'วันหยุด (ไม่นับเป็นวันทำการ)',f:[],date:true},
@@ -707,7 +697,6 @@ function showLoginView(){
   $('#regLink').classList.add('hide');$('#fgLink').classList.add('hide');
   if(!fresh)showMode('login');
   $('#devBox').classList.toggle('hide',!fresh);
-  $('#ssoBtn').classList.toggle('hide',!(CONFIG.clientId&&CONFIG.tenantId));
   if(fresh)$('#devUser').innerHTML=`<option value="__admin">ผู้ดูแลระบบ (admin ทดลอง)</option>`+db.employees.map(e=>`<option value="${esc(e.id)}">${esc(e.id+' — '+e.name)}</option>`).join('');
 }
 function finishEnter(label,force){
@@ -734,14 +723,6 @@ function restoreSession(){
 function rebind(){ // หลังนำเข้าข้อมูลที่แทนที่รายชื่อพนักงาน
   if(cur?.kind==='emp'){const e=find(db.employees,cur.emp.id);if(e&&e.hash){cur.emp=cur.cred=me=e}else logoutUi()}
 }
-function startSession(u){ // SSO
-  user=u;const ids=[u.email,u.upn].map(lc).filter(Boolean);
-  me=db.employees.find(e=>e.active!==false&&e.email&&ids.includes(lc(e.email)))||null;
-  isAdmin=ids.some(i=>CONFIG.adminEmails.map(lc).includes(i))||me?.role==='admin';
-  if(!me&&!isAdmin){logoutUi();loginMsg(`บัญชี ${u.email||u.upn} ยังไม่ได้ลงทะเบียนในระบบ กรุณาติดต่อ Admin เพื่อเพิ่มอีเมลในข้อมูลพนักงาน`);return}
-  cur={kind:'sso'};
-  finishEnter((me?me.name:u.name||u.email)+(isAdmin?' (admin)':''),false);
-}
 function logoutUi(){
   user=me=cur=null;isAdmin=false;forceChange=false;
   try{sessionStorage.removeItem(SKEY)}catch(e){}
@@ -749,11 +730,7 @@ function logoutUi(){
   $('#uaResult').classList.add('hide');
   showLoginView();loginMsg('');
 }
-$('#logout').onclick=()=>{
-  const sso=cur?.kind==='sso'&&msalApp;
-  if(sso){const a=msalApp.getAllAccounts()[0];logoutUi();msalApp.logoutRedirect({account:a,postLogoutRedirectUri:CONFIG.redirectUri||location.origin+location.pathname})}
-  else logoutUi();
-};
+$('#logout').onclick=()=>logoutUi();
 $('#pwBox').onsubmit=async ev=>{ev.preventDefault();
   if(Date.now()<lockUntil)return loginMsg(`ลองผิดหลายครั้ง กรุณารอ ${Math.ceil((lockUntil-Date.now())/1000)} วินาที`);
   const un=lc($('#lgUser').value),pw=$('#lgPass').value,a=findAcct(un);
@@ -775,17 +752,13 @@ $('#setupBox').onsubmit=async ev=>{ev.preventDefault();
 $('#devBtn').onclick=()=>{const v=$('#devUser').value;cur={kind:'dev'};
   if(v==='__admin'){me=null;user={name:'Admin (ทดลอง)',email:''};isAdmin=true;finishEnter('Admin (ทดลอง)',false)}
   else{const e=find(db.employees,v);user={name:e.name,email:e.email||''};me=e;isAdmin=e.role==='admin';finishEnter(e.name+' (ทดลอง)',false)}};
-$('#ssoBtn').onclick=()=>{
-  if(!msalApp)return loginMsg('โหลดตัวเชื่อมต่อ SSO ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต/เปิดผ่านเว็บเซิร์ฟเวอร์ ไม่ใช่ file://)');
-  msalApp.loginRedirect({scopes:['User.Read']}).catch(e=>loginMsg(e.message));
-};
 
 /* ---- แท็บ บัญชี ---- */
 function renderAcct(){
   const canPw=cur&&(cur.kind==='admin'||cur.kind==='emp');
   $('#pwCard').classList.toggle('hide',!canPw);
   $('#sessCard').classList.toggle('hide',!!canPw);
-  $('#sessNote').textContent=cur?.kind==='sso'?'บัญชีนี้เข้าสู่ระบบด้วย Microsoft SSO — จัดการรหัสผ่านที่บัญชี Microsoft':'โหมดทดลอง — ยังไม่มีบัญชี Username/Password (สร้างบัญชี Admin ที่หน้า login หลังออกจากระบบ)';
+  $('#sessNote').textContent='โหมดทดลอง — ยังไม่มีบัญชี Username/Password (สร้างบัญชี Admin ที่หน้า login หลังออกจากระบบ)';
   $('#myUser').value=canPw?cur.cred.username:'';
   $('#forceNote').classList.toggle('hide',!forceChange);
   $('#pwMsg').textContent='';
@@ -975,20 +948,6 @@ async function boot(){
   const rm=location.hash.match(/^#reset=([^.]+)\.(.+)$/);
   if(rm){history.replaceState(null,'',location.pathname+location.search);   // ลบโทเค็นออกจากแถบที่อยู่ทันที
     if(db.admin){pendingReset={id:decodeURIComponent(rm[1]),tok:rm[2]};if(cur)logoutUi();showMode('reset')}}
-  if(!CONFIG.clientId||!CONFIG.tenantId)return;
-  if(!window.msal){loginMsg('โหลดตัวเชื่อมต่อ SSO ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต) — ยังใช้ Username/Password ได้');return}
-  if(location.protocol==='file:'){loginMsg('SSO ใช้ไม่ได้เมื่อเปิดไฟล์ตรงๆ (file://) — ใช้ Username/Password แทน หรือโฮสต์ผ่านเว็บเซิร์ฟเวอร์');return}
-  try{
-    msalApp=new msal.PublicClientApplication({auth:{clientId:CONFIG.clientId,authority:'https://login.microsoftonline.com/'+CONFIG.tenantId,
-      redirectUri:CONFIG.redirectUri||location.origin+location.pathname},cache:{cacheLocation:'sessionStorage'}});
-    await msalApp.initialize();
-    const r=await msalApp.handleRedirectPromise();
-    const acc=r?.account||msalApp.getAllAccounts()[0];
-    if(!acc||cur)return;
-    if(acc.tenantId!==CONFIG.tenantId){loginMsg('บัญชีนี้ไม่ได้อยู่ในองค์กรที่อนุญาต');return}
-    const c=acc.idTokenClaims||{};
-    startSession({email:c.email||acc.username,upn:acc.username,name:acc.name});
-  }catch(e){loginMsg('เข้าสู่ระบบไม่สำเร็จ: '+e.message)}
 }
 if('serviceWorker' in navigator && (location.protocol==='https:'||['localhost','127.0.0.1'].includes(location.hostname))){
   window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));

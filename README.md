@@ -8,7 +8,7 @@
 2. เปิด URL บนมือถือ
    - iPhone (Safari): ปุ่มแชร์ > "เพิ่มลงในหน้าจอโฮม"
    - Android (Chrome): เมนู ⋮ > "ติดตั้งแอป" / "เพิ่มลงในหน้าจอหลัก"
-3. ถ้าจะเปิดใช้ SSO ให้ตั้งค่า CONFIG ใน index.html และใช้ URL นี้เป็น Redirect URI (ชนิด SPA) ใน Entra ID
+3. การเข้าสู่ระบบใช้ Username/Password เท่านั้น (ไม่ใช้ Microsoft SSO) — Admin คนแรกสร้างบัญชีที่หน้า login ครั้งแรก
 
 ## ทดสอบบนเครื่อง
     python -m http.server 8765 --bind 127.0.0.1   (รันในโฟลเดอร์นี้) แล้วเปิด http://127.0.0.1:8765/
