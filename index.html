@@ -97,16 +97,28 @@ td.n,th.n{text-align:right;white-space:nowrap}
   #entries td,#hList td{font-size:13px}
   .x{padding:8px 12px;font-size:18px}
 }
-@media (display-mode:standalone){body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}}.meBox{padding:10px 12px;border-radius:11px;background:var(--pri-soft);font-weight:600;min-height:46px;display:flex;align-items:center}</style>
+@media (display-mode:standalone){body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}}.meBox{padding:10px 12px;border-radius:11px;background:var(--pri-soft);font-weight:600;min-height:46px;display:flex;align-items:center}.pwbox{text-align:left;margin-top:14px}.pwbox label{margin-top:0}</style>
 </head>
 <body>
 <div id="login"><div class="box">
   <h2>⏱ DEMCO Timesheet</h2>
-  <p class="hint">เข้าสู่ระบบด้วยบัญชีบริษัท (Microsoft SSO)</p>
+  <p class="hint">เข้าสู่ระบบเพื่อบันทึกงาน</p>
   <div id="loginMsg" class="err" style="margin:10px 0"></div>
-  <button class="btn pri" id="ssoBtn" style="width:100%">เข้าสู่ระบบด้วย Microsoft</button>
+  <form id="pwBox" class="pwbox hide">
+    <label>ชื่อผู้ใช้ (Username)</label><input id="lgUser" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label style="margin-top:10px">รหัสผ่าน (Password)</label><input id="lgPass" type="password" autocomplete="current-password" required>
+    <button class="btn pri" style="width:100%;margin-top:14px">เข้าสู่ระบบ</button>
+  </form>
+  <form id="setupBox" class="pwbox hide">
+    <div class="notice" style="margin:0 0 10px">ยังไม่มีบัญชีผู้ดูแลระบบ — ตั้งชื่อผู้ใช้และรหัสผ่านสำหรับ Admin คนแรก</div>
+    <label>ชื่อผู้ใช้ Admin</label><input id="suUser" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label style="margin-top:10px">รหัสผ่าน (อย่างน้อย 8 ตัว มีตัวอักษรและตัวเลข)</label><input id="suPass" type="password" autocomplete="new-password" required>
+    <label style="margin-top:10px">ยืนยันรหัสผ่าน</label><input id="suPass2" type="password" autocomplete="new-password" required>
+    <button class="btn pri" style="width:100%;margin-top:14px">สร้างบัญชี Admin</button>
+  </form>
+  <button class="btn" id="ssoBtn" style="width:100%;margin-top:12px">เข้าสู่ระบบด้วย Microsoft</button>
   <div id="devBox" class="hide" style="margin-top:18px;text-align:left">
-    <div class="notice">ยังไม่ได้ตั้งค่า SSO (CONFIG.clientId ว่าง) — <b>โหมดทดลองเท่านั้น</b> ไม่มีการตรวจสอบตัวตนจริง</div>
+    <div class="notice">ยังไม่ได้ตั้งบัญชี Admin — <b>โหมดทดลองเท่านั้น</b> (ปุ่มนี้จะหายไปเมื่อสร้างบัญชี Admin แล้ว)</div>
     <label style="margin-top:10px">เข้าใช้งานเป็น</label><select id="devUser"></select>
     <button class="btn" id="devBtn" style="width:100%;margin-top:8px">เข้าใช้ (โหมดทดลอง)</button>
   </div>
@@ -117,6 +129,7 @@ td.n,th.n{text-align:right;white-space:nowrap}
     <button data-tab="log" class="on">บันทึกงาน</button>
     <button data-tab="hist">ประวัติ/สรุป</button>
     <button data-tab="setup" id="navSetup">ตั้งค่าข้อมูล</button>
+    <button data-tab="acct" id="navAcct">บัญชี</button>
   </nav>
   <div id="who"><span id="whoName"></span><button class="btn" id="logout" style="padding:4px 10px">ออกจากระบบ</button></div>
 </header>
@@ -222,6 +235,36 @@ td.n,th.n{text-align:right;white-space:nowrap}
     <button class="btn" id="reset" style="color:var(--bad)">ล้างข้อมูลทั้งหมด</button>
   </div>
 </section>
+
+<!-- ===== ACCOUNT ===== -->
+<section id="tab-acct" class="hide">
+  <div id="forceNote" class="notice hide" style="margin:0 0 16px">บัญชีของคุณใช้รหัสผ่านชั่วคราว — ต้องเปลี่ยนรหัสผ่านก่อนจึงจะใช้งานส่วนอื่นได้</div>
+  <div class="card" id="pwCard"><h2>เปลี่ยนรหัสผ่าน</h2>
+    <form id="pwForm">
+      <div class="row">
+        <div><label>ชื่อผู้ใช้</label><input id="myUser" readonly></div>
+        <div><label>รหัสผ่านปัจจุบัน</label><input id="pwOld" type="password" autocomplete="current-password" required></div>
+        <div><label>รหัสผ่านใหม่ (≥8 ตัว มีตัวอักษรและตัวเลข)</label><input id="pwNew" type="password" autocomplete="new-password" required></div>
+        <div><label>ยืนยันรหัสผ่านใหม่</label><input id="pwNew2" type="password" autocomplete="new-password" required></div>
+      </div>
+      <div class="err" id="pwMsg" style="margin-top:10px"></div>
+      <button class="btn pri">บันทึกรหัสผ่านใหม่</button>
+    </form>
+  </div>
+  <div class="card hide" id="sessCard"><h2>บัญชีของฉัน</h2><div class="hint" id="sessNote"></div></div>
+  <div class="card hide" id="adminAcct"><h2>จัดการบัญชีผู้ใช้ของพนักงาน (Admin)</h2>
+    <p class="hint">ตั้งชื่อผู้ใช้และรหัสผ่านชั่วคราวให้พนักงาน — เมื่อ login ครั้งแรกระบบจะบังคับให้เปลี่ยนรหัสผ่าน ระบบเก็บเฉพาะค่าแฮชของรหัสผ่าน ไม่เก็บรหัสจริง</p>
+    <form id="uaForm" class="row" style="align-items:end">
+      <div><label>พนักงาน</label><select id="uaEmp"></select></div>
+      <div><label>ชื่อผู้ใช้</label><input id="uaUser" autocapitalize="none" spellcheck="false" required></div>
+      <div><label>รหัสผ่านชั่วคราว</label><input id="uaPass" required></div>
+      <div style="display:flex;gap:8px"><button class="btn" type="button" id="uaGen">สุ่มรหัส</button><button class="btn pri">ตั้งค่า/รีเซ็ต</button></div>
+    </form>
+    <div class="err" id="uaMsg" style="margin-top:8px"></div>
+    <div class="notice hide" id="uaResult"></div>
+    <div class="scroll" style="margin-top:12px"><table><thead><tr><th>Emp.No</th><th>ชื่อ</th><th>ชื่อผู้ใช้</th><th>สถานะ</th><th></th></tr></thead><tbody id="uaList"></tbody></table></div>
+  </div>
+</section>
 </main>
 
 <script>
@@ -301,9 +344,10 @@ function dayInfo(e,ds){
 
 /* ---- tabs ---- */
 $$('nav button').forEach(b=>b.onclick=()=>{
+  if(forceChange&&b.dataset.tab!=='acct')return;   // ต้องเปลี่ยนรหัสผ่านชั่วคราวก่อน
   $$('nav button').forEach(x=>x.classList.toggle('on',x===b));
-  ['log','hist','setup'].forEach(t=>$('#tab-'+t).classList.toggle('hide',t!==b.dataset.tab));
-  if(b.dataset.tab==='hist')renderHist(); if(b.dataset.tab==='setup')renderSetup();
+  ['log','hist','setup','acct'].forEach(t=>$('#tab-'+t).classList.toggle('hide',t!==b.dataset.tab));
+  if(b.dataset.tab==='hist')renderHist(); if(b.dataset.tab==='setup')renderSetup(); if(b.dataset.tab==='acct')renderAcct();
 });
 
 /* ---- log ---- */
@@ -481,7 +525,7 @@ const xlsxReady=()=>{if(window.XLSX)return true;$('#xMsg').textContent='โห�
 function sheetsFromDb(){
   const emp=id=>find(db.employees,id)||{};
   return{
-    Employees:db.employees.map(e=>({'Emp.No':e.id,Name:e.name,Nickname:e.nick||'',Dept:e.dept||'',Level:e.level||'',Position:e.position||'',Email:e.email||'',Role:e.role||'user',WorkSat:e.workSat?1:0,Active:e.active===false?0:1})),
+    Employees:db.employees.map(e=>({'Emp.No':e.id,Name:e.name,Nickname:e.nick||'',Dept:e.dept||'',Level:e.level||'',Position:e.position||'',Email:e.email||'',Username:e.username||'',Role:e.role||'user',WorkSat:e.workSat?1:0,Active:e.active===false?0:1})),
     Departments:db.depts.map(d=>({'Dept.No':d.id,'Dept.Name':d.name})),
     Projects:db.projects.map(p=>({'Project Code':p.id,'Project Name':p.name,Kind:p.kind,Active:p.active===false?0:1})),
     SalesContracts:db.contracts.map(c=>({'Sales Contract No.':c.id,'Sales Contract Name':c.name,Active:c.active===false?0:1})),
@@ -515,7 +559,7 @@ $('#xImp').onchange=async ev=>{
     const nd=JSON.parse(JSON.stringify(db)),done=[],warn=[];
     let r;
     if(r=rows('Departments')){nd.depts=r.filter(x=>S(x['Dept.No'])).map(x=>({id:S(x['Dept.No']),name:S(x['Dept.Name']),active:true}));done.push('Departments '+nd.depts.length)}
-    if(r=rows('Employees')){nd.employees=r.filter(x=>S(x['Emp.No'])).map(x=>({id:S(x['Emp.No']),name:S(x.Name),nick:S(x.Nickname),dept:S(x.Dept||x['Dept.No']),level:S(x.Level),position:S(x.Position),email:S(x.Email),role:S(x.Role).toLowerCase()==='admin'?'admin':'user',workSat:B(x.WorkSat)&&S(x.WorkSat)!=='',active:x.Active===''?true:B(x.Active)}));done.push('Employees '+nd.employees.length)}
+    if(r=rows('Employees')){nd.employees=r.filter(x=>S(x['Emp.No'])).map(x=>({id:S(x['Emp.No']),name:S(x.Name),nick:S(x.Nickname),dept:S(x.Dept||x['Dept.No']),level:S(x.Level),position:S(x.Position),email:S(x.Email),username:S(x.Username),role:S(x.Role).toLowerCase()==='admin'?'admin':'user',workSat:B(x.WorkSat)&&S(x.WorkSat)!=='',active:x.Active===''?true:B(x.Active)}));nd.employees.forEach(e=>{const o=find(db.employees,e.id);if(o){e.salt=o.salt;e.hash=o.hash;e.mustChange=o.mustChange;if(!e.username)e.username=o.username}});done.push('Employees '+nd.employees.length)}
     if(r=rows('Projects')){nd.projects=r.filter(x=>S(x['Project Code'])).map(x=>({id:S(x['Project Code']),name:S(x['Project Name']),kind:['mt','backlog'].includes(S(x.Kind).toLowerCase())?S(x.Kind).toLowerCase():'cost',active:x.Active===''?true:B(x.Active)}));done.push('Projects '+nd.projects.length)}
     if(r=rows('SalesContracts')){nd.contracts=r.filter(x=>S(x['Sales Contract No.'])).map(x=>({id:S(x['Sales Contract No.']),name:S(x['Sales Contract Name']),active:x.Active===''?true:B(x.Active)}));done.push('SalesContracts '+nd.contracts.length)}
     if(r=rows('Holidays')){nd.holidays=r.filter(x=>S(x.Date)).map(x=>({id:xDate(x.Date),name:S(x.Name)}));done.push('Holidays '+nd.holidays.length)}
@@ -538,58 +582,186 @@ $('#xImp').onchange=async ev=>{
     const bad=nd.assign.filter(a=>!find(nd.employees,a.empId)||!(find(nd.projects,a.code)||find(nd.contracts,a.code)));
     if(bad.length)warn.push(`Assignments ที่อ้างอิงไม่พบข้อมูล ${bad.length} แถว (เช่น ${bad[0].empId}/${bad[0].code})`);
     if(!confirm('นำเข้าและแทนที่ข้อมูลชีต: '+done.join(', ')+(warn.length?'\n\nคำเตือน:\n'+warn.slice(0,6).join('\n'):'')+'\n\nดำเนินการต่อ?'))return;
-    db=nd;save();init();renderSetup();$('#xMsg').textContent='นำเข้าสำเร็จ: '+done.join(', ')+(warn.length?` (คำเตือน ${warn.length} รายการ)`:'');
+    db=nd;save();rebind();init();renderSetup();$('#xMsg').textContent='นำเข้าสำเร็จ: '+done.join(', ')+(warn.length?` (คำเตือน ${warn.length} รายการ)`:'');
   }catch(e){$('#xMsg').textContent='นำเข้าไม่สำเร็จ: '+e.message}
 };
 $('#bk').onclick=()=>dl('workload_backup_'+todayStr()+'.json',JSON.stringify(db,null,1),'application/json');
-$('#rs').onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!d.employees||!d.timesheets||!d.assign)throw 0;db=d;save();init()}catch{alert('ไฟล์ไม่ถูกต้อง')}};
-$('#reset').onclick=()=>{if(confirm('ล้างข้อมูลทั้งหมดและกลับเป็นข้อมูลตัวอย่าง?')){db=seed();save();init()}};
+$('#rs').onchange=async e=>{try{const d=JSON.parse(await e.target.files[0].text());if(!d.employees||!d.timesheets||!d.assign)throw 0;db=d;save();rebind();init()}catch{alert('ไฟล์ไม่ถูกต้อง')}};
+$('#reset').onclick=()=>{if(confirm('ล้างข้อมูลทั้งหมดและกลับเป็นข้อมูลตัวอย่าง?')){db=seed();save();logoutUi();init()}};
 
-function init(){fillEmp();syncForm();renderLog();if(!$('#tab-setup').classList.contains('hide'))renderSetup()}
+function init(){fillEmp();syncForm();renderLog();if(!$('#tab-setup').classList.contains('hide'))renderSetup();if(!$('#tab-acct').classList.contains('hide'))renderAcct()}
 
-/* ---- SSO / session ---- */
+/* ---- Username / Password: เก็บเฉพาะค่าแฮช PBKDF2-SHA256 + salt (ไม่เก็บรหัสจริง) ---- */
+const enc=new TextEncoder();
+const b64=b=>btoa(String.fromCharCode(...new Uint8Array(b)));
+const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function hashPw(pw,saltB64){
+  if(!(window.crypto&&crypto.subtle))throw new Error('เบราว์เซอร์นี้ไม่รองรับการเข้ารหัส (ต้องเปิดผ่าน https หรือ localhost)');
+  const salt=saltB64?unb64(saltB64):crypto.getRandomValues(new Uint8Array(16));
+  const key=await crypto.subtle.importKey('raw',enc.encode(pw),'PBKDF2',false,['deriveBits']);
+  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt,iterations:150000,hash:'SHA-256'},key,256);
+  return{salt:b64(salt),hash:b64(bits)};
+}
+const PWRULE='รหัสผ่านต้องยาวอย่างน้อย 8 ตัว และมีทั้งตัวอักษรและตัวเลข';
+const pwOk=p=>p.length>=8&&/[A-Za-z]/.test(p)&&/\d/.test(p);
+const validUser=u=>/^[A-Za-z0-9._@-]{3,40}$/.test(u);
+const USERRULE='ชื่อผู้ใช้ 3–40 ตัว ใช้ได้เฉพาะ A-Z a-z 0-9 . _ @ -';
+
+/* ---- session ---- */
+const SKEY='demco_session_v1';
+let cur=null, forceChange=false, fails=0, lockUntil=0;
 const lc=s=>String(s||'').trim().toLowerCase();
-const loginMsg=(m)=>{$('#loginMsg').textContent=m||''};
-function startSession(u){
+const loginMsg=m=>{$('#loginMsg').textContent=m||''};
+const usernameTaken=(un,exceptEmpId)=>(db.admin&&lc(db.admin.username)===lc(un))||db.employees.some(e=>e.id!==exceptEmpId&&e.username&&lc(e.username)===lc(un));
+function findAcct(un){
+  if(db.admin&&lc(db.admin.username)===un)return{kind:'admin',cred:db.admin};
+  const e=db.employees.find(x=>x.active!==false&&x.username&&x.hash&&lc(x.username)===un);
+  return e?{kind:'emp',emp:e,cred:e}:null;
+}
+function showLoginView(){
+  const fresh=!db.admin;
+  $('#login').classList.remove('hide');
+  $('#setupBox').classList.toggle('hide',!fresh);
+  $('#pwBox').classList.toggle('hide',fresh);
+  $('#devBox').classList.toggle('hide',!fresh);
+  $('#ssoBtn').classList.toggle('hide',!(CONFIG.clientId&&CONFIG.tenantId));
+  if(fresh)$('#devUser').innerHTML=`<option value="__admin">ผู้ดูแลระบบ (admin ทดลอง)</option>`+db.employees.map(e=>`<option value="${esc(e.id)}">${esc(e.id+' — '+e.name)}</option>`).join('');
+}
+function finishEnter(label,force){
+  forceChange=!!force;
+  $('#login').classList.add('hide');
+  $('#whoName').textContent=label;
+  $('#navSetup').classList.toggle('hide',!isAdmin);
+  init();
+  $(`nav button[data-tab=${force?'acct':'log'}]`).click();
+}
+function enter(a){
+  if(a.kind==='admin'){me=null;user={name:'ผู้ดูแลระบบ',email:''};isAdmin=true}
+  else{me=a.emp;user={name:me.name,email:me.email||''};isAdmin=me.role==='admin'}
+  cur=a;
+  try{sessionStorage.setItem(SKEY,JSON.stringify(a.kind==='admin'?{k:'a'}:{k:'e',id:me.id}))}catch(e){}
+  finishEnter((me?me.name:'ผู้ดูแลระบบ')+(isAdmin?' (admin)':''),a.kind==='emp'&&me.mustChange);
+}
+function restoreSession(){
+  try{const s=JSON.parse(sessionStorage.getItem(SKEY)||'null');if(!s)return;
+    if(s.k==='a'&&db.admin)enter({kind:'admin',cred:db.admin});
+    else if(s.k==='e'){const e=find(db.employees,s.id);if(e&&e.hash&&e.active!==false)enter({kind:'emp',emp:e,cred:e})}}catch(e){}
+}
+function rebind(){ // หลังนำเข้าข้อมูลที่แทนที่รายชื่อพนักงาน
+  if(cur?.kind==='emp'){const e=find(db.employees,cur.emp.id);if(e&&e.hash){cur.emp=cur.cred=me=e}else logoutUi()}
+}
+function startSession(u){ // SSO
   user=u;const ids=[u.email,u.upn].map(lc).filter(Boolean);
   me=db.employees.find(e=>e.active!==false&&e.email&&ids.includes(lc(e.email)))||null;
   isAdmin=ids.some(i=>CONFIG.adminEmails.map(lc).includes(i))||me?.role==='admin';
   if(!me&&!isAdmin){logoutUi();loginMsg(`บัญชี ${u.email||u.upn} ยังไม่ได้ลงทะเบียนในระบบ กรุณาติดต่อ Admin เพื่อเพิ่มอีเมลในข้อมูลพนักงาน`);return}
-  $('#login').classList.add('hide');
-  $('#whoName').textContent=(me?me.name:u.name||u.email)+(isAdmin?' (admin)':'');
-  $('#navSetup').classList.toggle('hide',!isAdmin);
-  $('nav button[data-tab=log]').click();
-  init();
+  cur={kind:'sso'};
+  finishEnter((me?me.name:u.name||u.email)+(isAdmin?' (admin)':''),false);
 }
-function logoutUi(){user=me=null;isAdmin=false;$('#login').classList.remove('hide')}
+function logoutUi(){
+  user=me=cur=null;isAdmin=false;forceChange=false;
+  try{sessionStorage.removeItem(SKEY)}catch(e){}
+  ['#lgUser','#lgPass','#pwOld','#pwNew','#pwNew2'].forEach(s=>$(s).value='');
+  $('#uaResult').classList.add('hide');
+  showLoginView();loginMsg('');
+}
 $('#logout').onclick=()=>{
-  if(msalApp){const a=msalApp.getAllAccounts()[0];msalApp.logoutRedirect({account:a,postLogoutRedirectUri:CONFIG.redirectUri||location.origin+location.pathname})}
-  else{logoutUi();loginMsg('')}
+  const sso=cur?.kind==='sso'&&msalApp;
+  if(sso){const a=msalApp.getAllAccounts()[0];logoutUi();msalApp.logoutRedirect({account:a,postLogoutRedirectUri:CONFIG.redirectUri||location.origin+location.pathname})}
+  else logoutUi();
 };
+$('#pwBox').onsubmit=async ev=>{ev.preventDefault();
+  if(Date.now()<lockUntil)return loginMsg(`ลองผิดหลายครั้ง กรุณารอ ${Math.ceil((lockUntil-Date.now())/1000)} วินาที`);
+  const un=lc($('#lgUser').value),pw=$('#lgPass').value,a=findAcct(un);
+  try{
+    const h=await hashPw(pw,a?.cred.salt);      // คำนวณเสมอ เพื่อไม่ให้เวลาตอบสนองบอกว่าชื่อผู้ใช้มีอยู่หรือไม่
+    if(!a||h.hash!==a.cred.hash){if(++fails>=5){lockUntil=Date.now()+30000;fails=0}return loginMsg('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')}
+    fails=0;loginMsg('');$('#lgPass').value='';enter(a);
+  }catch(e){loginMsg(e.message)}
+};
+$('#setupBox').onsubmit=async ev=>{ev.preventDefault();
+  const un=$('#suUser').value.trim(),p1=$('#suPass').value,p2=$('#suPass2').value;
+  if(!validUser(un))return loginMsg(USERRULE);
+  if(usernameTaken(un))return loginMsg('ชื่อผู้ใช้นี้ถูกใช้แล้ว');
+  if(!pwOk(p1))return loginMsg(PWRULE);
+  if(p1!==p2)return loginMsg('รหัสผ่านทั้งสองช่องไม่ตรงกัน');
+  try{const h=await hashPw(p1);db.admin={username:un,...h};save();loginMsg('');$('#suPass').value=$('#suPass2').value='';enter({kind:'admin',cred:db.admin})}
+  catch(e){loginMsg(e.message)}
+};
+$('#devBtn').onclick=()=>{const v=$('#devUser').value;cur={kind:'dev'};
+  if(v==='__admin'){me=null;user={name:'Admin (ทดลอง)',email:''};isAdmin=true;finishEnter('Admin (ทดลอง)',false)}
+  else{const e=find(db.employees,v);user={name:e.name,email:e.email||''};me=e;isAdmin=e.role==='admin';finishEnter(e.name+' (ทดลอง)',false)}};
 $('#ssoBtn').onclick=()=>{
-  if(!msalApp)return loginMsg(CONFIG.clientId?'โหลดตัวเชื่อมต่อ SSO ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต/เปิดผ่านเว็บเซิร์ฟเวอร์ ไม่ใช่ file://)':'ยังไม่ได้ตั้งค่า SSO — ใช้โหมดทดลองด้านล่าง');
+  if(!msalApp)return loginMsg('โหลดตัวเชื่อมต่อ SSO ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต/เปิดผ่านเว็บเซิร์ฟเวอร์ ไม่ใช่ file://)');
   msalApp.loginRedirect({scopes:['User.Read']}).catch(e=>loginMsg(e.message));
 };
+
+/* ---- แท็บ บัญชี ---- */
+function renderAcct(){
+  const canPw=cur&&(cur.kind==='admin'||cur.kind==='emp');
+  $('#pwCard').classList.toggle('hide',!canPw);
+  $('#sessCard').classList.toggle('hide',!!canPw);
+  $('#sessNote').textContent=cur?.kind==='sso'?'บัญชีนี้เข้าสู่ระบบด้วย Microsoft SSO — จัดการรหัสผ่านที่บัญชี Microsoft':'โหมดทดลอง — ยังไม่มีบัญชี Username/Password (สร้างบัญชี Admin ที่หน้า login หลังออกจากระบบ)';
+  $('#myUser').value=canPw?cur.cred.username:'';
+  $('#forceNote').classList.toggle('hide',!forceChange);
+  $('#pwMsg').textContent='';
+  $('#adminAcct').classList.toggle('hide',!isAdmin);
+  if(!isAdmin)return;
+  const keep=$('#uaEmp').value;
+  $('#uaEmp').innerHTML=opt(db.employees,e=>`${e.id} — ${e.name}`);if(keep&&find(db.employees,keep))$('#uaEmp').value=keep;
+  fillUaUser();
+  $('#uaList').innerHTML=db.employees.map(e=>`<tr><td>${esc(e.id)}</td><td>${esc(e.name)}</td><td>${esc(e.username||'—')}</td>
+    <td>${e.hash?(e.mustChange?'<span class="tag sga">รอเปลี่ยนรหัส</span>':'<span class="tag cost">ใช้งานได้</span>'):'<span class="tag st">ยังไม่ตั้ง</span>'}</td>
+    <td>${e.hash?`<button class="x" data-uadel="${esc(e.id)}" title="ลบบัญชี">✕</button>`:''}</td></tr>`).join('')||'<tr><td colspan="5" class="hint">ยังไม่มีพนักงาน</td></tr>';
+  $$('[data-uadel]').forEach(b=>b.onclick=()=>{const e=find(db.employees,b.dataset.uadel);
+    if(e&&confirm(`ลบชื่อผู้ใช้/รหัสผ่านของ ${e.name}? (พนักงานจะ login ไม่ได้จนกว่าจะตั้งใหม่)`)){delete e.username;delete e.salt;delete e.hash;delete e.mustChange;save();renderAcct()}});
+}
+function fillUaUser(){const e=find(db.employees,$('#uaEmp').value);$('#uaUser').value=e?(e.username||e.id):''}
+$('#uaEmp').onchange=fillUaUser;
+$('#uaGen').onclick=()=>{
+  const A='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz',D='23456789',r=crypto.getRandomValues(new Uint32Array(10));let s='';
+  for(let i=0;i<10;i++){const set=i%3===2?D:A;s+=set[r[i]%set.length]}$('#uaPass').value=s;
+};
+$('#uaForm').onsubmit=async ev=>{ev.preventDefault();
+  const m=$('#uaMsg'),e=find(db.employees,$('#uaEmp').value),un=$('#uaUser').value.trim(),pw=$('#uaPass').value;m.textContent='';
+  if(!e)return m.textContent='กรุณาเลือกพนักงาน';
+  if(!validUser(un))return m.textContent=USERRULE;
+  if(usernameTaken(un,e.id))return m.textContent='ชื่อผู้ใช้นี้ถูกใช้แล้ว';
+  if(!pwOk(pw))return m.textContent=PWRULE;
+  try{const h=await hashPw(pw);e.username=un;e.salt=h.salt;e.hash=h.hash;e.mustChange=true;save();
+    const r=$('#uaResult');r.classList.remove('hide');
+    r.textContent=`ตั้งค่าบัญชี ${e.id} แล้ว — ชื่อผู้ใช้: ${un} | รหัสผ่านชั่วคราว: ${pw} (แจ้งพนักงานด้วยตนเอง ระบบจะไม่แสดงรหัสนี้อีก และบังคับเปลี่ยนเมื่อ login ครั้งแรก)`;
+    $('#uaPass').value='';renderAcct()}catch(er){m.textContent=er.message}
+};
+$('#pwForm').onsubmit=async ev=>{ev.preventDefault();
+  const m=$('#pwMsg'),c=cur?.cred;m.className='err';m.style.color='';if(!c)return;
+  const old=$('#pwOld').value,n1=$('#pwNew').value,n2=$('#pwNew2').value;
+  try{
+    if((await hashPw(old,c.salt)).hash!==c.hash)return m.textContent='รหัสผ่านปัจจุบันไม่ถูกต้อง';
+    if(!pwOk(n1))return m.textContent=PWRULE;
+    if(n1!==n2)return m.textContent='รหัสผ่านใหม่สองช่องไม่ตรงกัน';
+    if(n1===old)return m.textContent='รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสเดิม';
+    const h=await hashPw(n1);c.salt=h.salt;c.hash=h.hash;delete c.mustChange;save();
+    ['#pwOld','#pwNew','#pwNew2'].forEach(s=>$(s).value='');
+    m.className='hint';m.style.color='var(--cost)';m.textContent='เปลี่ยนรหัสผ่านเรียบร้อยแล้ว ✓';
+    if(forceChange){forceChange=false;$('#forceNote').classList.add('hide')}
+  }catch(e){m.textContent=e.message}
+};
+
 async function boot(){
   $('#date').value=todayStr();
-  if(!CONFIG.clientId||!CONFIG.tenantId){
-    $('#devBox').classList.remove('hide');$('#ssoBtn').disabled=true;
-    $('#devUser').innerHTML=`<option value="__admin">ผู้ดูแลระบบ (admin ทดลอง)</option>`+db.employees.map(e=>`<option value="${esc(e.id)}">${esc(e.id+' — '+e.name)}</option>`).join('');
-    $('#devBtn').onclick=()=>{const v=$('#devUser').value;
-      if(v==='__admin'){me=null;user={email:'admin@dev.local',name:'Admin (ทดลอง)'};isAdmin=true;$('#login').classList.add('hide');$('#whoName').textContent='Admin (ทดลอง)';$('#navSetup').classList.remove('hide');init()}
-      else{const e=find(db.employees,v);user={email:e.email||'',name:e.name};me=e;isAdmin=e.role==='admin';
-        $('#login').classList.add('hide');$('#whoName').textContent=e.name+' (ทดลอง)';$('#navSetup').classList.toggle('hide',!isAdmin);init()}};
-    return;
-  }
-  if(!window.msal){loginMsg('โหลดตัวเชื่อมต่อ SSO ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');return}
-  if(location.protocol==='file:'){loginMsg('SSO ใช้ไม่ได้เมื่อเปิดไฟล์ตรงๆ (file://) ต้องโฮสต์ผ่านเว็บเซิร์ฟเวอร์ที่เป็น https หรือ localhost');return}
+  showLoginView();
+  restoreSession();
+  if(!CONFIG.clientId||!CONFIG.tenantId)return;
+  if(!window.msal){loginMsg('โหลดตัวเชื่อมต่อ SSO ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต) — ยังใช้ Username/Password ได้');return}
+  if(location.protocol==='file:'){loginMsg('SSO ใช้ไม่ได้เมื่อเปิดไฟล์ตรงๆ (file://) — ใช้ Username/Password แทน หรือโฮสต์ผ่านเว็บเซิร์ฟเวอร์');return}
   try{
     msalApp=new msal.PublicClientApplication({auth:{clientId:CONFIG.clientId,authority:'https://login.microsoftonline.com/'+CONFIG.tenantId,
       redirectUri:CONFIG.redirectUri||location.origin+location.pathname},cache:{cacheLocation:'sessionStorage'}});
     await msalApp.initialize();
     const r=await msalApp.handleRedirectPromise();
     const acc=r?.account||msalApp.getAllAccounts()[0];
-    if(!acc)return;
+    if(!acc||cur)return;
     if(acc.tenantId!==CONFIG.tenantId){loginMsg('บัญชีนี้ไม่ได้อยู่ในองค์กรที่อนุญาต');return}
     const c=acc.idTokenClaims||{};
     startSession({email:c.email||acc.username,upn:acc.username,name:acc.name});
