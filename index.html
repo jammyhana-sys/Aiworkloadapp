@@ -310,7 +310,7 @@ header>*{min-width:0}
       </div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
-      <button class="btn pri" id="xlsxLog">⬇ ส่งออก Excel (ตามตัวกรอง)</button><button class="btn" id="csv">⬇ CSV</button>
+      <button class="btn pri" id="xlsxLog">⬇ ส่งออก Excel (ตามตัวกรอง)</button><button class="btn" id="csv">⬇ CSV</button><button class="btn" id="xPerson" title="รายงานรายคน 1 แถวต่อวัน แยก Cost รายโครงการ และ SG&A N1–N8 พร้อม YTD %">📄 รายงานรายคน (Excel)</button>
     </div>
   </div>
 
@@ -1057,6 +1057,74 @@ function renderExec(D,proj){
 }
 $$('#hView button').forEach(b=>b.onclick=()=>{hv=b.dataset.v;renderHist()});
 $('#hPrint').onclick=()=>{if(hv!=='exec'){hv='exec';renderHist()}window.print()};
+
+/* ===== รายงานรายคน (Excel) — 1 แถวต่อวัน คอลัมน์ Hours / Cost แยกโครงการ / SG&A แยก N1–N8 + YTD % ===== */
+const loadExcelJS=()=>window.ExcelJS?Promise.resolve(true):new Promise(res=>{const s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';s.onload=()=>res(!!window.ExcelJS);s.onerror=()=>res(false);document.head.appendChild(s)});
+const DOWN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function personReportData(e){
+  const mode=hs.mode==='day'?'month':hs.mode,r=pRange(mode,hs.anchor);
+  const sheets=new Map(db.timesheets.filter(t=>t.empId===e.id&&t.date>=r.s&&t.date<=r.e).map(t=>[t.date,t]));
+  const codes=new Set();sheets.forEach(t=>t.entries.forEach(x=>{if(x.cat==='Cost'&&x.code)codes.add(x.code)}));
+  const pc=[...codes].sort(),sgaT=db.sgaTypes.slice(),days=[];let target=0;
+  for(let d=new Date(r.sd);d<=r.ed;d.setDate(d.getDate()+1)){
+    const ds=DF(d),w=dayInfo(e,ds).work,t=sheets.get(ds);if(w)target+=TARGET;
+    const row={ds,y:d.getFullYear(),m:d.getMonth()+1,dn:DOWN[d.getDay()],work:w,date:new Date(ds+'T00:00:00Z'),h:0,cost:0,sga:0,p:{},n:{},status:t?stTxt(t.status):''};
+    if(t)t.entries.forEach(x=>{row.h+=x.hours;if(x.cat==='Cost'){row.cost+=x.hours;row.p[x.code]=(row.p[x.code]||0)+x.hours}else{row.sga+=x.hours;row.n[x.sgaId]=(row.n[x.sgaId]||0)+x.hours}});
+    days.push(row)}
+  const tot={h:0,cost:0,sga:0,p:{},n:{}};
+  days.forEach(o=>{tot.h+=o.h;tot.cost+=o.cost;tot.sga+=o.sga;pc.forEach(c=>tot.p[c]=(tot.p[c]||0)+(o.p[c]||0));sgaT.forEach(s=>tot.n[s.id]=(tot.n[s.id]||0)+(o.n[s.id]||0))});
+  return{e,r,mode,days,pc,sgaT,tot,target};
+}
+async function exportPersonReport(){
+  const e=(!isAdmin?me:(hs.scope==='me'?me:find(db.employees,hs.emp)))||me;
+  if(!e)return alert('ไม่พบพนักงานที่จะออกรายงาน (เลือกขอบเขต "รายคน" แล้วเลือกพนักงานก่อน)');
+  if(isAdmin&&hs.scope!=='emp'&&hs.scope!=='me'&&!confirm(`ออกรายงานรายคนของ ${e.id} ${e.name}?\n(เปลี่ยนคนได้โดยเลือกขอบเขต "รายคน" แล้วเลือกพนักงาน)`))return;
+  const D=personReportData(e),pLab=pLabel(D.mode,hs.anchor,D.r).replace(/[^\w฀-๿.-]+/g,'_');
+  const fname=`Timesheet_${e.id}_${D.mode}_${D.r.s}.xlsx`,pcts=v=>D.target?v/D.target:0;
+  const ncol=11+1+D.pc.length+1+D.sgaT.length+1;                         // A..K, Cost, projects, SG&A, N*, Status
+  const cCost=12,cP0=13,cSga=13+D.pc.length,cN0=cSga+1,cSt=cN0+D.sgaT.length;
+  if(!(await loadExcelJS())){                                              // สำรอง: ไม่มีสี ถ้าโหลดไลบรารีจัดรูปแบบไม่ได้
+    if(!xlsxReady())return;
+    const head=['ปี','เดือน','วัน','D/M/Y','ฝ่าย','รหัสพนง.','ชื่อ','ตำแหน่ง','Level','ชื่อเล่น','Hours','Cost',...D.pc,'SG&A',...D.sgaT.map(s=>s.id),'Status'];
+    const rows=D.days.map(o=>[o.y,o.m,o.dn,o.ds,e.dept,e.id,e.name,e.position||'',e.level||'',e.nick||'',o.h||'',o.cost||'',...D.pc.map(c=>o.p[c]||''),o.sga||'',...D.sgaT.map(s=>o.n[s.id]||''),o.status]);
+    const ws=XLSX.utils.aoa_to_sheet([head,...rows]),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Report');XLSX.writeFile(wb,fname);return}
+  const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('รายงานรายคน',{views:[{state:'frozen',xSplit:7,ySplit:4}]});
+  const fill=c=>({type:'pattern',pattern:'solid',fgColor:{argb:'FF'+c}}),thin={style:'thin',color:{argb:'FF999999'}};
+  const NUM='#,##0.00;-#,##0.00;"-"',PCT='0%;-0%;"-"';
+  // แถว 1-2: YTD %
+  ws.getCell(1,5).value='Dept.No.';ws.getCell(1,6).value='Emp.No';ws.getCell(1,7).value='YTD %';
+  ws.getCell(2,5).value=e.dept||'';ws.getCell(2,6).value=e.id;ws.getCell(2,7).value='YTD (ชม.)';
+  ws.getRow(2).getCell(7).fill=fill('CCC0F2');ws.mergeCells(2,7,2,10);
+  const put=(c,tot)=>{ws.getCell(1,c).value=pcts(tot);ws.getCell(1,c).numFmt=PCT;ws.getCell(2,c).value=tot;ws.getCell(2,c).numFmt=NUM;
+    ws.getCell(1,c).font={bold:true};ws.getCell(2,c).font={bold:true};ws.getCell(1,c).alignment=ws.getCell(2,c).alignment={horizontal:'center'};ws.getCell(2,c).border={bottom:thin}};
+  put(11,D.tot.h);put(cCost,D.tot.cost);D.pc.forEach((c,i)=>put(cP0+i,D.tot.p[c]||0));put(cSga,D.tot.sga);D.sgaT.forEach((s,i)=>put(cN0+i,D.tot.n[s.id]||0));
+  ws.getCell(1,11).fill=ws.getCell(2,11).fill=fill('DDEBF7');ws.getCell(1,cCost).fill=ws.getCell(2,cCost).fill=fill('E7E6E6');ws.getCell(1,cSga).fill=ws.getCell(2,cSga).fill=fill('E7E6E6');
+  ws.getCell(3,1).value=`${e.name}${e.nick?' ('+e.nick+')':''} · ${pLabel(D.mode,hs.anchor,D.r)} · เป้า ${D.target} ชม.`;ws.getCell(3,1).font={bold:true,size:12};
+  // แถว 3: ชื่อโครงการ / ชื่อประเภท SG&A
+  D.pc.forEach((c,i)=>{const cell=ws.getCell(3,cP0+i);cell.value=trunc(codeInfo(c)?.name||'',16);cell.font={size:8,color:{argb:'FF666666'}};cell.alignment={horizontal:'center',wrapText:true}});
+  D.sgaT.forEach((s,i)=>{const cell=ws.getCell(3,cN0+i);cell.value=s.name;cell.font={bold:true,size:9};cell.alignment={horizontal:'center'};cell.fill=fill('DDE3FF')});
+  ws.getRow(3).height=26;
+  // แถว 4: หัวตาราง
+  const heads=['ปี','เดือน','วัน','D/M/Y','ฝ่าย','รหัสพนง.','ชื่อ','ตำแหน่ง','Level','ชื่อเล่น','Hours','Cost',...D.pc,'SG&A',...D.sgaT.map(s=>s.id),'สถานะ'];
+  heads.forEach((h,i)=>{const c=ws.getCell(4,i+1);c.value=h;c.font={bold:true,color:{argb:'FFFFFFFF'}};c.alignment={horizontal:'center',vertical:'middle'};
+    c.fill=fill(i+1>=cCost&&i+1<cSga?'7030A0':'1F2A6B')});
+  ws.getRow(4).height=22;
+  // ข้อมูลรายวัน
+  D.days.forEach((o,k)=>{const rI=5+k,row=ws.getRow(rI);
+    const vals=[o.y,o.m,o.dn,o.date,e.dept||'',e.id,e.name,e.position||'',e.level||'',e.nick||'',o.h||0,o.cost||0,...D.pc.map(c=>o.p[c]||null),o.sga||0,...D.sgaT.map(s=>o.n[s.id]||null),o.status];
+    vals.forEach((v,i)=>{const c=row.getCell(i+1);c.value=v;if(i>=10&&i<cSt-1)c.numFmt=NUM;if(i===3)c.numFmt='d/m/yyyy'});
+    row.getCell(11).font={bold:true};row.getCell(11).fill=fill('DDEBF7');row.getCell(cCost).fill=fill('F2F2F2');row.getCell(cSga).fill=fill('F2F2F2');
+    row.getCell(cCost).font=row.getCell(cSga).font={bold:true};
+    if(!o.work){[3,4].forEach(i=>row.getCell(i).fill=fill('D9D9D9'))}
+    for(let i=1;i<=cSt;i++)row.getCell(i).alignment={horizontal:i>=11&&i<cSt?'right':'center'};
+    row.getCell(7).alignment={horizontal:'left'};row.getCell(8).alignment={horizontal:'left'}});
+  [6,7,6,11,8,10,18,16,7,10,10,10].forEach((w,i)=>ws.getColumn(i+1).width=w);
+  for(let c=cP0;c<=cSga;c++)ws.getColumn(c).width=11;for(let c=cN0;c<=cN0+D.sgaT.length-1;c++)ws.getColumn(c).width=8;ws.getColumn(cSt).width=12;
+  const buf=await wb.xlsx.writeBuffer(),a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));a.download=fname;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
+}
+$('#xPerson').onclick=()=>exportPersonReport().catch(er=>alert('ออกรายงานไม่สำเร็จ: '+er.message));
 
 /* ส่งออกตามตัวกรอง (ช่วงเวลา + ขอบเขต) */
 function histExportRows(){
