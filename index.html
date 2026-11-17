@@ -455,7 +455,7 @@ const CONFIG={
   lineOaUrl:'https://line.me/R/ti/p/@099lvbfw',
   lineOaId:'@099lvbfw',
   /* ชื่อ (slug) ของ Edge Function line-forgot ที่ deploy ไว้ — ใช้ส่งลิงก์ลืมรหัสผ่านไป LINE@ (เว้นว่าง = ส่งทางอีเมลอย่างเดียว) */
-  lineForgotFn:''
+  lineForgotFn:'bright-endpoint'
 };
 const CLOUD=!!(CONFIG.supabaseUrl&&CONFIG.supabaseKey);
 const REC_URL=/type=recovery/.test(location.hash);   // เปิดจากลิงก์รีเซ็ตรหัสผ่านใน Supabase
