@@ -106,7 +106,17 @@ td.n,th.n{text-align:right;white-space:nowrap}
   #entries td,#hList td{font-size:13px}
   .x{padding:8px 12px;font-size:18px}
 }
-@media (display-mode:standalone){body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}}.meBox{padding:10px 12px;border-radius:11px;background:var(--pri-soft);font-weight:600;min-height:46px;display:flex;align-items:center}.pwbox{text-align:left;margin-top:14px}.pwbox label{margin-top:0}#syncState{font-size:12px;opacity:.9}.ringwrap{display:flex;gap:22px;align-items:center;flex-wrap:wrap;justify-content:center}
+@media (display-mode:standalone){body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}}.meBox{padding:10px 12px;border-radius:11px;background:var(--pri-soft);font-weight:600;min-height:46px;display:flex;align-items:center}.pwbox{text-align:left;margin-top:14px}.pwbox label{margin-top:0}#syncState{font-size:12px;opacity:.9}.dashhead{display:flex;gap:12px;flex-wrap:wrap;justify-content:space-between;align-items:center;margin:-2px 0 14px}
+.seg2{display:flex;gap:4px;background:var(--pri-soft);padding:4px;border-radius:12px}
+.seg2 button{border:0;background:none;color:var(--mut);padding:7px 14px;border-radius:9px;cursor:pointer;font:inherit;font-weight:500}
+.seg2 button.on{background:var(--card);color:var(--pri);box-shadow:0 1px 4px rgba(34,48,73,.15);font-weight:600}
+.sumline{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-weight:600;font-size:13.5px}
+.sumline span{background:var(--pri-soft);padding:3px 10px;border-radius:14px}
+.dashnav{display:flex;gap:6px;align-items:center}
+.dashnav .btn{padding:6px 12px;min-height:0}
+#dashLabel{min-width:150px;text-align:center;font-weight:600;font-size:14px}
+.lg.sub{padding:3px 0 3px 22px;font-size:12.5px;color:var(--mut);border-bottom:0}
+.ringwrap{display:flex;gap:22px;align-items:center;flex-wrap:wrap;justify-content:center}
 #ring{width:210px;height:210px;flex:none}
 #ring .seg{transition:stroke-dasharray .5s ease}
 .ringlegend{flex:1;min-width:220px}
@@ -188,7 +198,18 @@ td.n,th.n{text-align:right;white-space:nowrap}
   </div>
 
   <div class="card" id="ringCard">
-    <h2>ความคืบหน้า 8 ชั่วโมงของวันนี้</h2>
+    <h2 id="ringTitle">ความคืบหน้าชั่วโมงทำงาน</h2>
+    <div class="dashhead">
+      <div class="seg2" id="dashMode" role="tablist">
+        <button data-m="day" class="on">วัน</button><button data-m="week">สัปดาห์</button><button data-m="month">เดือน</button><button data-m="quarter">ไตรมาส</button><button data-m="year">ปี</button>
+      </div>
+      <div class="dashnav">
+        <button class="btn" id="dashPrev" title="ช่วงก่อนหน้า">‹</button>
+        <span id="dashLabel"></span>
+        <button class="btn" id="dashNext" title="ช่วงถัดไป">›</button>
+        <button class="btn" id="dashToday">ปัจจุบัน</button>
+      </div>
+    </div>
     <div class="ringwrap">
       <svg id="ring" viewBox="0 0 200 200" role="img" aria-label="วงกลมแสดงชั่วโมงทำงานแยกตามประเภท"></svg>
       <div id="ringLegend" class="ringlegend"></div>
@@ -508,26 +529,102 @@ const txNo=(t,i)=>`${t.empId}-${ddmmyy(t.date)}-${pad(i+1)}`;
 const entryCode=e=>e.cat==='Cost'||e.code?e.code:'-';
 const entryName=e=>e.code?(codeInfo(e.code)?.name||''):'-';
 
-/* ---- Dashboard: วงกลม progress 8 ชั่วโมง แยกตามประเภท (Cost / SG&A N1–N8) ---- */
+/* ---- Dashboard: วงกลม progress ชั่วโมงทำงาน แยกประเภท — รายวัน/สัปดาห์/เดือน/ไตรมาส/ปี ---- */
 const SGA_COL={N1:'#f29b2f',N2:'#e8711a',N3:'#d94f5c',N4:'#9b6bd6',N5:'#4f8cf5',N6:'#2bb3c0',N7:'#8fa6bf',N8:'#c28b6b'};
-function renderRing(t){
-  const ents=t?.entries||[],segs=[];
-  const cost=ents.filter(e=>e.cat==='Cost').reduce((a,e)=>a+e.hours,0);
-  if(cost)segs.push({label:'Cost (โครงการ)',h:cost,c:'#14a37f'});
-  db.sgaTypes.forEach(s=>{const hh=ents.filter(e=>e.cat==='SG&A'&&e.sgaId===s.id).reduce((a,e)=>a+e.hours,0);
-    if(hh)segs.push({label:`SG&A ${s.id} ${s.name}`,h:hh,c:SGA_COL[s.id]||'#e08a00'})});
-  const total=segs.reduce((a,s)=>a+s.h,0),R=78,C=2*Math.PI*R;let used=0;
-  const arcs=segs.map(s=>{const len=Math.max(0,Math.min(s.h,TARGET-used))/TARGET*C;
-    const el=`<circle class="seg" cx="100" cy="100" r="${R}" fill="none" stroke="${s.c}" stroke-width="22" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-used/TARGET*C}" transform="rotate(-90 100 100)"><title>${esc(s.label)}: ${s.h} ชม.</title></circle>`;
-    used+=Math.min(s.h,TARGET-used);return el}).join('');
-  const pct=Math.round(total/TARGET*100),done=total===TARGET,over=total>TARGET;
+const sgaColor=t=>t.color||SGA_COL[t.id]||'#e08a00';
+const costSty=()=>Object.assign({label:'Cost (โครงการ)',color:'#14a37f'},db.costStyle||{});
+const costShort=()=>costSty().label.replace(/\s*\(.*\)/,'').trim()||'Cost';
+function applyUi(){ // โหลดชื่อ/สีที่ Admin แก้ไขจากฐานข้อมูลกลาง
+  const v=db.ui&&db.ui[0]&&db.ui[0].value;if(!v)return;
+  (v.sga||[]).forEach(o=>{const t=find(db.sgaTypes,o.id);if(t){if(o.name)t.name=o.name;if(o.color)t.color=o.color}});
+  if(v.cost)db.costStyle=v.cost;
+}
+function uiSave(){
+  if(CLOUD)db.ui=[{id:'ui',value:{sga:db.sgaTypes.map(t=>({id:t.id,name:t.name,color:t.color||null})),cost:db.costStyle||null}}];
+  save();fillEmp();syncForm();renderLog();
+}
+const pctTxt=(v,d)=>{const p=Math.round(v/d*100);return v>0&&p===0?'<1%':p+'%'};
+const MODE_TH={day:'รายวัน',week:'รายสัปดาห์',month:'รายเดือน',quarter:'รายไตรมาส',year:'รายปี'};
+let dash={mode:'day',anchor:todayStr()};
+const DD=s=>new Date(s+'T00:00:00'),DF=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const thD=(d,o)=>d.toLocaleDateString('th-TH',o);
+function dashRange(){
+  const a=DD(dash.anchor),y=a.getFullYear(),m=a.getMonth();let s,e;
+  switch(dash.mode){
+    case 'week':{const dw=(a.getDay()+6)%7;s=new Date(y,m,a.getDate()-dw);e=new Date(y,m,a.getDate()-dw+6);break}   // จันทร์–อาทิตย์
+    case 'month':s=new Date(y,m,1);e=new Date(y,m+1,0);break;
+    case 'quarter':{const q=Math.floor(m/3);s=new Date(y,q*3,1);e=new Date(y,q*3+3,0);break}
+    case 'year':s=new Date(y,0,1);e=new Date(y,11,31);break;
+    default:s=e=a;
+  }
+  return{s:DF(s),e:DF(e),sd:s,ed:e};
+}
+function dashLabelText(r){
+  const a=DD(dash.anchor);
+  switch(dash.mode){
+    case 'week':return `${thD(r.sd,{day:'numeric',month:'short'})} – ${thD(r.ed,{day:'numeric',month:'short',year:'numeric'})}`;
+    case 'month':return thD(a,{month:'long',year:'numeric'});
+    case 'quarter':return `ไตรมาส ${Math.floor(a.getMonth()/3)+1}/${a.getFullYear()+543}`;
+    case 'year':return `ปี ${a.getFullYear()+543}`;
+    default:return thD(a,{weekday:'short',day:'numeric',month:'long',year:'numeric'});
+  }
+}
+function dashShift(dir){
+  const a=DD(dash.anchor),y=a.getFullYear(),m=a.getMonth(),d=a.getDate();let n;
+  switch(dash.mode){
+    case 'week':n=new Date(y,m,d+7*dir);break;
+    case 'month':n=new Date(y,m+dir,1);break;
+    case 'quarter':n=new Date(y,m+3*dir,1);break;
+    case 'year':n=new Date(y+dir,m,1);break;
+    default:n=new Date(y,m,d+dir);
+  }
+  dash.anchor=DF(n);
+  if(dash.mode==='day'){$('#date').value=dash.anchor;renderLog()}else renderRing();
+}
+$$('#dashMode button').forEach(b=>b.onclick=()=>{
+  dash.mode=b.dataset.m;
+  $$('#dashMode button').forEach(x=>x.classList.toggle('on',x===b));
+  if(dash.mode==='day')dash.anchor=$('#date').value||todayStr();
+  renderRing();
+});
+$('#dashPrev').onclick=()=>dashShift(-1);
+$('#dashNext').onclick=()=>dashShift(1);
+$('#dashToday').onclick=()=>{dash.anchor=todayStr();if(dash.mode==='day'){$('#date').value=dash.anchor;renderLog()}else renderRing()};
+$('#date').addEventListener('change',()=>{dash.anchor=$('#date').value||todayStr();renderRing()});
+
+function renderRing(){
+  if(dash.mode==='day')dash.anchor=$('#date').value||dash.anchor;
+  const e=emp(),r=dashRange();
+  $$('#dashMode button').forEach(x=>x.classList.toggle('on',x.dataset.m===dash.mode));
+  $('#dashLabel').textContent=dashLabelText(r);
+  $('#ringTitle').textContent=dash.mode==='day'?'ความคืบหน้า 8 ชั่วโมงของวัน':`ความคืบหน้าชั่วโมงทำงาน (${MODE_TH[dash.mode]})`;
+  if(!e){$('#ring').innerHTML='';$('#ringLegend').innerHTML='<div class="hint">บัญชีนี้ยังไม่ผูกกับรหัสพนักงาน จึงไม่มีข้อมูลสรุป</div>';return}
+  // วันทำการในช่วง (ตัดเสาร์-อาทิตย์/วันหยุด ตามพนักงาน) → เป้าหมาย = วันทำการ × 8 ชม.
+  let workdays=0;for(let d=new Date(r.sd);d<=r.ed;d.setDate(d.getDate()+1)){if(dayInfo(e,DF(d)).work)workdays++}
+  const sheets=db.timesheets.filter(t=>t.empId===e.id&&t.date>=r.s&&t.date<=r.e);
+  const ents=sheets.flatMap(t=>t.entries),segs=[];
+  const costEnts=ents.filter(x=>x.cat==='Cost'),cost=costEnts.reduce((a,x)=>a+x.hours,0);
+  if(cost){const byP={};costEnts.forEach(x=>byP[x.code]=(byP[x.code]||0)+x.hours);
+    segs.push({label:costSty().label,h:cost,c:costSty().color,subs:Object.entries(byP).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([c,hh])=>({label:`${c} ${codeInfo(c)?.name||''}`.trim(),h:hh}))})}
+  db.sgaTypes.forEach(s=>{const hh=ents.filter(x=>x.cat==='SG&A'&&x.sgaId===s.id).reduce((a,x)=>a+x.hours,0);
+    if(hh)segs.push({label:`SG&A ${s.id} ${s.name}`,h:hh,c:sgaColor(s)})});
+  const total=segs.reduce((a,s)=>a+s.h,0),target=workdays*TARGET,denom=target||total||TARGET;
+  const R=78,C=2*Math.PI*R;let used=0;
+  const arcs=segs.map(s=>{const len=Math.max(0,Math.min(s.h,denom-used))/denom*C;
+    const el=`<circle class="seg" cx="100" cy="100" r="${R}" fill="none" stroke="${s.c}" stroke-width="22" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-used/denom*C}" transform="rotate(-90 100 100)"><title>${esc(s.label)}: ${s.h} ชม.</title></circle>`;
+    used+=Math.min(s.h,denom-used);return el}).join('');
+  const costH=cost,sgaH=total-cost,pc=Math.round(costH/denom*100),ps=Math.round(sgaH/denom*100),pct=Math.round(total/denom*100),done=target>0&&total===target,over=target>0&&total>target;
+  const big=String(total).length>=3?30:38,sm=String(denom).length>=3?15:18;
+  const status=target===0?'ไม่มีวันทำการ':done?(dash.mode==='day'?'ครบ 8 ชม. ✓':'ครบตามเป้าหมาย ✓'):over?'เกินเป้า '+(total-target)+' ชม.':'เหลือ '+(target-total)+' ชม.';
   $('#ring').innerHTML=`<circle cx="100" cy="100" r="${R}" fill="none" stroke="var(--line)" stroke-width="22"/>${arcs}
-    <text x="100" y="98" text-anchor="middle" style="font-size:38px;font-weight:700;fill:var(--ink)">${total}<tspan style="font-size:18px;font-weight:500;fill:var(--mut)"> / ${TARGET}</tspan></text>
-    <text x="100" y="122" text-anchor="middle" style="font-size:13px;fill:var(--mut)">ชั่วโมง · ${pct}%</text>
-    <text x="100" y="142" text-anchor="middle" style="font-size:13px;font-weight:600;fill:${done?'#14a37f':over?'#e5484d':'var(--mut)'}">${done?'ครบ 8 ชม. ✓':over?'เกิน '+(total-TARGET)+' ชม.':'เหลือ '+(TARGET-total)+' ชม.'}</text>`;
-  const left=Math.max(0,TARGET-total);
-  $('#ringLegend').innerHTML=(segs.length?segs.map(s=>`<div class="lg"><i style="background:${s.c}"></i><span>${esc(s.label)}</span><b>${s.h} ชม.</b><span class="p">${Math.round(s.h/TARGET*100)}%</span></div>`).join(''):'<div class="hint">ยังไม่มีรายการบันทึกของวันนี้</div>')
-    +(left?`<div class="lg"><i style="background:var(--line)"></i><span>คงเหลือ</span><b>${left} ชม.</b><span class="p">${Math.round(left/TARGET*100)}%</span></div>`:'');
+    <text x="100" y="86" text-anchor="middle" style="font-size:${big}px;font-weight:700;fill:var(--ink)">${total}<tspan style="font-size:${sm}px;font-weight:500;fill:var(--mut)"> / ${target||'-'}</tspan></text>
+    <text x="100" y="110" text-anchor="middle" style="font-size:11.5px;font-weight:600"><tspan style="fill:${costSty().color}">${esc(costShort().length>7?costShort().slice(0,7)+'…':costShort())} ${pc}%</tspan><tspan style="fill:var(--mut)"> · </tspan><tspan style="fill:var(--mut)">SG&amp;A ${ps}%</tspan></text>
+    <text x="100" y="131" text-anchor="middle" style="font-size:12.5px;font-weight:600;fill:${done?'#14a37f':over?'#e5484d':'var(--mut)'}">${status}</text>`;
+  const left=Math.max(0,denom-total),complete=sheets.filter(t=>totals(t).all===TARGET).length;
+  $('#ringLegend').innerHTML=(total?`<div class="sumline"><span style="color:${costSty().color}">${esc(costShort())} ${costH} ชม. (${pc}%)</span><span>SG&amp;A ${sgaH} ชม. (${ps}%)</span></div>`:'')+(segs.length?segs.map(s=>`<div class="lg"><i style="background:${s.c}"></i><span>${esc(s.label)}</span><b>${s.h} ชม.</b><span class="p">${pctTxt(s.h,denom)}</span></div>`
+      +(s.subs&&dash.mode!=='day'&&s.subs.length>1?s.subs.map(p=>`<div class="lg sub"><span>${esc(p.label)}</span><b>${p.h} ชม.</b></div>`).join(''):'')).join(''):'<div class="hint">ยังไม่มีรายการบันทึกในช่วงนี้</div>')
+    +(left&&target?`<div class="lg"><i style="background:var(--line)"></i><span>คงเหลือ</span><b>${left} ชม.</b><span class="p">${pctTxt(left,denom)}</span></div>`:'')
+    +(dash.mode==='day'?'':`<div class="hint" style="margin-top:8px">วันทำการ ${workdays} วัน (เป้า ${target} ชม.) · บันทึกครบ 8 ชม. แล้ว ${complete} วัน</div>`);
 }
 function renderLog(){
   const e=emp(), t=curSheet(false), tot=totals(t), d=dayInfo(e,$('#date').value);
@@ -539,7 +636,7 @@ function renderLog(){
   $('#formCard').classList.toggle('hide',!!locked||!d.work||!e);if(!e){$('#dayNotice').classList.remove('hide');$('#dayNotice').textContent='บัญชีนี้ยังไม่ผูกกับรหัสพนักงาน จึงบันทึกงานไม่ได้ — ให้ Admin ใส่อีเมลบริษัทของคุณในข้อมูลพนักงาน'}
   $('#reopen').classList.toggle('hide',!locked);
   $('#submit').classList.toggle('hide',!!locked);
-  $('#tTotal').textContent=tot.all;$('#tCost').textContent=tot.cost;$('#tSga').textContent=tot.sga;renderRing(t);
+  $('#tTotal').textContent=tot.all;$('#tCost').textContent=tot.cost;$('#tSga').textContent=tot.sga;renderRing();
   $('#bCost').style.width=Math.min(100,tot.cost/TARGET*100)+'%';
   $('#bSga').style.width=Math.min(100-Math.min(100,tot.cost/TARGET*100),tot.sga/TARGET*100)+'%';
   const diff=TARGET-tot.all;
@@ -636,9 +733,10 @@ function renderSetup(){
       <div><label>${m.date?'วันที่':'รหัส'}</label><input name="id" ${m.date?'type="date"':''} required></div><div><label>ชื่อ</label><input name="name" required></div>
       ${m.f.map(f=>f[2]==='bool'?fInput(f):`<div><label>${f[1]}</label>${fInput(f)}</div>`).join('')}
       <div><button class="btn pri">+ เพิ่ม</button></div></form></div>`).join('')
-   +`<div class="card"><h2>ประเภท SG&amp;A (N1–N8)</h2><div class="scroll"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>ต้องอ้างอิง</th><th>ใช้งาน</th></tr></thead><tbody>
-    ${db.sgaTypes.map((t,i)=>`<tr><td>${t.id}</td><td>${esc(t.name)}<div class="hint">${esc(t.desc)}</div></td><td>${{none:'—','contract':'Sales Contract No.','contract+backlog':'Sales Contract / Backlog (ฝ่ายโครงเหล็ก)',mt:'MT Project Code'}[t.ref]}</td><td><input type="checkbox" ${t.active!==false?'checked':''} data-act="sgaTypes:${i}" style="width:auto"></td></tr>`).join('')}
-    </tbody></table></div><div class="hint" style="margin-top:8px">ฝ่ายที่เลือก Backlog Project Code ได้ใน N3: ${esc(db.backlogDepts.join(', ')||'-')}</div></div>`;
+   +`<div class="card"><h2>ประเภท SG&amp;A (N1–N8)</h2><div class="scroll"><table><thead><tr><th>รหัส</th><th>ชื่อที่แสดง</th><th>สี</th><th>ต้องอ้างอิง</th><th>ใช้งาน</th></tr></thead><tbody>
+    <tr><td>Cost</td><td><input data-cname value="${esc(costSty().label)}" style="min-height:0;padding:6px 8px"></td><td><input type="color" data-ccolor value="${costSty().color}" style="width:46px;height:34px;padding:2px"></td><td>รหัสโครงการ (assign)</td><td></td></tr>
+    ${db.sgaTypes.map((t,i)=>`<tr><td>${t.id}</td><td><input data-tname="${i}" value="${esc(t.name)}" style="min-height:0;padding:6px 8px"><div class="hint">${esc(t.desc)}</div></td><td><input type="color" data-tcolor="${i}" value="${sgaColor(t)}" style="width:46px;height:34px;padding:2px"></td><td>${{none:'—','contract':'Sales Contract No.','contract+backlog':'Sales Contract / Backlog (ฝ่ายโครงเหล็ก)',mt:'MT Project Code'}[t.ref]}</td><td><input type="checkbox" ${t.active!==false?'checked':''} data-act="sgaTypes:${i}" style="width:auto"></td></tr>`).join('')}
+    </tbody></table></div><div class="hint" style="margin-top:8px"><button class="btn" id="uiReset" style="padding:4px 10px;margin-right:8px">คืนค่าชื่อ/สีเริ่มต้น</button>ชื่อและสีที่แก้ไขมีผลกับวงกลมสรุป รายการเลือกประเภท และไฟล์ส่งออก (รหัส N1–N8 ยังเหมือนเดิม)</div><div class="hint" style="margin-top:8px">ฝ่ายที่เลือก Backlog Project Code ได้ใน N3: ${esc(db.backlogDepts.join(', ')||'-')}</div></div>`;
   $$('[data-act]').forEach(c=>c.onchange=()=>{const[k,i]=c.dataset.act.split(':');db[k][i].active=c.checked;save();fillEmp();syncForm();renderLog()});
   $$('[data-rm]').forEach(b=>b.onclick=()=>{const[k,i]=b.dataset.rm.split(':');
     if(confirm('ลบรายการนี้? (ถ้าเคยถูกใช้แล้ว แนะนำให้ปิดการใช้งานแทน)')){const id=db[k][i].id;db[k].splice(i,1);
@@ -656,6 +754,11 @@ function renderSetup(){
   $('#asgList').innerHTML=codes.map(c=>{const es=db.assign.filter(a=>a.code===c.id).map(a=>a.empId);
     return `<tr><td>${esc(c.id)}</td><td>${esc(c.name)}</td><td>${es.map(id=>`<span class="tag st" style="margin:0 4px 4px 0">${esc(id)} <a href="#" data-unasg="${esc(id)}|${esc(c.id)}" style="color:#fff;text-decoration:none">✕</a></span>`).join('')||'<span class="hint">ยังไม่มี</span>'}</td></tr>`}).join('');
   $$('[data-unasg]').forEach(a=>a.onclick=ev=>{ev.preventDefault();const[e,c]=a.dataset.unasg.split('|');db.assign=db.assign.filter(x=>!(x.empId===e&&x.code===c));save();renderSetup();syncForm();renderLog()});
+  $$('[data-tname]').forEach(i=>i.onchange=()=>{const t=db.sgaTypes[+i.dataset.tname],v=i.value.trim();if(!v){i.value=t.name;return}t.name=v;uiSave()});
+  $$('[data-tcolor]').forEach(i=>i.onchange=()=>{db.sgaTypes[+i.dataset.tcolor].color=i.value;uiSave()});
+  $('[data-cname]')?.addEventListener('change',ev=>{const v=ev.target.value.trim();if(!v){ev.target.value=costSty().label;return}db.costStyle={...costSty(),label:v};uiSave()});
+  $('[data-ccolor]')?.addEventListener('change',ev=>{db.costStyle={...costSty(),color:ev.target.value};uiSave()});
+  $('#uiReset')?.addEventListener('click',()=>{if(!confirm('คืนชื่อและสีของทุกประเภทเป็นค่าเริ่มต้น?'))return;const d=seed().sgaTypes;db.sgaTypes.forEach(t=>{const o=d.find(x=>x.id===t.id);if(o)t.name=o.name;delete t.color});db.costStyle=null;uiSave();renderSetup()});
 }
 $('#asgForm').onsubmit=ev=>{ev.preventDefault();const code=$('#asgCode').value;if(!code)return alert('เลือกรหัสก่อน');
   const ids=$('#asgEmps').value.split(/[\s,;]+/).filter(Boolean);const bad=ids.filter(i=>!find(db.employees,i));
@@ -1140,7 +1243,8 @@ const TBL={
     to:t=>({id:t.id,emp_id:t.empId,day:t.date,status:t.status==='Submitted'?'Submitted':'Draft',submitted_at:t.submittedAt||null,entries:t.entries||[]}),
     from:r=>({id:r.id,empId:r.emp_id,date:r.day,status:r.status,submittedAt:r.submitted_at,entries:r.entries||[]})}
 };
-function emptyCloudDb(){const s=seed();return{...s,employees:[],depts:[],projects:[],contracts:[],assign:[],holidays:[],timesheets:[],regs:[],admins:[],settings:{regOpen:true,autoApprove:false}}}
+TBL.ui={t:'app_settings',pk:'key',admin:true,key:r=>r.key,to:o=>({key:'ui',value:o.value}),from:r=>({id:r.key,value:r.value})};
+function emptyCloudDb(){const s=seed();return{...s,employees:[],depts:[],projects:[],contracts:[],assign:[],holidays:[],timesheets:[],regs:[],admins:[],ui:[],settings:{regOpen:true,autoApprove:false}}}
 function rowsOf(k){const s=TBL[k];return new Map(db[k].map(x=>s.to(x)).filter(r=>k!=='employees'||r.email).map(r=>[s.key(r),r]))}
 function takeSnap(){snap={};Object.keys(TBL).forEach(k=>{snap[k]=Object.fromEntries([...rowsOf(k)].map(([key,r])=>[key,JSON.stringify(r)]))})}
 function setSync(st,msg){
@@ -1158,8 +1262,8 @@ async function fetchAll(t,pk,filter){
 async function loadCloud(){
   const cut=new Date();cut.setMonth(cut.getMonth()-18);const cutS=cut.toISOString().slice(0,10);   // โหลดบันทึกงานย้อนหลัง 18 เดือน
   const keys=Object.keys(TBL);
-  const res=await Promise.all(keys.map(k=>fetchAll(TBL[k].t,TBL[k].pk,k==='timesheets'?q=>q.gte('day',cutS):null)));
-  db=emptyCloudDb();keys.forEach((k,i)=>{db[k]=res[i].map(TBL[k].from)});takeSnap();
+  const res=await Promise.all(keys.map(k=>fetchAll(TBL[k].t,TBL[k].pk,k==='timesheets'?q=>q.gte('day',cutS):null).catch(er=>{if(k==='ui')return [];throw er})));
+  db=emptyCloudDb();keys.forEach((k,i)=>{db[k]=res[i].map(TBL[k].from)});applyUi();takeSnap();
 }
 function cloudSave(){if(!sb||!cur)return;clearTimeout(cloudT);setSync('saving');cloudT=setTimeout(syncUp,300)}
 async function syncUp(){
