@@ -288,6 +288,7 @@ header>*{min-width:0}
         <select id="hDept" class="hide" aria-label="ฝ่าย"></select>
         <select id="hEmp" class="hide" aria-label="พนักงาน"></select>
         <select id="hProj" class="hide" aria-label="โครงการ"></select>
+        <select id="hCon" class="hide" aria-label="Sales Contract"></select>
       </div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
@@ -415,7 +416,7 @@ header>*{min-width:0}
         <div><label>ชื่อเล่น</label><input id="nmNick"></div>
         <div><label>Level</label><input id="nmLevel"></div>
         <div><label>ตำแหน่ง</label><input id="nmPos"></div>
-        <div><label>สิทธิ์</label><select id="nmRole"><option value="user">user</option><option value="admin">admin</option></select></div>
+        <div><label>สิทธิ์</label><select id="nmRole"><option value="user">พนักงาน (user)</option><option value="project_admin">Project Admin</option><option value="controller_admin">Controller Admin</option><option value="super_admin">Super Admin</option></select></div>
       </div>
       <label style="display:flex;gap:8px;align-items:center;color:var(--ink);margin-top:10px"><input type="checkbox" id="nmSat" style="width:auto;min-height:0"> <span>ทำงานวันเสาร์ (พนักงาน Site)</span></label>
       <div class="err" id="nmMsg" style="margin-top:8px"></div>
@@ -459,7 +460,11 @@ const CONFIG={
 };
 const CLOUD=!!(CONFIG.supabaseUrl&&CONFIG.supabaseKey);
 const REC_URL=/type=recovery/.test(location.hash);   // เปิดจากลิงก์รีเซ็ตรหัสผ่านใน Supabase
-let user=null, me=null, isAdmin=false;
+let user=null, me=null, isAdmin=false, isSuperAdmin=false;
+const ROLES=[['user','พนักงาน (user)'],['project_admin','Project Admin'],['controller_admin','Controller Admin'],['super_admin','Super Admin']];
+const normRole=r=>r==='admin'?'super_admin':(ROLES.some(x=>x[0]===r)?r:'user');
+const isAdminRole=r=>normRole(r)!=='user', isSuperRole=r=>normRole(r)==='super_admin';
+const roleOpts=r=>ROLES.map(([v,l])=>`<option value="${v}" ${normRole(r)===v?'selected':''}>${l}</option>`).join('');
 const KEY='demco_workload_v2', TARGET=8;
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -750,34 +755,37 @@ function pShift(mode,anchor,dir){
   }
   return DF(n);
 }
-let hs={mode:'month',anchor:todayStr(),scope:'',dept:'',emp:'',proj:'',limit:100};
-const SCOPE_TH={me:'ของฉัน',all:'ทั้งหมด',dept:'รายฝ่าย',emp:'รายคน',project:'ราย Project'};
-const hsScopes=()=>isAdmin?['all','dept','emp','project']:['me','project'];
+let hs={mode:'month',anchor:todayStr(),scope:'',dept:'',emp:'',proj:'',con:'',limit:100};
+const SCOPE_TH={me:'ของฉัน',all:'ทั้งหมด',dept:'รายฝ่าย',emp:'รายคน',project:'ราย Project',contract:'ราย Sales Contract'};
+const hsScopes=()=>isAdmin?['all','dept','emp','project','contract']:['me','project','contract'];
 const projLabel=c=>`${c}${codeInfo(c)?.name?' — '+codeInfo(c).name:''}`;
 
 function hsFillSelects(){
   const dm=new Map(db.depts.map(d=>[d.id,d.name]));db.employees.forEach(e=>{if(e.dept&&!dm.has(e.dept))dm.set(e.dept,'')});
   $('#hDept').innerHTML=[...dm].map(([id,n])=>`<option value="${esc(id)}">${esc(id+(n?' — '+n:''))}</option>`).join('');
   $('#hEmp').innerHTML=db.employees.map(e=>`<option value="${esc(e.id)}">${esc(e.id+' — '+e.name)}</option>`).join('');
-  const codes=new Set([...db.projects.map(p=>p.id),...db.contracts.map(c=>c.id)]);
-  db.timesheets.forEach(t=>t.entries.forEach(x=>{if(x.code)codes.add(x.code)}));
+  const conIds=new Set(db.contracts.map(c=>c.id)),codes=new Set(db.projects.map(p=>p.id)),cons=new Set(conIds);
+  db.timesheets.forEach(t=>t.entries.forEach(x=>{if(x.code)(conIds.has(x.code)?cons:codes).add(x.code)}));
+  $('#hCon').innerHTML=[...cons].sort().map(c=>`<option value="${esc(c)}">${esc(projLabel(c))}</option>`).join('');
+  if(!cons.has(hs.con))hs.con=[...cons].sort()[0]||'';
   $('#hProj').innerHTML=[...codes].sort().map(c=>`<option value="${esc(c)}">${esc(projLabel(c))}</option>`).join('');
   if(!dm.has(hs.dept))hs.dept=[...dm.keys()][0]||'';
   if(!db.employees.some(e=>e.id===hs.emp))hs.emp=(me&&me.id)||db.employees[0]?.id||'';
   if(!codes.has(hs.proj))hs.proj=[...codes].sort()[0]||'';
-  $('#hDept').value=hs.dept;$('#hEmp').value=hs.emp;$('#hProj').value=hs.proj;
+  $('#hDept').value=hs.dept;$('#hEmp').value=hs.emp;$('#hProj').value=hs.proj;$('#hCon').value=hs.con;
 }
+const hsCode=()=>hs.scope==='contract'?hs.con:hs.proj;
 function histCompute(){
-  const r=pRange(hs.mode,hs.anchor),own=t=>isAdmin||t.empId===me?.id;
+  const r=pRange(hs.mode,hs.anchor),own=t=>isAdmin||t.empId===me?.id,proj=hs.scope==='project'||hs.scope==='contract';
   let people;
   if(hs.scope==='me')people=me?[me]:[];
   else if(hs.scope==='dept')people=db.employees.filter(e=>e.dept===hs.dept);
   else if(hs.scope==='emp')people=db.employees.filter(e=>e.id===hs.emp);
-  else people=db.employees.slice();                                  // all / project
+  else people=db.employees.slice();                                  // all / project / contract
   const ids=new Set(people.map(e=>e.id));
   const rows=[];
-  db.timesheets.filter(t=>t.date>=r.s&&t.date<=r.e&&own(t)&&(hs.scope==='project'||ids.has(t.empId))).forEach(t=>t.entries.forEach((x,i)=>{
-    if(hs.scope==='project'&&x.code!==hs.proj)return;rows.push({t,x,i})}));
+  db.timesheets.filter(t=>t.date>=r.s&&t.date<=r.e&&own(t)&&(proj||ids.has(t.empId))).forEach(t=>t.entries.forEach((x,i)=>{
+    if(proj&&x.code!==hsCode())return;rows.push({t,x,i})}));
   // เป้าหมาย = วันทำการ × 8 ชม. ต่อคน (ไม่ใช้กับมุมมอง Project)
   let wdSat=0,wdNo=0;
   for(let d=new Date(r.sd);d<=r.ed;d.setDate(d.getDate()+1)){const ds=DF(d);if(dayInfo({workSat:true},ds).work)wdSat++;if(dayInfo({workSat:false},ds).work)wdNo++}
@@ -793,10 +801,10 @@ function renderHist(){
   $$('#hScope button').forEach(b=>b.onclick=()=>{hs.scope=b.dataset.s;hs.limit=100;renderHist()});
   $('#hDept').classList.toggle('hide',hs.scope!=='dept');
   $('#hEmp').classList.toggle('hide',hs.scope!=='emp');
-  $('#hProj').classList.toggle('hide',hs.scope!=='project');
-  const D=histCompute(),proj=hs.scope==='project';
+  $('#hProj').classList.toggle('hide',hs.scope!=='project');$('#hCon').classList.toggle('hide',hs.scope!=='contract');
+  const D=histCompute(),proj=hs.scope==='project'||hs.scope==='contract',code=hsCode(),pl=hs.scope==='contract'?'Sales Contract ':'Project ';
   $('#hLabel').textContent=pLabel(hs.mode,hs.anchor,D.r);
-  const who=hs.scope==='dept'?'ฝ่าย '+hs.dept:hs.scope==='emp'?(find(db.employees,hs.emp)?.name||hs.emp):proj?'Project '+hs.proj:hs.scope==='me'?'ของฉัน':'ทุกคน';
+  const who=hs.scope==='dept'?'ฝ่าย '+hs.dept:hs.scope==='emp'?(find(db.employees,hs.emp)?.name||hs.emp):proj?pl+code:hs.scope==='me'?'ของฉัน':'ทุกคน';
   $('#hTitle').textContent=`สรุป${MODE_TH[hs.mode]} — ${who}`;
   // ---- สรุปรวม ----
   let c=0,s=0;const brk={};
@@ -805,7 +813,7 @@ function renderHist(){
   const all=c+s,den=(!proj&&D.target)?D.target:all,pc=v=>den?`${Math.round(v/den*100)}%`:'0%';
   $('#hSum').innerHTML=`<span>รวม <b>${all}</b> ชม.</span><span style="color:var(--cost)">${esc(costShort())} <b>${c}</b> (${pc(c)})</span><span style="color:var(--sga)">SG&A <b>${s}</b> (${pc(s)})</span>`
     +(!proj&&D.target?`<span>เป้า <b>${D.target}</b> ชม. · ทำได้ ${Math.round(all/D.target*100)}%</span>`:'');
-  $('#hBase').textContent=proj?`เปอร์เซ็นต์เทียบกับชั่วโมงรวมของ ${hs.proj} ในช่วงนี้`:`ฐานคำนวณ: วันทำการ × 8 ชม. ต่อคน (${D.active.length} คน) — ไม่นับเสาร์-อาทิตย์/วันหยุด`;
+  $('#hBase').textContent=proj?`เปอร์เซ็นต์เทียบกับชั่วโมงรวมของ ${code} ในช่วงนี้`:`ฐานคำนวณ: วันทำการ × 8 ชม. ต่อคน (${D.active.length} คน) — ไม่นับเสาร์-อาทิตย์/วันหยุด`;
   $('#hBreak').innerHTML=Object.entries(brk).sort((a,b)=>b[1].h-a[1].h).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${esc(v.name)}</td><td><span class="tag ${v.cat==='Cost'?'cost':'sga'}">${esc(v.cat)}</span></td><td class="n">${v.h}</td><td class="n">${pctTxt(v.h,den||1)}</td></tr>`).join('')||'<tr><td colspan="5" class="hint">ไม่มีข้อมูลในช่วงนี้</td></tr>';
   // ---- สรุปรายคน (ทั้งหมด / รายฝ่าย / Project) ----
   const showPeople=hs.scope==='all'||hs.scope==='dept'||proj;
@@ -815,7 +823,7 @@ function renderHist(){
     const list=(proj?Object.keys(by).map(id=>find(db.employees,id)||{id,name:id}):D.active.filter(e=>true)).map(e=>({e,c:by[e.id]?.c||0,s:by[e.id]?.s||0}));
     list.forEach(o=>{o.t=o.c+o.s;o.tg=proj?0:D.wdOf(o.e)*TARGET});
     list.sort((a,b)=>proj?b.t-a.t:a.e.id.localeCompare(b.e.id));
-    $('#hPeopleTitle').textContent=proj?`พนักงานที่ลงเวลาใน ${hs.proj} (${list.length} คน)`:`สรุปรายคน (${list.length} คน)`;
+    $('#hPeopleTitle').textContent=proj?`พนักงานที่ลงเวลาใน ${code} (${list.length} คน)`:`สรุปรายคน (${list.length} คน)`;
     $('#hPeopleHead').innerHTML=proj?'<tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th class="n">ชม.</th><th class="n">สัดส่วน</th></tr>'
       :'<tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th class="n">Cost</th><th class="n">SG&amp;A</th><th class="n">รวม</th><th class="n">เป้า</th><th class="n">%</th></tr>';
     $('#hPeople').innerHTML=list.map(o=>proj?`<tr><td>${esc(o.e.id)}</td><td>${esc(o.e.name)}</td><td>${esc(o.e.dept||'')}</td><td class="n">${o.t}</td><td class="n">${pctTxt(o.t,all||1)}</td></tr>`
@@ -845,6 +853,7 @@ $('#hToday').onclick=()=>{hs.anchor=todayStr();hs.limit=100;renderHist()};
 $('#hDept').onchange=()=>{hs.dept=$('#hDept').value;hs.limit=100;renderHist()};
 $('#hEmp').onchange=()=>{hs.emp=$('#hEmp').value;hs.limit=100;renderHist()};
 $('#hProj').onchange=()=>{hs.proj=$('#hProj').value;hs.limit=100;renderHist()};
+$('#hCon').onchange=()=>{hs.con=$('#hCon').value;hs.limit=100;renderHist()};
 $('#hMore').onclick=()=>{hs.limit+=100;renderHist()};
 
 /* ส่งออกตามตัวกรอง (ช่วงเวลา + ขอบเขต) */
@@ -853,7 +862,7 @@ function histExportRows(){
     return{'Transaction No.':txNo(t,i),Date:t.date,'Emp.No':t.empId,Name:e.name||'',Nickname:e.nick||'',Dept:e.dept||'',Level:e.level||'',Position:e.position||'',
       'PL Type':x.cat,'SG&A Type':x.cat==='Cost'?'-':`${x.sgaId}:${find(db.sgaTypes,x.sgaId)?.name||''}`,Hours:x.hours,'Project Code':x.code||'-','Project Name':x.code?entryName(x):'-',Text:x.note||'',Status:t.status}});
 }
-const histFileTag=()=>`${hs.scope}${hs.scope==='dept'?'_'+hs.dept:hs.scope==='emp'?'_'+hs.emp:hs.scope==='project'?'_'+hs.proj:''}_${hs.mode}_${hs.anchor}`.replace(/[^\w.-]+/g,'_');
+const histFileTag=()=>`${hs.scope}${hs.scope==='dept'?'_'+hs.dept:hs.scope==='emp'?'_'+hs.emp:hs.scope==='project'||hs.scope==='contract'?'_'+hsCode():''}_${hs.mode}_${hs.anchor}`.replace(/[^\w.-]+/g,'_');
 $('#xlsxLog').onclick=()=>{
   if(!xlsxReady())return;
   const rows=histExportRows();if(!rows.length)return alert('ไม่มีบันทึกงานในช่วงและขอบเขตที่เลือกให้ส่งออก');
@@ -1093,14 +1102,14 @@ function finishEnter(label,force){
   $('#login').classList.add('hide');
   $('#whoName').textContent=label;
   $('#navSetup').classList.toggle('hide',!isAdmin);
-  $('#navMem').classList.toggle('hide',!isAdmin);
+  $('#navMem').classList.toggle('hide',!isSuperAdmin);
   $('#navAdm').classList.toggle('hide',!isAdmin);
   init();
   $(`nav button[data-tab=${force?'acct':'log'}]`).click();
 }
 function enter(a){
-  if(a.kind==='admin'){me=null;user={name:a.cred.name||'ผู้ดูแลระบบ',email:a.cred.email||''};isAdmin=true}
-  else{me=a.emp;user={name:me.name,email:me.email||''};isAdmin=me.role==='admin'}
+  if(a.kind==='admin'){me=null;user={name:a.cred.name||'ผู้ดูแลระบบ',email:a.cred.email||''};isAdmin=true;isSuperAdmin=true}
+  else{me=a.emp;user={name:me.name,email:me.email||''};isAdmin=isAdminRole(me.role);isSuperAdmin=isSuperRole(me.role)}
   cur=a;
   try{sessionStorage.setItem(SKEY,JSON.stringify(a.kind==='admin'?{k:'a',id:a.cred.id}:{k:'e',id:me.id}))}catch(e){}
   finishEnter((me?me.name:(a.cred.name||'ผู้ดูแลระบบ'))+(isAdmin?' (admin)':''),a.kind==='emp'?me.mustChange:!!a.cred.mustChange);
@@ -1114,7 +1123,7 @@ function rebind(){ // หลังนำเข้าข้อมูลที่�
   if(cur?.kind==='emp'){const e=find(db.employees,cur.emp.id);if(e&&e.hash){cur.emp=cur.cred=me=e}else logoutUi()}
 }
 function logoutUi(){
-  user=me=cur=null;isAdmin=false;forceChange=false;
+  user=me=cur=null;isAdmin=isSuperAdmin=false;forceChange=false;
   try{sessionStorage.removeItem(SKEY)}catch(e){}
   ['#lgUser','#lgPass','#pwOld','#pwNew','#pwNew2'].forEach(s=>$(s).value='');
   $('#uaResult').classList.add('hide');
@@ -1140,8 +1149,8 @@ $('#setupBox').onsubmit=async ev=>{ev.preventDefault();
   catch(e){loginMsg(e.message)}
 };
 $('#devBtn').onclick=()=>{const v=$('#devUser').value;cur={kind:'dev'};
-  if(v==='__admin'){me=null;user={name:'Admin (ทดลอง)',email:''};isAdmin=true;finishEnter('Admin (ทดลอง)',false)}
-  else{const e=find(db.employees,v);user={name:e.name,email:e.email||''};me=e;isAdmin=e.role==='admin';finishEnter(e.name+' (ทดลอง)',false)}};
+  if(v==='__admin'){me=null;user={name:'Admin (ทดลอง)',email:''};isAdmin=isSuperAdmin=true;finishEnter('Admin (ทดลอง)',false)}
+  else{const e=find(db.employees,v);user={name:e.name,email:e.email||''};me=e;isAdmin=isAdminRole(e.role);isSuperAdmin=isSuperRole(e.role);finishEnter(e.name+' (ทดลอง)',false)}};
 
 /* ---- แท็บ ผู้ดูแล: จัดการบัญชีผู้ดูแลระบบ ---- */
 let adEdit=null;
@@ -1160,7 +1169,7 @@ function renderAdm(){
   $$('[data-addel]').forEach(b=>b.onclick=()=>{const a=db.admins.find(x=>x.id===b.dataset.addel);
     if(!a||db.admins.length<2||cur?.cred===a)return;
     if(confirm(`ลบบัญชีผู้ดูแลระบบ ${a.username}? (ผู้ใช้นี้จะ login ไม่ได้อีก)`)){db.admins=db.admins.filter(x=>x!==a);save();renderAdm()}});
-  $('#admMembers').innerHTML=db.employees.filter(e=>e.role==='admin').map(e=>`<tr><td>${esc(e.id)}</td><td>${esc(e.name)}</td><td>${esc(e.email||'—')}</td><td>${esc(e.username||'— (ยังไม่มีบัญชี)')}</td></tr>`).join('')||'<tr><td colspan="4" class="hint">ยังไม่มีสมาชิกที่เป็น admin</td></tr>';
+  $('#admMembers').innerHTML=db.employees.filter(e=>isAdminRole(e.role)).map(e=>`<tr><td>${esc(e.id)}</td><td>${esc(e.name)}</td><td>${esc(e.email||'—')}</td><td>${esc(e.username||'— (ยังไม่มีบัญชี)')}</td></tr>`).join('')||'<tr><td colspan="4" class="hint">ยังไม่มีสมาชิกที่เป็น admin</td></tr>';
 }
 $('#adCancel').onclick=resetAd;
 $('#adGen').onclick=()=>{
@@ -1240,7 +1249,7 @@ function renderMem(){
   $('#memList').innerHTML=db.employees.map((e,i)=>{const self=me&&me.id===e.id;
     return `<tr><td>${esc(e.id)}</td><td>${esc(e.name)}</td><td>${esc(e.dept)}</td><td>${e.email?esc(e.email):'<span class="tag sga">ไม่มีอีเมล</span>'}</td><td>${esc(e.username||'—')}</td>
     <td>${e.hash?(e.mustChange?'<span class="tag sga">รอเปลี่ยนรหัส</span>':'<span class="tag cost">มีบัญชี</span>'):'<span class="tag st">ยังไม่มีบัญชี</span>'}</td>
-    <td><select data-role="${i}" style="min-height:0;padding:5px 8px" ${self?'disabled title="เปลี่ยนสิทธิ์ตัวเองไม่ได้"':''}><option value="user" ${e.role!=='admin'?'selected':''}>user</option><option value="admin" ${e.role==='admin'?'selected':''}>admin</option></select></td>
+    <td><select data-role="${i}" style="min-height:0;padding:5px 8px" ${self?'disabled title="เปลี่ยนสิทธิ์ตัวเองไม่ได้"':''}>${roleOpts(e.role)}</select></td>
     <td><input type="checkbox" data-mact="${i}" ${e.active!==false?'checked':''} ${self?'disabled':''} style="width:auto;min-height:0"></td>
     <td style="white-space:nowrap"><button class="x" style="color:var(--pri)" data-medit="${esc(e.id)}" title="แก้ไขชื่อ/อีเมล/ข้อมูล">✎</button> ${e.hash&&e.email&&mailReady()?`<button class="btn" style="padding:4px 10px" data-rsmail="${esc(e.id)}" title="ส่งลิงก์รีเซ็ตรหัสผ่านทางอีเมล">✉ รีเซ็ต</button> `:''}${e.hash?`<button class="x" data-uadel="${esc(e.id)}" title="ลบชื่อผู้ใช้/รหัสผ่าน">✕</button>`:''}</td></tr>`}).join('')||'<tr><td colspan="9" class="hint">ยังไม่มีพนักงาน (เพิ่มในแท็บตั้งค่าข้อมูล หรือนำเข้า Excel)</td></tr>';
   $$('[data-role]').forEach(s=>s.onchange=()=>{db.employees[s.dataset.role].role=s.value;save();renderMem()});
@@ -1265,7 +1274,7 @@ function resetNm(){nmEdit=null;$('#nmForm').reset();$('#nmId').readOnly=false;$(
 function startEditMember(id){
   const e=find(db.employees,id);if(!e)return;nmEdit=id;fillNm();
   $('#nmId').value=e.id;$('#nmId').readOnly=true;$('#nmName').value=e.name||'';$('#nmEmail').value=e.email||'';$('#nmDept').value=e.dept||'';
-  $('#nmNick').value=e.nick||'';$('#nmLevel').value=e.level||'';$('#nmPos').value=e.position||'';$('#nmRole').value=e.role==='admin'?'admin':'user';$('#nmSat').checked=!!e.workSat;
+  $('#nmNick').value=e.nick||'';$('#nmLevel').value=e.level||'';$('#nmPos').value=e.position||'';$('#nmRole').value=normRole(e.role);$('#nmSat').checked=!!e.workSat;
   $('#nmTitle').textContent='แก้ไขสมาชิก '+e.id;$('#nmSubmit').textContent='บันทึกการแก้ไข';$('#nmCancel').classList.remove('hide');$('#nmMsg').textContent='';
   $('#nmForm').scrollIntoView({behavior:'smooth',block:'center'});
 }
@@ -1279,7 +1288,7 @@ $('#nmForm').onsubmit=ev=>{ev.preventDefault();normDb();
   const data={name,email,dept:$('#nmDept').value,nick:$('#nmNick').value.trim(),level:$('#nmLevel').value.trim(),position:$('#nmPos').value.trim(),role:$('#nmRole').value,workSat:$('#nmSat').checked};
   const wasEdit=!!nmEdit;
   if(wasEdit){const e=find(db.employees,nmEdit);if(!e){resetNm();return}
-    if(me&&e.id===me.id&&e.role==='admin'&&data.role!=='admin')return m.textContent='เปลี่ยนสิทธิ์ของตัวเองไม่ได้';
+    if(me&&e.id===me.id&&isSuperRole(e.role)&&data.role!=='super_admin')return m.textContent='เปลี่ยนสิทธิ์ของตัวเองไม่ได้';
     Object.assign(e,data)}
   else{if(find(db.employees,id))return m.textContent='รหัสพนักงานนี้มีอยู่แล้ว';
     db.employees.push(Object.assign({id,active:true},data))}
@@ -1388,7 +1397,7 @@ if(CLOUD&&window.supabase){
 }
 const TBL={
   employees:{t:'employees',pk:'id',admin:true,key:r=>r.id,
-    to:e=>({id:e.id,name:e.name||'',nick:e.nick||'',dept:e.dept||'',level:e.level||'',position:e.position||'',email:lc(e.email),role:e.role==='admin'?'admin':'user',work_sat:!!e.workSat,active:e.active!==false,approved:e.approved===true}),
+    to:e=>({id:e.id,name:e.name||'',nick:e.nick||'',dept:e.dept||'',level:e.level||'',position:e.position||'',email:lc(e.email),role:normRole(e.role),work_sat:!!e.workSat,active:e.active!==false,approved:e.approved===true}),
     from:r=>({id:r.id,name:r.name,nick:r.nick||'',dept:r.dept||'',level:r.level||'',position:r.position||'',email:r.email,role:r.role,workSat:!!r.work_sat,active:r.active!==false,linked:!!r.user_id,uid:r.user_id,approved:!!r.approved,lineLinked:!!r.line_user_id,hash:r.user_id?'linked':undefined})},
   depts:{t:'departments',pk:'id',admin:true,key:r=>r.id,
     to:d=>({id:d.id,name:d.name||'',active:d.active!==false}),from:r=>({id:r.id,name:r.name,active:r.active!==false})},
@@ -1488,7 +1497,7 @@ if(CLOUD){
     return 'สมัครไม่สำเร็จ: '+m+(c?' ('+c+')':'');
   }
   const _finish=finishEnter;
-  finishEnter=function(l,f){_finish(l,f);$('#navAdm').classList.add('hide');const pend=isAdmin?db.employees.filter(e=>e.linked&&!e.approved).length:0;$('#navMem').textContent=pend?'สมาชิก ('+pend+')':'สมาชิก'};
+  finishEnter=function(l,f){_finish(l,f);$('#navAdm').classList.add('hide');const pend=isSuperAdmin?db.employees.filter(e=>e.linked&&!e.approved).length:0;$('#navMem').textContent=pend?'สมาชิก ('+pend+')':'สมาชิก'};
 
   /* ---- ผูก LINE: รหัส 6 หลัก → ส่งไปที่ LINE@ → Edge Function ผูกบัญชีให้ ---- */
   // ส่งลิงก์ตั้งรหัสผ่านใหม่: ถ้าผู้ใช้ผูก LINE ไว้ → ส่งทาง LINE@ ส่วนตัว ไม่เช่นนั้นส่งทางอีเมล
@@ -1546,12 +1555,12 @@ if(CLOUD){
     me=db.employees.find(e=>e.uid===session.user.id)||null;
     if(!me||me.active===false){try{await sb.auth.signOut()}catch(_){}resetCloud();return loginMsg('บัญชีนี้ยังไม่ผูกกับรหัสพนักงานที่ใช้งานอยู่ กรุณาติดต่อ Admin')}
     if(!me.approved){showPending();return}
-    isAdmin=me.role==='admin';user={name:me.name,email:me.email};
+    isAdmin=isAdminRole(me.role);isSuperAdmin=isSuperRole(me.role);user={name:me.name,email:me.email};
     cur={kind:'cloud',cred:{username:sbEmail}};
     finishEnter(me.name+(isAdmin?' (admin)':''),false);
     setSync('ok');
   }
-  function resetCloud(){db=emptyCloudDb();snap={};user=me=cur=null;isAdmin=false;forceChange=false;const el=$('#syncState');if(el)el.classList.add('hide')}
+  function resetCloud(){db=emptyCloudDb();snap={};user=me=cur=null;isAdmin=isSuperAdmin=false;forceChange=false;const el=$('#syncState');if(el)el.classList.add('hide')}
 
   $('#pwBox').onsubmit=async ev=>{ev.preventDefault();
     const email=$('#lgUser').value.trim(),pw=$('#lgPass').value;
@@ -1628,7 +1637,7 @@ if(CLOUD){
       const selfRow=me&&me.id===e.id;
       const pendBtns=(!selfRow&&e.linked&&!e.approved)?`<button class="btn" style="padding:4px 10px;color:var(--bad)" data-crej="${esc(e.id)}" title="ปฏิเสธและลบคำขอสมัครนี้">ปฏิเสธ</button> <button class="btn" style="padding:4px 10px" data-cid="${esc(e.id)}" title="แก้รหัสพนักงานให้ถูกต้อง">แก้รหัส</button> `:'';
       const apBtn=selfRow?'':(e.approved?`<button class="btn" style="padding:4px 10px" data-capp="${esc(e.id)}" title="ระงับการใช้งาน">ระงับ</button> `:`<button class="btn ok" style="padding:4px 10px" data-capp="${esc(e.id)}">อนุมัติ</button> `);
-      td.innerHTML=apBtn+pendBtns+`<button class="x" style="color:var(--pri)" data-medit="${esc(e.id)}" title="แก้ไขชื่อ/อีเมล/ข้อมูล">✎</button> `+(e.linked?`<button class="btn" style="padding:4px 10px" data-cmail="${esc(e.id)}" title="ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่">✉ รีเซ็ต</button>`:'');
+      td.innerHTML=apBtn+pendBtns+`<button class="x" style="color:var(--pri)" data-medit="${esc(e.id)}" title="แก้ไขชื่อ/อีเมล/ข้อมูล">✎</button> `+(e.linked?`<button class="btn" style="padding:4px 10px" data-cmail="${esc(e.id)}" title="ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่">✉ รีเซ็ต</button> `:'')+(selfRow?'':`<button class="x" style="color:var(--bad)" data-cdel="${esc(e.id)}" title="ลบสมาชิกถาวร">🗑</button>`);
       td.querySelectorAll('[data-medit]').forEach(b=>b.onclick=()=>startEditMember(b.dataset.medit));
       td.querySelectorAll('[data-capp]').forEach(b=>b.onclick=()=>{
         if(!e.approved&&e.linked&&!e.lineLinked&&!confirm('ผู้สมัครคนนี้ยังไม่ได้ผูก LINE จึงจะไม่ได้รับข้อความแจ้งอนุมัติทาง LINE\nอนุมัติต่อหรือไม่?'))return;
@@ -1637,6 +1646,15 @@ if(CLOUD){
         if(!confirm(`ปฏิเสธและลบคำขอสมัครของ ${e.name} (${e.email})? ผู้สมัครจะต้องสมัครใหม่`))return;
         const {error}=await sb.rpc('admin_reject',{p_id:e.id});if(error)return alert('ปฏิเสธไม่สำเร็จ: '+error.message);
         db.employees=db.employees.filter(x=>x.id!==e.id);if(snap.employees)delete snap.employees[e.id];renderMem()});
+      td.querySelectorAll('[data-cdel]').forEach(b=>b.onclick=async()=>{
+        if(!isSuperAdmin)return;
+        if(!confirm(`ลบสมาชิก ${e.name} (${e.id}) ถาวร?\nจะลบบัญชีเข้าสู่ระบบ ข้อมูลบันทึกงาน และการมอบหมายโครงการของเขาทั้งหมด ย้อนกลับไม่ได้\n(หากเพียงต้องการหยุดใช้งาน ให้กด "ระงับ" แทน)`))return;
+        const typed=(prompt('พิมพ์รหัสพนักงาน '+e.id+' เพื่อยืนยันการลบ')||'').trim();if(typed!==e.id)return alert('รหัสไม่ตรง ยกเลิกการลบ');
+        const {error}=await sb.rpc('admin_delete_employee',{p_id:e.id});
+        if(error)return alert('ลบไม่สำเร็จ: '+(/LAST_SUPER/.test(error.message)?'ต้องเหลือ Super Admin อย่างน้อย 1 คน':/SELF/.test(error.message)?'ลบตัวเองไม่ได้':/FORBIDDEN/.test(error.message)?'ไม่มีสิทธิ์ (ต้องเป็น Super Admin และรัน SQL อัปเดตสิทธิ์แล้ว)':error.message));
+        const id=e.id;db.employees=db.employees.filter(x=>x.id!==id);db.timesheets=db.timesheets.filter(x=>x.empId!==id);db.assign=(db.assign||[]).filter(x=>x.empId!==id);
+        for(const k of ['employees','timesheets','assign']){if(snap[k])for(const key of Object.keys(snap[k]))if(key===id||key.indexOf(id+'|')===0||key.indexOf('|'+id)>0)delete snap[k][key]}
+        renderMem()});
       td.querySelectorAll('[data-cid]').forEach(b=>b.onclick=async()=>{
         const nid=(prompt('รหัสพนักงานที่ถูกต้องของ '+e.name,e.id)||'').trim();if(!nid||nid===e.id)return;
         const {error}=await sb.rpc('admin_rename_emp',{p_old:e.id,p_new:nid});if(error)return alert('เปลี่ยนรหัสไม่สำเร็จ: '+(/ID_EXISTS/.test(error.message)?'รหัสนี้มีอยู่แล้ว':error.message));
