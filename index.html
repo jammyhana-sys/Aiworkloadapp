@@ -333,6 +333,12 @@ header>*{min-width:0}
     </form>
     <div class="scroll" style="margin-top:12px"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>พนักงานที่ได้รับ assign</th></tr></thead><tbody id="asgList"></tbody></table></div>
   </div>
+  <div class="card"><h2>นำเข้าโครงการ / Sales Contract จาก Excel (อัปเดตอัตโนมัติ)</h2>
+    <p class="hint">เลือกไฟล์ .xlsx ที่มีคอลัมน์ <b>Project Code, Project Name</b> (ชีต Projects หรือชีตแรก; มีคอลัมน์ <b>Kind</b> = cost / mt / backlog ได้ ถ้าไม่มีระบบจัดให้เอง: รหัสลงท้าย -MT = mt ที่เหลือ = cost) และ/หรือชีต SalesContracts (คอลัมน์ <b>Sales Contract No., Sales Contract Name</b>) — ระบบ<b>เพิ่มรหัสใหม่ + อัปเดตชื่อ/ประเภทของรหัสเดิม</b> ไม่ลบรหัสอื่นที่มีอยู่ และตัดรหัสซ้ำในไฟล์ให้เอง</p>
+    <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="pjOff" style="width:auto;min-height:0"> ปิดการใช้งานรหัสโครงการที่ไม่อยู่ในไฟล์ (ไม่ลบ ย้อนกลับได้)</label>
+    <label class="btn pri" style="display:inline-block;cursor:pointer">⬆ เลือกไฟล์ Excel โครงการ<input type="file" id="pjImp" accept=".xlsx,.xls" class="hide"></label>
+    <div class="hint" id="pjMsg" style="margin-top:8px"></div>
+  </div>
   <div class="card"><h2>ฐานข้อมูล Excel</h2>
     <p class="hint">ไฟล์ .xlsx มี 7 ชีต: Employees, Departments, Projects, SalesContracts, Assignments, Holidays, WorkLog — นำเข้าเฉพาะชีตที่มีในไฟล์ (ชีตที่ไม่มีจะไม่ถูกแตะ) การนำเข้าจะ <b>แทนที่</b>ข้อมูลของชีตนั้นทั้งหมด</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -965,6 +971,34 @@ function xDate(v){
   if(typeof v==='number'){const d=XLSX.SSF.parse_date_code(v);return `${d.y}-${pad(d.m)}-${pad(d.d)}`}
   const s=S(v),m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);return m?`${m[3]}-${pad(m[2])}-${pad(m[1])}`:s.slice(0,10);
 }
+/* นำเข้าโครงการ / Sales Contract แบบอัปเดต (merge ตามรหัส ไม่แทนที่ทั้งหมด) */
+$('#pjImp').onchange=async ev=>{
+  const file=ev.target.files[0];ev.target.value='';if(!file||!xlsxReady())return;const msg=$('#pjMsg');
+  try{
+    const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});
+    const sh=n=>wb.SheetNames.includes(n)?XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:''}):null;
+    let pr=sh('Projects');
+    if(!pr){const f=wb.SheetNames.map(n=>XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:''})).find(r=>r.length&&('Project Code' in r[0]));pr=f||null}
+    const cr=sh('SalesContracts');
+    if(!pr&&!cr)return msg.textContent='ไม่พบคอลัมน์ "Project Code" หรือชีต SalesContracts ในไฟล์';
+    const nd=JSON.parse(JSON.stringify(db)),sum=[],KS=['cost','mt','backlog'];
+    const run=(list,rows,codeK,nameK,kindK,label)=>{
+      const seen=new Map();rows.forEach(x=>{const c=S(x[codeK]);if(c)seen.set(c,x)});   // ซ้ำ = ใช้แถวหลังสุด
+      let add=0,upd=0,same=0,off=0;
+      seen.forEach((x,c)=>{
+        const name=S(x[nameK]).replace(/\s+/g,' '),o=list.find(y=>y.id===c);
+        let kind;if(kindK){const k=S(x.Kind).toLowerCase();kind=KS.includes(k)?k:(o?o.kind:(/-MT$/i.test(c)?'mt':'cost'))}
+        if(!o){list.push(kindK?{id:c,name,kind,active:true}:{id:c,name,active:true});add++}
+        else{const ch=(name&&name!==o.name)||(kindK&&kind!==o.kind)||o.active===false;
+          if(ch){if(name)o.name=name;if(kindK)o.kind=kind;o.active=true;upd++}else same++}});
+      if($('#pjOff').checked)list.forEach(o=>{if(!seen.has(o.id)&&o.active!==false){o.active=false;off++}});
+      sum.push(`${label}: ใหม่ ${add} · อัปเดต ${upd} · เหมือนเดิม ${same}${off?` · ปิดใช้งาน ${off}`:''} (ในไฟล์ ${seen.size} รหัสไม่ซ้ำ)`)};
+    if(pr)run(nd.projects,pr,'Project Code','Project Name',true,'Project');
+    if(cr)run(nd.contracts,cr,'Sales Contract No.','Sales Contract Name',false,'Sales Contract');
+    if(!confirm('สรุปการนำเข้า\n'+sum.join('\n')+'\n\nดำเนินการต่อ?'))return msg.textContent='ยกเลิกแล้ว';
+    db=nd;save();rebind();init();renderSetup();msg.textContent='นำเข้าสำเร็จ — '+sum.join(' | ');
+  }catch(e){msg.textContent='นำเข้าไม่สำเร็จ: '+e.message}
+};
 $('#xImp').onchange=async ev=>{
   const file=ev.target.files[0];ev.target.value='';if(!file||!xlsxReady())return;
   try{
