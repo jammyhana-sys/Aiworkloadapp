@@ -1,6 +1,6 @@
 {
-  "name": "DEMCO Timesheet",
-  "short_name": "Timesheet",
+  "name": "Demco Workload Timesheet V 1.0",
+  "short_name": "Demco Timesheet",
   "description": "บันทึกชั่วโมงการทำงานรายวัน Cost / SG&A",
   "lang": "th",
   "start_url": "./",
