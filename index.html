@@ -1206,6 +1206,12 @@ if(CLOUD){
     const h=$('#regBox .hint');if(h)h.textContent='สมัครสมาชิกด้วยชื่อ รหัสพนักงาน และอีเมลบริษัท — หลังสมัครต้องรอ Admin ตรวจสอบและอนุมัติก่อนจึงเข้าใช้งานได้';
     $('#rgEmail').previousElementSibling.textContent='อีเมลบริษัท';
   })();
+  function signupErrMsg(er){const m=er.message||'',c=er.code||'';
+    if(/already|registered/i.test(m))return 'อีเมลนี้สมัครแล้ว — เข้าสู่ระบบ หรือกด "ลืมรหัสผ่าน?" (ถ้าเข้าไม่ได้ ให้แจ้ง Admin ตรวจในแท็บสมาชิก)';
+    if(/rate.?limit|too many|sending.*(confirmation|email)|email.*(send|sent)/i.test(m+' '+c))return 'ส่งอีเมลยืนยันไม่สำเร็จ (โควตาอีเมลของ Supabase เต็ม) — บัญชีอาจถูกสร้างแล้ว ให้แจ้ง Admin ตรวจในแท็บสมาชิก และปิด "Confirm email" ที่ Supabase';
+    if(/password|weak/i.test(m+' '+c))return 'รหัสผ่านไม่ผ่านเงื่อนไขของระบบ: '+m;
+    return 'สมัครไม่สำเร็จ: '+m+(c?' ('+c+')':'');
+  }
   const _finish=finishEnter;
   finishEnter=function(l,f){_finish(l,f);$('#navAdm').classList.add('hide');const pend=isAdmin?db.employees.filter(e=>e.linked&&!e.approved).length:0;$('#navMem').textContent=pend?'สมาชิก ('+pend+')':'สมาชิก'};
 
@@ -1238,7 +1244,7 @@ if(CLOUD){
     if(!name)return loginMsg('กรุณากรอกชื่อ-นามสกุล');
     if(!empId)return loginMsg('กรุณากรอกรหัสพนักงาน');
     const {data,error}=await sb.auth.signUp({email,password:p1,options:{emailRedirectTo:location.origin+location.pathname,data:{emp_id:empId,full_name:name}}});
-    if(error)return loginMsg(/already|registered/i.test(error.message)?'อีเมลนี้สมัครแล้ว — เข้าสู่ระบบ หรือกด "ลืมรหัสผ่าน?"':'สมัครไม่สำเร็จ — ตรวจสอบอีเมลและรหัสผ่านให้ถูกต้อง (รหัสผ่านต้อง 8 ตัวขึ้นไป มีตัวอักษรและตัวเลข)');
+    if(error){console.error('signUp error',error);return loginMsg(signupErrMsg(error))}
     ['#rgName','#rgEmp','#rgEmail','#rgPass','#rgPass2'].forEach(s=>$(s).value='');
     if(data&&data.session){await onSignedIn(data.session);return}
     showMode('login');loginMsg('สมัครสำเร็จ — รอ Admin อนุมัติก่อน จึงจะเข้าสู่ระบบได้',true);
