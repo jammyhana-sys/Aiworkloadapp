@@ -171,6 +171,13 @@ header>*{min-width:0}
     <label style="margin-top:10px">ยืนยันรหัสผ่าน</label><input id="suPass2" type="password" autocomplete="new-password" required>
     <button class="btn pri" style="width:100%;margin-top:14px">สร้างบัญชี Admin</button>
   </form>
+  <div id="pendBox" class="pwbox hide">
+    <div class="notice" style="margin:0 0 12px">สมัครสมาชิกเรียบร้อย — <b>รอ Admin อนุมัติ</b> ก่อนจึงจะเข้าใช้งานได้</div>
+    <h3 style="margin:0 0 6px;font-size:15px">รับแจ้งเตือนทาง LINE เมื่อได้รับอนุมัติ</h3>
+    <div id="pendLine"></div>
+    <button class="btn" id="pendCheck" style="width:100%;margin-top:14px">ตรวจสอบสถานะ</button>
+    <button class="btn" id="pendOut" style="width:100%;margin-top:8px">ออกจากระบบ</button>
+  </div>
   <div id="devBox" class="hide" style="margin-top:18px;text-align:left">
     <div class="notice">ยังไม่ได้ตั้งบัญชี Admin — <b>โหมดทดลองเท่านั้น</b> (ปุ่มนี้จะหายไปเมื่อสร้างบัญชี Admin แล้ว)</div>
     <label style="margin-top:10px">เข้าใช้งานเป็น</label><select id="devUser"></select>
@@ -382,6 +389,7 @@ header>*{min-width:0}
       <button class="btn pri">บันทึกรหัสผ่านใหม่</button>
     </form>
   </div>
+  <div class="card hide" id="lineCard"><h2>ผูก LINE (รับการแจ้งเตือนส่วนตัว)</h2><div id="lineBox"></div></div>
   <div class="card hide" id="sessCard"><h2>บัญชีของฉัน</h2><div class="hint" id="sessNote"></div></div>
 </section>
 
@@ -442,7 +450,9 @@ const CONFIG={
   /* ฐานข้อมูลกลาง Supabase — Project Settings > API: ใส่ Project URL และ anon public key (เป็นค่าสาธารณะ ไม่ใช่ความลับ)
      ห้ามใส่ service_role key เด็ดขาด | เว้นว่าง = ใช้โหมดเก็บในเบราว์เซอร์เครื่องเดียว (ไม่ซิงก์) */
   supabaseUrl:'https://vhhekmpkcqlgesojvlws.supabase.co',
-  supabaseKey:'sb_publishable_I5aGYPaJKemi6HP8Liijeg_Hb_M7-SQ'
+  supabaseKey:'sb_publishable_I5aGYPaJKemi6HP8Liijeg_Hb_M7-SQ',
+  /* ลิงก์เพิ่มเพื่อน LINE@ ของบริษัท เช่น 'https://line.me/R/ti/p/@123abcde' (เว้นว่าง = ไม่แสดงปุ่มเพิ่มเพื่อน) */
+  lineOaUrl:'https://line.me/R/ti/p/@099lvbfw'
 };
 const CLOUD=!!(CONFIG.supabaseUrl&&CONFIG.supabaseKey);
 const REC_URL=/type=recovery/.test(location.hash);   // เปิดจากลิงก์รีเซ็ตรหัสผ่านใน Supabase
@@ -1054,11 +1064,11 @@ function showMode(m){ // login | reg | forgot | reset
   $('#pwBox').classList.toggle('hide',m!=='login');
   $('#regBox').classList.toggle('hide',m!=='reg');
   $('#fgBox').classList.toggle('hide',m!=='forgot');
-  $('#rsBox').classList.toggle('hide',m!=='reset');
+  $('#rsBox').classList.toggle('hide',m!=='reset');$('#pendBox').classList.toggle('hide',m!=='pending');
   $('#regLink').textContent=m==='reg'?'← กลับไปเข้าสู่ระบบ':'สมัครสมาชิก';
   $('#regLink').classList.toggle('hide',!db.settings.regOpen||m==='forgot'||m==='reset');
   $('#fgLink').textContent=m==='forgot'?'← กลับไปเข้าสู่ระบบ':'ลืมรหัสผ่าน?';
-  $('#fgLink').classList.toggle('hide',m==='reg'||m==='reset');
+  $('#fgLink').classList.toggle('hide',m==='reg'||m==='reset'||m==='pending');
   loginMsg('');
 }
 const showReg=on=>showMode(on?'reg':'login');
@@ -1376,7 +1386,7 @@ if(CLOUD&&window.supabase){
 const TBL={
   employees:{t:'employees',pk:'id',admin:true,key:r=>r.id,
     to:e=>({id:e.id,name:e.name||'',nick:e.nick||'',dept:e.dept||'',level:e.level||'',position:e.position||'',email:lc(e.email),role:e.role==='admin'?'admin':'user',work_sat:!!e.workSat,active:e.active!==false,approved:e.approved===true}),
-    from:r=>({id:r.id,name:r.name,nick:r.nick||'',dept:r.dept||'',level:r.level||'',position:r.position||'',email:r.email,role:r.role,workSat:!!r.work_sat,active:r.active!==false,linked:!!r.user_id,uid:r.user_id,approved:!!r.approved,hash:r.user_id?'linked':undefined})},
+    from:r=>({id:r.id,name:r.name,nick:r.nick||'',dept:r.dept||'',level:r.level||'',position:r.position||'',email:r.email,role:r.role,workSat:!!r.work_sat,active:r.active!==false,linked:!!r.user_id,uid:r.user_id,approved:!!r.approved,lineLinked:!!r.line_user_id,hash:r.user_id?'linked':undefined})},
   depts:{t:'departments',pk:'id',admin:true,key:r=>r.id,
     to:d=>({id:d.id,name:d.name||'',active:d.active!==false}),from:r=>({id:r.id,name:r.name,active:r.active!==false})},
   projects:{t:'projects',pk:'id',admin:true,key:r=>r.id,
@@ -1446,11 +1456,11 @@ if(CLOUD){
     $('#pwBox').classList.toggle('hide',m!=='login');
     $('#regBox').classList.toggle('hide',m!=='reg');
     $('#fgBox').classList.toggle('hide',m!=='forgot');
-    $('#rsBox').classList.toggle('hide',m!=='reset');
+    $('#rsBox').classList.toggle('hide',m!=='reset');$('#pendBox').classList.toggle('hide',m!=='pending');
     $('#regLink').textContent=m==='reg'?'← กลับไปเข้าสู่ระบบ':'สมัครสมาชิก';
-    $('#regLink').classList.toggle('hide',m==='forgot'||m==='reset');
+    $('#regLink').classList.toggle('hide',m==='forgot'||m==='reset'||m==='pending');
     $('#fgLink').textContent=m==='forgot'?'← กลับไปเข้าสู่ระบบ':'ลืมรหัสผ่าน?';
-    $('#fgLink').classList.toggle('hide',m==='reg'||m==='reset');
+    $('#fgLink').classList.toggle('hide',m==='reg'||m==='reset'||m==='pending');
     loginMsg('');
   };
   showLoginView=function(){
@@ -1476,13 +1486,51 @@ if(CLOUD){
   const _finish=finishEnter;
   finishEnter=function(l,f){_finish(l,f);$('#navAdm').classList.add('hide');const pend=isAdmin?db.employees.filter(e=>e.linked&&!e.approved).length:0;$('#navMem').textContent=pend?'สมาชิก ('+pend+')':'สมาชิก'};
 
+  /* ---- ผูก LINE: รหัส 6 หลัก → ส่งไปที่ LINE@ → Edge Function ผูกบัญชีให้ ---- */
+  let lineTimer=null,pendTimer=null;
+  function pollLine(el){clearInterval(lineTimer);let n=0;lineTimer=setInterval(async()=>{
+    if(++n>120||!me){clearInterval(lineTimer);return}
+    const {data}=await sb.from('employees').select('line_user_id').eq('id',me.id).limit(1);
+    if(data&&data[0]&&data[0].line_user_id){clearInterval(lineTimer);me.lineLinked=true;renderLineBox(el);
+      const out=el.querySelector('#lineCodeOut');if(out)out.innerHTML='<div class="notice" style="margin:0 0 10px">ผูก LINE สำเร็จ ✓</div>'}},5000)}
+  function renderLineBox(el){
+    const linked=!!(me&&me.lineLinked);
+    el.innerHTML=`<div class="hint" style="margin-bottom:10px">${linked?'<b style="color:var(--cost)">ผูก LINE แล้ว ✓</b> — ระบบจะแจ้งเตือนทาง LINE ส่วนตัว (เช่น เตือนบันทึกเวลาไม่ครบ 8 ชม.)':'ยังไม่ได้ผูก LINE — ทำตาม 3 ขั้นตอน: เพิ่มเพื่อน LINE@ → กดสร้างรหัส → ส่งรหัสไปที่แชต LINE@'}</div>
+      <div id="lineCodeOut"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${CONFIG.lineOaUrl?`<a class="btn" href="${esc(CONFIG.lineOaUrl)}" target="_blank" rel="noopener" style="text-decoration:none">1) เพิ่มเพื่อน LINE@</a>`:''}
+      <button class="btn pri" data-lgen>${linked?'ผูกใหม่ / เปลี่ยนบัญชี LINE':'2) สร้างรหัสผูก LINE'}</button>
+      ${linked?'<button class="btn" data-lunlink>ยกเลิกการผูก</button>':''}</div>`;
+    el.querySelector('[data-lgen]').onclick=async()=>{
+      const out=el.querySelector('#lineCodeOut');const {data,error}=await sb.rpc('request_line_link');
+      if(error)return out.innerHTML=`<div class="err">สร้างรหัสไม่สำเร็จ: ${esc(error.message)}</div>`;
+      out.innerHTML=`<div class="notice" style="margin:0 0 10px">3) ส่งรหัสนี้ไปที่ LINE@ ของบริษัท ภายใน 10 นาที: <b style="font-size:24px;letter-spacing:4px">${esc(data)}</b></div>`;
+      pollLine(el)};
+    const un=el.querySelector('[data-lunlink]');
+    if(un)un.onclick=async()=>{if(!confirm('ยกเลิกการผูก LINE? จะไม่ได้รับการแจ้งเตือนทาง LINE อีก'))return;
+      const {error}=await sb.rpc('unlink_line');if(!error){me.lineLinked=false;renderLineBox(el)}};
+  }
+  async function pendRefresh(manual){
+    const {data:s}=await sb.auth.getSession();
+    if(!s||!s.session||!me){clearInterval(pendTimer);return}
+    const {data}=await sb.from('employees').select('approved').eq('id',me.id).limit(1);
+    if(data&&data[0]&&data[0].approved){clearInterval(pendTimer);clearInterval(lineTimer);await onSignedIn(s.session);return}
+    if(manual)loginMsg('ยังไม่ได้รับการอนุมัติ — กรุณารอ Admin ตรวจสอบ');
+  }
+  function showPending(){
+    loginMsg('');showMode('pending');renderLineBox($('#pendLine'));
+    clearInterval(pendTimer);pendTimer=setInterval(()=>pendRefresh(false),20000);
+  }
+  $('#pendCheck').onclick=()=>pendRefresh(true);
+  $('#pendOut').onclick=async()=>{clearInterval(pendTimer);clearInterval(lineTimer);try{await sb.auth.signOut()}catch(_){}resetCloud();showLoginView()};
+
   async function onSignedIn(session){
     sbEmail=session.user.email||'';
     try{await loadCloud()}
     catch(e){try{await sb.auth.signOut()}catch(_){}resetCloud();return loginMsg('โหลดข้อมูลไม่สำเร็จ: '+(e.message||e))}
     me=db.employees.find(e=>e.uid===session.user.id)||null;
     if(!me||me.active===false){try{await sb.auth.signOut()}catch(_){}resetCloud();return loginMsg('บัญชีนี้ยังไม่ผูกกับรหัสพนักงานที่ใช้งานอยู่ กรุณาติดต่อ Admin')}
-    if(!me.approved){try{await sb.auth.signOut()}catch(_){}resetCloud();return loginMsg('สมัครสมาชิกแล้ว — รอ Admin อนุมัติก่อนจึงจะเข้าใช้งานได้ กรุณาลองเข้าสู่ระบบใหม่ภายหลัง')}
+    if(!me.approved){showPending();return}
     isAdmin=me.role==='admin';user={name:me.name,email:me.email};
     cur={kind:'cloud',cred:{username:sbEmail}};
     finishEnter(me.name+(isAdmin?' (admin)':''),false);
@@ -1533,6 +1581,7 @@ if(CLOUD){
   renderAcct=function(){_acct();
     $('#pwCard').classList.remove('hide');$('#sessCard').classList.add('hide');
     $('#myUser').value=sbEmail;$('#forceNote').classList.add('hide');
+    $('#lineCard').classList.remove('hide');renderLineBox($('#lineBox'));
   };
   $('#pwForm').onsubmit=async ev=>{ev.preventDefault();
     const m=$('#pwMsg');m.className='err';m.style.color='';
@@ -1560,6 +1609,7 @@ if(CLOUD){
       $('#tab-mem').insertBefore(n,$('#tab-mem').firstChild)}
     [...$('#memList').children].forEach((tr,i)=>{const e=db.employees[i],td=tr.lastElementChild;if(!e||!td)return;
       const stc=tr.children[4];if(stc)stc.innerHTML=!e.linked?'<span class="tag st">ยังไม่สมัคร</span>'+(e.approved?' <span class="hint">(อนุมัติล่วงหน้า)</span>':''):(e.approved?'<span class="tag cost">ใช้งานได้</span>':'<span class="tag sga">รออนุมัติ</span>');
+      if(stc&&e.lineLinked)stc.innerHTML+=' <span class="hint">LINE ✓</span>';
       const selfRow=me&&me.id===e.id;
       const pendBtns=(!selfRow&&e.linked&&!e.approved)?`<button class="btn" style="padding:4px 10px;color:var(--bad)" data-crej="${esc(e.id)}" title="ปฏิเสธและลบคำขอสมัครนี้">ปฏิเสธ</button> <button class="btn" style="padding:4px 10px" data-cid="${esc(e.id)}" title="แก้รหัสพนักงานให้ถูกต้อง">แก้รหัส</button> `:'';
       const apBtn=selfRow?'':(e.approved?`<button class="btn" style="padding:4px 10px" data-capp="${esc(e.id)}" title="ระงับการใช้งาน">ระงับ</button> `:`<button class="btn ok" style="padding:4px 10px" data-capp="${esc(e.id)}">อนุมัติ</button> `);
