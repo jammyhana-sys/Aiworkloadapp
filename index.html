@@ -112,6 +112,12 @@ td.n,th.n{text-align:right;white-space:nowrap}
 .seg2 button.on{background:var(--card);color:var(--pri);box-shadow:0 1px 4px rgba(34,48,73,.15);font-weight:600}
 .sumline{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-weight:600;font-size:13.5px}
 .sumline span{background:var(--pri-soft);padding:3px 10px;border-radius:14px}
+.hfilters{display:flex;gap:8px;flex-wrap:wrap;flex:1;justify-content:flex-end}
+.hfilters select{max-width:300px;min-width:180px}
+html,body{max-width:100%;overflow-x:hidden}
+header>*{min-width:0}
+#who{flex-wrap:wrap;justify-content:flex-end}
+#whoName{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dashnav{display:flex;gap:6px;align-items:center}
 .dashnav .btn{padding:6px 12px;min-height:0}
 #dashLabel{min-width:150px;text-align:center;font-weight:600;font-size:14px}
@@ -258,20 +264,50 @@ td.n,th.n{text-align:right;white-space:nowrap}
 <!-- ===== HISTORY ===== -->
 <section id="tab-hist" class="hide">
   <div class="card">
-    <div class="row">
-      <div><label>เดือน</label><input type="month" id="hMonth"></div>
-      <div><label>พนักงาน</label><select id="hEmp"></select></div>
-      <div style="align-self:end;display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" id="xlsxLog">⬇ ส่งออก Excel (บันทึกงาน)</button><button class="btn" id="csv">⬇ CSV</button></div>
+    <div class="dashhead">
+      <div class="seg2" id="hMode">
+        <button data-m="day">วัน</button><button data-m="week">สัปดาห์</button><button data-m="month" class="on">เดือน</button><button data-m="quarter">ไตรมาส</button><button data-m="year">ปี</button>
+      </div>
+      <div class="dashnav">
+        <button class="btn" id="hPrev" title="ช่วงก่อนหน้า">‹</button>
+        <span id="hLabel"></span>
+        <button class="btn" id="hNext" title="ช่วงถัดไป">›</button>
+        <button class="btn" id="hToday">ปัจจุบัน</button>
+      </div>
+    </div>
+    <div class="dashhead" style="margin-bottom:0">
+      <div class="seg2" id="hScope"></div>
+      <div class="hfilters">
+        <select id="hDept" class="hide" aria-label="ฝ่าย"></select>
+        <select id="hEmp" class="hide" aria-label="พนักงาน"></select>
+        <select id="hProj" class="hide" aria-label="โครงการ"></select>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+      <button class="btn pri" id="xlsxLog">⬇ ส่งออก Excel (ตามตัวกรอง)</button><button class="btn" id="csv">⬇ CSV</button>
     </div>
   </div>
+
   <div class="card">
-    <h2>สรุปรายเดือน</h2>
+    <h2 id="hTitle">สรุป</h2>
     <div class="sum" id="hSum"></div>
     <div class="hint" id="hBase" style="margin-top:6px"></div>
-    <div class="scroll" style="margin-top:12px"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>ประเภท</th><th class="n">ชม.</th></tr></thead><tbody id="hBreak"></tbody></table></div>
+    <div class="scroll" style="margin-top:12px"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>ประเภท</th><th class="n">ชม.</th><th class="n">สัดส่วน</th></tr></thead><tbody id="hBreak"></tbody></table></div>
   </div>
+
+  <div class="card hide" id="hPeopleCard">
+    <h2 id="hPeopleTitle">สรุปรายคน</h2>
+    <div class="scroll"><table><thead id="hPeopleHead"></thead><tbody id="hPeople"></tbody></table></div>
+  </div>
+
   <div class="card">
-    <h2>ใบบันทึกงาน</h2>
+    <h2>รายการงาน</h2>
+    <div class="scroll"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th>ประเภท</th><th>รหัส / ชื่อ</th><th>รายละเอียด</th><th class="n">ชม.</th></tr></thead><tbody id="hEntries"></tbody></table></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button class="btn hide" id="hMore">แสดงเพิ่ม</button><span class="hint" id="hCount"></span></div>
+  </div>
+
+  <div class="card" id="hSheetsCard">
+    <h2>ใบบันทึกงานรายวัน</h2>
     <div class="scroll"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th>สถานะ</th><th class="n">Cost</th><th class="n">SG&amp;A</th><th class="n">รวม</th><th></th></tr></thead><tbody id="hList"></tbody></table></div>
   </div>
 </section>
@@ -668,40 +704,152 @@ $('#submit').onclick=()=>{const t=curSheet(false);if(!t)return;t.status='Submitt
 $('#reopen').onclick=()=>{const t=curSheet(false);if(!t||!confirm('ยกเลิกการส่งเพื่อแก้ไข?'))return;t.status='Draft';t.submittedAt=null;save();renderLog()};
 $('#emp').onchange=()=>{syncForm();renderLog()};$('#date').onchange=renderLog;
 
-/* ---- history ---- */
-function workdays(e,m){let n=0;const [y,mo]=m.split('-').map(Number);for(let d=1;d<=new Date(y,mo,0).getDate();d++)if(dayInfo(e,`${m}-${pad(d)}`).work)n++;return n}
-function renderHist(){
-  if(!$('#hMonth').value)$('#hMonth').value=todayStr().slice(0,7);
-  const he=$('#hEmp'),keep=he.value;
-  he.innerHTML=(isAdmin?'<option value="">ทุกคน</option>':'')+(isAdmin?db.employees:[me]).map(e=>`<option value="${esc(e.id)}">${esc(e.id+' — '+e.name)}</option>`).join('');he.value=keep;
-  if(!isAdmin)he.value=me.id;
-  const m=$('#hMonth').value;
-  const list=db.timesheets.filter(t=>t.date.startsWith(m)&&(!he.value||t.empId===he.value)).sort((a,b)=>b.date.localeCompare(a.date));
-  let c=0,s=0;const brk={};
-  list.forEach(t=>t.entries.forEach(e=>{const k=e.cat==='Cost'?e.code:(e.sgaId+(e.code?' · '+e.code:''));
-    brk[k]=brk[k]||{cat:e.cat,h:0,name:e.cat==='Cost'?entryName(e):find(db.sgaTypes,e.sgaId)?.name||''};brk[k].h+=e.hours;e.cat==='Cost'?c+=e.hours:s+=e.hours}));
-  const all=c+s;
-  $('#hSum').innerHTML=`<span>รวม <b>${all}</b> ชม.</span><span style="color:var(--cost)">Cost <b>${c}</b> (${all?Math.round(c/all*100):0}%)</span><span style="color:var(--sga)">SG&A <b>${s}</b> (${all?Math.round(s/all*100):0}%)</span>`;
-  if(he.value){const wd=workdays(find(db.employees,he.value),m);$('#hBase').textContent=`ฐานคำนวณเงินเดือนรายชั่วโมง: ${wd} วันทำการ × 8 = ${wd*8} ชม. (100%) — บันทึกแล้ว ${all} ชม.`}
-  else $('#hBase').textContent='เลือกพนักงานเพื่อดูฐานชั่วโมงทำการของเดือน';
-  $('#hBreak').innerHTML=Object.entries(brk).sort((a,b)=>b[1].h-a[1].h).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${esc(v.name)}</td><td><span class="tag ${v.cat==='Cost'?'cost':'sga'}">${esc(v.cat)}</span></td><td class="n">${v.h}</td></tr>`).join('')||'<tr><td colspan="4" class="hint">ไม่มีข้อมูลในเดือนนี้</td></tr>';
-  $('#hList').innerHTML=list.map(t=>{const o=totals(t);return `<tr><td>${t.date}</td><td>${esc(t.empId)}</td><td><span class="tag ${t.status==='Submitted'?'sub':'st'}">${t.status}</span></td><td class="n">${o.cost}</td><td class="n">${o.sga}</td><td class="n">${o.all}/8</td><td><button class="btn" data-open="${esc(t.id)}">เปิด</button></td></tr>`}).join('')||'<tr><td colspan="7" class="hint">ไม่มีใบบันทึกงาน</td></tr>';
-  $$('[data-open]').forEach(b=>b.onclick=()=>{const t=find(db.timesheets,b.dataset.open);$('#emp').value=t.empId;$('#date').value=t.date;$('nav button[data-tab=log]').click();syncForm();renderLog()});
+/* ---- ประวัติ/สรุป: รายวัน สัปดาห์ เดือน ไตรมาส ปี · ราย คน / ฝ่าย / Project / ทั้งหมด ---- */
+function pRange(mode,anchor){
+  const a=DD(anchor),y=a.getFullYear(),m=a.getMonth();let s,e;
+  switch(mode){
+    case 'week':{const dw=(a.getDay()+6)%7;s=new Date(y,m,a.getDate()-dw);e=new Date(y,m,a.getDate()-dw+6);break}
+    case 'month':s=new Date(y,m,1);e=new Date(y,m+1,0);break;
+    case 'quarter':{const q=Math.floor(m/3);s=new Date(y,q*3,1);e=new Date(y,q*3+3,0);break}
+    case 'year':s=new Date(y,0,1);e=new Date(y,11,31);break;
+    default:s=e=a;
+  }
+  return{s:DF(s),e:DF(e),sd:s,ed:e};
 }
-$('#hMonth').onchange=$('#hEmp').onchange=renderHist;
+function pLabel(mode,anchor,r){
+  const a=DD(anchor);
+  switch(mode){
+    case 'week':return `${thD(r.sd,{day:'numeric',month:'short'})} – ${thD(r.ed,{day:'numeric',month:'short',year:'numeric'})}`;
+    case 'month':return thD(a,{month:'long',year:'numeric'});
+    case 'quarter':return `ไตรมาส ${Math.floor(a.getMonth()/3)+1}/${a.getFullYear()+543}`;
+    case 'year':return `ปี ${a.getFullYear()+543}`;
+    default:return thD(a,{weekday:'short',day:'numeric',month:'long',year:'numeric'});
+  }
+}
+function pShift(mode,anchor,dir){
+  const a=DD(anchor),y=a.getFullYear(),m=a.getMonth(),d=a.getDate();let n;
+  switch(mode){
+    case 'week':n=new Date(y,m,d+7*dir);break;
+    case 'month':n=new Date(y,m+dir,1);break;
+    case 'quarter':n=new Date(y,m+3*dir,1);break;
+    case 'year':n=new Date(y+dir,m,1);break;
+    default:n=new Date(y,m,d+dir);
+  }
+  return DF(n);
+}
+let hs={mode:'month',anchor:todayStr(),scope:'',dept:'',emp:'',proj:'',limit:100};
+const SCOPE_TH={me:'ของฉัน',all:'ทั้งหมด',dept:'รายฝ่าย',emp:'รายคน',project:'ราย Project'};
+const hsScopes=()=>isAdmin?['all','dept','emp','project']:['me','project'];
+const projLabel=c=>`${c}${codeInfo(c)?.name?' — '+codeInfo(c).name:''}`;
+
+function hsFillSelects(){
+  const dm=new Map(db.depts.map(d=>[d.id,d.name]));db.employees.forEach(e=>{if(e.dept&&!dm.has(e.dept))dm.set(e.dept,'')});
+  $('#hDept').innerHTML=[...dm].map(([id,n])=>`<option value="${esc(id)}">${esc(id+(n?' — '+n:''))}</option>`).join('');
+  $('#hEmp').innerHTML=db.employees.map(e=>`<option value="${esc(e.id)}">${esc(e.id+' — '+e.name)}</option>`).join('');
+  const codes=new Set([...db.projects.map(p=>p.id),...db.contracts.map(c=>c.id)]);
+  db.timesheets.forEach(t=>t.entries.forEach(x=>{if(x.code)codes.add(x.code)}));
+  $('#hProj').innerHTML=[...codes].sort().map(c=>`<option value="${esc(c)}">${esc(projLabel(c))}</option>`).join('');
+  if(!dm.has(hs.dept))hs.dept=[...dm.keys()][0]||'';
+  if(!db.employees.some(e=>e.id===hs.emp))hs.emp=(me&&me.id)||db.employees[0]?.id||'';
+  if(!codes.has(hs.proj))hs.proj=[...codes].sort()[0]||'';
+  $('#hDept').value=hs.dept;$('#hEmp').value=hs.emp;$('#hProj').value=hs.proj;
+}
+function histCompute(){
+  const r=pRange(hs.mode,hs.anchor),own=t=>isAdmin||t.empId===me?.id;
+  let people;
+  if(hs.scope==='me')people=me?[me]:[];
+  else if(hs.scope==='dept')people=db.employees.filter(e=>e.dept===hs.dept);
+  else if(hs.scope==='emp')people=db.employees.filter(e=>e.id===hs.emp);
+  else people=db.employees.slice();                                  // all / project
+  const ids=new Set(people.map(e=>e.id));
+  const rows=[];
+  db.timesheets.filter(t=>t.date>=r.s&&t.date<=r.e&&own(t)&&(hs.scope==='project'||ids.has(t.empId))).forEach(t=>t.entries.forEach((x,i)=>{
+    if(hs.scope==='project'&&x.code!==hs.proj)return;rows.push({t,x,i})}));
+  // เป้าหมาย = วันทำการ × 8 ชม. ต่อคน (ไม่ใช้กับมุมมอง Project)
+  let wdSat=0,wdNo=0;
+  for(let d=new Date(r.sd);d<=r.ed;d.setDate(d.getDate()+1)){const ds=DF(d);if(dayInfo({workSat:true},ds).work)wdSat++;if(dayInfo({workSat:false},ds).work)wdNo++}
+  const wdOf=e=>e.workSat?wdSat:wdNo;
+  const active=people.filter(e=>e.active!==false);
+  return{r,people,active,rows,wdOf,target:active.reduce((a,e)=>a+wdOf(e)*TARGET,0)};
+}
+function renderHist(){
+  const scopes=hsScopes();if(!scopes.includes(hs.scope))hs.scope=scopes[0];
+  hsFillSelects();
+  $$('#hMode button').forEach(b=>b.classList.toggle('on',b.dataset.m===hs.mode));
+  $('#hScope').innerHTML=scopes.map(s=>`<button data-s="${s}" class="${s===hs.scope?'on':''}">${SCOPE_TH[s]}</button>`).join('');
+  $$('#hScope button').forEach(b=>b.onclick=()=>{hs.scope=b.dataset.s;hs.limit=100;renderHist()});
+  $('#hDept').classList.toggle('hide',hs.scope!=='dept');
+  $('#hEmp').classList.toggle('hide',hs.scope!=='emp');
+  $('#hProj').classList.toggle('hide',hs.scope!=='project');
+  const D=histCompute(),proj=hs.scope==='project';
+  $('#hLabel').textContent=pLabel(hs.mode,hs.anchor,D.r);
+  const who=hs.scope==='dept'?'ฝ่าย '+hs.dept:hs.scope==='emp'?(find(db.employees,hs.emp)?.name||hs.emp):proj?'Project '+hs.proj:hs.scope==='me'?'ของฉัน':'ทุกคน';
+  $('#hTitle').textContent=`สรุป${MODE_TH[hs.mode]} — ${who}`;
+  // ---- สรุปรวม ----
+  let c=0,s=0;const brk={};
+  D.rows.forEach(({x})=>{const k=x.cat==='Cost'?x.code:(x.sgaId+(x.code?' · '+x.code:''));
+    brk[k]=brk[k]||{cat:x.cat,h:0,name:x.cat==='Cost'?entryName(x):(find(db.sgaTypes,x.sgaId)?.name||'')};brk[k].h+=x.hours;x.cat==='Cost'?c+=x.hours:s+=x.hours});
+  const all=c+s,den=(!proj&&D.target)?D.target:all,pc=v=>den?`${Math.round(v/den*100)}%`:'0%';
+  $('#hSum').innerHTML=`<span>รวม <b>${all}</b> ชม.</span><span style="color:var(--cost)">${esc(costShort())} <b>${c}</b> (${pc(c)})</span><span style="color:var(--sga)">SG&A <b>${s}</b> (${pc(s)})</span>`
+    +(!proj&&D.target?`<span>เป้า <b>${D.target}</b> ชม. · ทำได้ ${Math.round(all/D.target*100)}%</span>`:'');
+  $('#hBase').textContent=proj?`เปอร์เซ็นต์เทียบกับชั่วโมงรวมของ ${hs.proj} ในช่วงนี้`:`ฐานคำนวณ: วันทำการ × 8 ชม. ต่อคน (${D.active.length} คน) — ไม่นับเสาร์-อาทิตย์/วันหยุด`;
+  $('#hBreak').innerHTML=Object.entries(brk).sort((a,b)=>b[1].h-a[1].h).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${esc(v.name)}</td><td><span class="tag ${v.cat==='Cost'?'cost':'sga'}">${esc(v.cat)}</span></td><td class="n">${v.h}</td><td class="n">${pctTxt(v.h,den||1)}</td></tr>`).join('')||'<tr><td colspan="5" class="hint">ไม่มีข้อมูลในช่วงนี้</td></tr>';
+  // ---- สรุปรายคน (ทั้งหมด / รายฝ่าย / Project) ----
+  const showPeople=hs.scope==='all'||hs.scope==='dept'||proj;
+  $('#hPeopleCard').classList.toggle('hide',!showPeople);
+  if(showPeople){
+    const by={};D.rows.forEach(({t,x})=>{const o=by[t.empId]=by[t.empId]||{c:0,s:0};x.cat==='Cost'?o.c+=x.hours:o.s+=x.hours});
+    const list=(proj?Object.keys(by).map(id=>find(db.employees,id)||{id,name:id}):D.active.filter(e=>true)).map(e=>({e,c:by[e.id]?.c||0,s:by[e.id]?.s||0}));
+    list.forEach(o=>{o.t=o.c+o.s;o.tg=proj?0:D.wdOf(o.e)*TARGET});
+    list.sort((a,b)=>proj?b.t-a.t:a.e.id.localeCompare(b.e.id));
+    $('#hPeopleTitle').textContent=proj?`พนักงานที่ลงเวลาใน ${hs.proj} (${list.length} คน)`:`สรุปรายคน (${list.length} คน)`;
+    $('#hPeopleHead').innerHTML=proj?'<tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th class="n">ชม.</th><th class="n">สัดส่วน</th></tr>'
+      :'<tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th class="n">Cost</th><th class="n">SG&amp;A</th><th class="n">รวม</th><th class="n">เป้า</th><th class="n">%</th></tr>';
+    $('#hPeople').innerHTML=list.map(o=>proj?`<tr><td>${esc(o.e.id)}</td><td>${esc(o.e.name)}</td><td>${esc(o.e.dept||'')}</td><td class="n">${o.t}</td><td class="n">${pctTxt(o.t,all||1)}</td></tr>`
+      :`<tr><td>${esc(o.e.id)}</td><td>${esc(o.e.name)}</td><td>${esc(o.e.dept||'')}</td><td class="n">${o.c}</td><td class="n">${o.s}</td><td class="n">${o.t}</td><td class="n">${o.tg}</td><td class="n" style="color:${o.tg&&o.t>=o.tg?'var(--cost)':o.t?'var(--ink)':'var(--bad)'}">${o.tg?Math.round(o.t/o.tg*100)+'%':'-'}</td></tr>`).join('')
+      ||`<tr><td colspan="${proj?5:8}" class="hint">ไม่มีข้อมูล</td></tr>`;
+  }
+  // ---- รายการงาน (ละเอียด) ----
+  const sorted=D.rows.slice().sort((a,b)=>b.t.date.localeCompare(a.t.date)||a.t.empId.localeCompare(b.t.empId)||a.i-b.i);
+  $('#hEntries').innerHTML=sorted.slice(0,hs.limit).map(({t,x})=>{const e=find(db.employees,t.empId)||{};
+    const lbl=x.cat==='Cost'?`${esc(x.code)} ${esc(entryName(x))}`:`${esc(x.sgaId)}: ${esc(find(db.sgaTypes,x.sgaId)?.name||'')}${x.code?` <span class="hint">(${esc(x.code)} ${esc(entryName(x))})</span>`:''}`;
+    return `<tr><td>${t.date}</td><td>${esc(t.empId)}${e.name?' '+esc(e.name):''}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${esc(x.note||'')}</td><td class="n">${x.hours}</td></tr>`}).join('')||'<tr><td colspan="6" class="hint">ไม่มีรายการในช่วงนี้</td></tr>';
+  $('#hMore').classList.toggle('hide',sorted.length<=hs.limit);
+  $('#hCount').textContent=sorted.length?`แสดง ${Math.min(hs.limit,sorted.length)} จาก ${sorted.length} รายการ`:'';
+  // ---- ใบบันทึกงานรายวัน (ไม่แสดงในมุมมอง Project) ----
+  $('#hSheetsCard').classList.toggle('hide',proj);
+  if(!proj){
+    const ids=new Set(D.people.map(e=>e.id)),r=D.r;
+    const sheets=db.timesheets.filter(t=>t.date>=r.s&&t.date<=r.e&&ids.has(t.empId)&&(isAdmin||t.empId===me?.id)).sort((a,b)=>b.date.localeCompare(a.date)||a.empId.localeCompare(b.empId));
+    $('#hList').innerHTML=sheets.slice(0,hs.limit).map(t=>{const o=totals(t);return `<tr><td>${t.date}</td><td>${esc(t.empId)}</td><td><span class="tag ${t.status==='Submitted'?'sub':'st'}">${t.status}</span></td><td class="n">${o.cost}</td><td class="n">${o.sga}</td><td class="n">${o.all}/8</td><td><button class="btn" data-open="${esc(t.id)}">เปิด</button></td></tr>`}).join('')||'<tr><td colspan="7" class="hint">ไม่มีใบบันทึกงาน</td></tr>';
+    $$('[data-open]').forEach(b=>b.onclick=()=>{const t=find(db.timesheets,b.dataset.open);if(!isAdmin&&t.empId!==me?.id)return;$('#emp').value=t.empId;$('#date').value=t.date;$('nav button[data-tab=log]').click();syncForm();renderLog()});
+  }
+}
+$$('#hMode button').forEach(b=>b.onclick=()=>{hs.mode=b.dataset.m;hs.limit=100;renderHist()});
+$('#hPrev').onclick=()=>{hs.anchor=pShift(hs.mode,hs.anchor,-1);hs.limit=100;renderHist()};
+$('#hNext').onclick=()=>{hs.anchor=pShift(hs.mode,hs.anchor,1);hs.limit=100;renderHist()};
+$('#hToday').onclick=()=>{hs.anchor=todayStr();hs.limit=100;renderHist()};
+$('#hDept').onchange=()=>{hs.dept=$('#hDept').value;hs.limit=100;renderHist()};
+$('#hEmp').onchange=()=>{hs.emp=$('#hEmp').value;hs.limit=100;renderHist()};
+$('#hProj').onchange=()=>{hs.proj=$('#hProj').value;hs.limit=100;renderHist()};
+$('#hMore').onclick=()=>{hs.limit+=100;renderHist()};
+
+/* ส่งออกตามตัวกรอง (ช่วงเวลา + ขอบเขต) */
+function histExportRows(){
+  return histCompute().rows.sort((a,b)=>a.t.date.localeCompare(b.t.date)||a.t.empId.localeCompare(b.t.empId)||a.i-b.i).map(({t,x,i})=>{const e=find(db.employees,t.empId)||{};
+    return{'Transaction No.':txNo(t,i),Date:t.date,'Emp.No':t.empId,Name:e.name||'',Nickname:e.nick||'',Dept:e.dept||'',Level:e.level||'',Position:e.position||'',
+      'PL Type':x.cat,'SG&A Type':x.cat==='Cost'?'-':`${x.sgaId}:${find(db.sgaTypes,x.sgaId)?.name||''}`,Hours:x.hours,'Project Code':x.code||'-','Project Name':x.code?entryName(x):'-',Text:x.note||'',Status:t.status}});
+}
+const histFileTag=()=>`${hs.scope}${hs.scope==='dept'?'_'+hs.dept:hs.scope==='emp'?'_'+hs.emp:hs.scope==='project'?'_'+hs.proj:''}_${hs.mode}_${hs.anchor}`.replace(/[^\w.-]+/g,'_');
 $('#xlsxLog').onclick=()=>{
   if(!xlsxReady())return;
-  let rows=sheetsFromDb().WorkLog;
-  if(!isAdmin)rows=rows.filter(r=>r['Emp.No']===me?.id);          // พนักงานทั่วไปได้เฉพาะของตัวเอง
-  if(!rows.length)return alert('ยังไม่มีบันทึกงานในเครื่องนี้ให้ส่งออก');
-  writeXlsx({WorkLog:rows},'WorkLog_'+(isAdmin?'all':(me?.id||'me'))+'_'+todayStr()+'.xlsx');
+  const rows=histExportRows();if(!rows.length)return alert('ไม่มีบันทึกงานในช่วงและขอบเขตที่เลือกให้ส่งออก');
+  writeXlsx({WorkLog:rows},'WorkLog_'+histFileTag()+'.xlsx');
 };
 $('#csv').onclick=()=>{
-  const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
-  const rows=[['Transaction No.','Date','Emp.No','Name','Nickname','Dept.No','Level','Position','PL Type','SG&A Type','Hours','Project Code','Project Name','Text','Status']];
-  db.timesheets.filter(t=>isAdmin||t.empId===me?.id).sort((a,b)=>a.date.localeCompare(b.date)||a.empId.localeCompare(b.empId)).forEach(t=>{const e=find(db.employees,t.empId)||{};
-    t.entries.forEach((x,i)=>rows.push([txNo(t,i),t.date,t.empId,e.name,e.nick,e.dept,e.level,e.position,x.cat,x.cat==='Cost'?'-':`${x.sgaId}:${find(db.sgaTypes,x.sgaId)?.name||''}`,x.hours,x.code||'-',x.code?entryName(x):'-',x.note,t.status]))});
-  dl('workload_'+todayStr()+'.csv','﻿'+rows.map(r=>r.map(q).join(',')).join('\r\n'),'text/csv');
+  const rows=histExportRows();if(!rows.length)return alert('ไม่มีบันทึกงานในช่วงและขอบเขตที่เลือกให้ส่งออก');
+  const q=v=>`"${String(v??'').replace(/"/g,'""')}"`,hd=Object.keys(rows[0]);
+  dl('workload_'+histFileTag()+'.csv','﻿'+[hd.map(q).join(','),...rows.map(r=>hd.map(k=>q(r[k])).join(','))].join('\r\n'),'text/csv');
 };
 function dl(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 
