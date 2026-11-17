@@ -1619,7 +1619,9 @@ if(CLOUD){
       const apBtn=selfRow?'':(e.approved?`<button class="btn" style="padding:4px 10px" data-capp="${esc(e.id)}" title="ระงับการใช้งาน">ระงับ</button> `:`<button class="btn ok" style="padding:4px 10px" data-capp="${esc(e.id)}">อนุมัติ</button> `);
       td.innerHTML=apBtn+pendBtns+`<button class="x" style="color:var(--pri)" data-medit="${esc(e.id)}" title="แก้ไขชื่อ/อีเมล/ข้อมูล">✎</button> `+(e.linked?`<button class="btn" style="padding:4px 10px" data-cmail="${esc(e.id)}" title="ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่">✉ รีเซ็ต</button>`:'');
       td.querySelectorAll('[data-medit]').forEach(b=>b.onclick=()=>startEditMember(b.dataset.medit));
-      td.querySelectorAll('[data-capp]').forEach(b=>b.onclick=()=>{e.approved=!e.approved;save();renderMem()});
+      td.querySelectorAll('[data-capp]').forEach(b=>b.onclick=()=>{
+        if(!e.approved&&e.linked&&!e.lineLinked&&!confirm('ผู้สมัครคนนี้ยังไม่ได้ผูก LINE จึงจะไม่ได้รับข้อความแจ้งอนุมัติทาง LINE\nอนุมัติต่อหรือไม่?'))return;
+        e.approved=!e.approved;save();renderMem()});
       td.querySelectorAll('[data-crej]').forEach(b=>b.onclick=async()=>{
         if(!confirm(`ปฏิเสธและลบคำขอสมัครของ ${e.name} (${e.email})? ผู้สมัครจะต้องสมัครใหม่`))return;
         const {error}=await sb.rpc('admin_reject',{p_id:e.id});if(error)return alert('ปฏิเสธไม่สำเร็จ: '+error.message);
