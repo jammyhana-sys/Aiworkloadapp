@@ -550,8 +550,9 @@ function fillEmp(){
   $('#emp').innerHTML=opt(pool,e=>`${e.id} — ${e.name}${e.nick?` (${e.nick})`:''}`);
   $('#emp').value=me?me.id:'';$('#meBox').textContent=me?(me.id+' — '+me.name+(me.nick?' ('+me.nick+')':'')):'บัญชีนี้ยังไม่ผูกกับรหัสพนักงาน';
 }
-function costList(){const id=$('#emp').value;return db.projects.filter(p=>p.kind==='cost'&&p.active!==false&&assigned(id,p.id))}
-function refList(sga){
+function costList(){const id=$('#emp').value;return db.projects.filter(p=>p.kind==='cost'&&p.active!==false&&assigned(id,p.id)).sort(byId)}
+function refList(sga){return _refList(sga).slice().sort(byId)}
+function _refList(sga){
   const e=emp(),id=$('#emp').value;if(!sga||!e)return[];
   const ok=x=>x.active!==false&&assigned(id,x.id);
   if(sga.ref==='contract')return db.contracts.filter(ok);
@@ -886,8 +887,8 @@ function dl(name,text,type){const a=document.createElement('a');a.href=URL.creat
 const MASTERS=[
   {key:'depts',title:'ฝ่าย',f:[]},
   {key:'employees',title:'พนักงาน (รหัส = Emp.No)',f:[['email','อีเมลบริษัท *'],['role','สิทธิ์','role'],['nick','ชื่อเล่น'],['dept','ฝ่าย','dept'],['level','Level'],['position','ตำแหน่ง'],['workSat','ทำงานวันเสาร์ (Site)','bool']]},
-  {key:'projects',title:'รหัสโครงการ (Cost / MT / Backlog)',f:[['kind','ประเภท','kind']]},
-  {key:'contracts',title:'Sales Contract',f:[]},
+  {key:'projects',title:'รหัสโครงการ (Cost / MT / Backlog)',f:[['kind','ประเภท','kind']],stamp:true},
+  {key:'contracts',title:'Sales Contract',f:[],stamp:true},
   {key:'holidays',title:'วันหยุด (ไม่นับเป็นวันทำการ)',f:[],date:true},
 ];
 const fv=(r,f)=>f[2]==='bool'?(r[f[0]]?'✓':'—'):esc(r[f[0]]);
@@ -899,10 +900,15 @@ function fInput(f){
   if(f[2]==='bool')return `<label style="margin-top:24px"><input type="checkbox" name="${f[0]}" style="width:auto"> ${f[1]}</label>`;
   return `<input name="${f[0]}">`;
 }
+const byId=(a,b)=>String(a.id).localeCompare(String(b.id),undefined,{numeric:true});   // เรียงรหัสจากน้อยไปมาก
+const stamp=o=>{o.updatedAt=new Date().toISOString();o.updatedBy=(me&&me.name)||(user&&user.name)||''};
+const fmtTs=s=>{if(!s)return '—';const d=new Date(s);return isNaN(d)?'—':d.toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'})};
+const byUpd=(a,b)=>String(a.updatedAt||'').localeCompare(String(b.updatedAt||''))||byId(a,b);   // เรียงตามลำดับการนำเข้า/อัปเดต (เก่า→ใหม่)
 function renderSetup(){
+  ['employees','depts','holidays'].forEach(k=>{if(db[k])db[k].sort(byId)});['projects','contracts'].forEach(k=>{if(db[k])db[k].sort(byUpd)});
   $('#masters').innerHTML=MASTERS.map(m=>`<div class="card"><h2>${m.title}</h2><div class="scroll"><table>
-    <thead><tr><th>${m.date?'วันที่':'รหัส'}</th><th>ชื่อ</th>${m.f.map(f=>`<th>${f[1]}</th>`).join('')}<th>ใช้งาน</th><th></th></tr></thead><tbody>
-    ${db[m.key].map((r,i)=>`<tr><td>${esc(r.id)}</td><td>${esc(r.name)}</td>${m.f.map(f=>`<td>${fv(r,f)}</td>`).join('')}
+    <thead><tr><th>No.</th><th>${m.date?'วันที่':'รหัส'}</th><th>ชื่อ</th>${m.f.map(f=>`<th>${f[1]}</th>`).join('')}${m.stamp?'<th>ผู้นำเข้า/แก้ไข</th><th>อัปเดตล่าสุด</th>':''}<th>ใช้งาน</th><th></th></tr></thead><tbody>
+    ${db[m.key].map((r,i)=>`<tr><td class="hint">${i+1}</td><td>${esc(r.id)}</td><td>${esc(r.name)}</td>${m.f.map(f=>`<td>${fv(r,f)}</td>`).join('')}${m.stamp?`<td>${esc(r.updatedBy||'—')}</td><td class="hint">${fmtTs(r.updatedAt)}</td>`:''}
     <td>${m.date?'':`<input type="checkbox" ${r.active!==false?'checked':''} data-act="${m.key}:${i}" style="width:auto">`}</td><td><button class="x" data-rm="${m.key}:${i}">✕</button></td></tr>`).join('')}
     </tbody></table></div>
     <form data-add="${m.key}" class="row" style="margin-top:12px;align-items:end">
@@ -923,7 +929,7 @@ function renderSetup(){
     m.f.forEach(x=>r[x[0]]=x[2]==='bool'?!!d[x[0]]:(d[x[0]]||'').trim());
     if(find(db[k],r.id))return alert('รหัสนี้มีอยู่แล้ว');
     if(k==='employees'&&db.employees.some(x=>x.email&&lc(x.email)===lc(r.email)))return alert('อีเมลนี้ถูกใช้โดยพนักงานคนอื่นแล้ว');
-    db[k].push(r);save();fillEmp();syncForm();renderSetup();renderLog()});
+    if(m.stamp)stamp(r);db[k].push(r);save();fillEmp();syncForm();renderSetup();renderLog()});
   // assignments
   const codes=[...db.projects.map(p=>({id:p.id,name:`${p.name} [${p.kind}]`})),...db.contracts.map(c=>({id:c.id,name:`${c.name} [Sales Contract]`}))];
   $('#asgCode').innerHTML=opt(codes,c=>`${c.id} — ${c.name}`,'— เลือกรหัส —');
@@ -947,8 +953,8 @@ function sheetsFromDb(){
   return{
     Employees:db.employees.map(e=>({'Emp.No':e.id,Name:e.name,Nickname:e.nick||'',Dept:e.dept||'',Level:e.level||'',Position:e.position||'',Email:e.email||'',Username:e.username||'',Role:e.role||'user',WorkSat:e.workSat?1:0,Active:e.active===false?0:1})),
     Departments:db.depts.map(d=>({'Dept.No':d.id,'Dept.Name':d.name})),
-    Projects:db.projects.map(p=>({'Project Code':p.id,'Project Name':p.name,Kind:p.kind,Active:p.active===false?0:1})),
-    SalesContracts:db.contracts.map(c=>({'Sales Contract No.':c.id,'Sales Contract Name':c.name,Active:c.active===false?0:1})),
+    Projects:db.projects.map(p=>({'Project Code':p.id,'Project Name':p.name,Kind:p.kind,Active:p.active===false?0:1,'Updated By':p.updatedBy||'','Updated At':p.updatedAt||''})),
+    SalesContracts:db.contracts.map(c=>({'Sales Contract No.':c.id,'Sales Contract Name':c.name,Active:c.active===false?0:1,'Updated By':c.updatedBy||'','Updated At':c.updatedAt||''})),
     Assignments:db.assign.map(a=>({'Emp.No':a.empId,Code:a.code})),
     Holidays:db.holidays.map(h=>({Date:h.id,Name:h.name})),
     WorkLog:db.timesheets.flatMap(t=>t.entries.map((x,i)=>{const e=emp(t.empId);return{'Transaction No.':txNo(t,i),Date:t.date,'Emp.No':t.empId,Name:e.name||'',Nickname:e.nick||'',Dept:e.dept||'',Level:e.level||'',Position:e.position||'',
@@ -988,10 +994,10 @@ $('#pjImp').onchange=async ev=>{
       seen.forEach((x,c)=>{
         const name=S(x[nameK]).replace(/\s+/g,' '),o=list.find(y=>y.id===c);
         let kind;if(kindK){const k=S(x.Kind).toLowerCase();kind=KS.includes(k)?k:(o?o.kind:(/-MT$/i.test(c)?'mt':'cost'))}
-        if(!o){list.push(kindK?{id:c,name,kind,active:true}:{id:c,name,active:true});add++}
+        if(!o){const n=kindK?{id:c,name,kind,active:true}:{id:c,name,active:true};stamp(n);list.push(n);add++}
         else{const ch=(name&&name!==o.name)||(kindK&&kind!==o.kind)||o.active===false;
-          if(ch){if(name)o.name=name;if(kindK)o.kind=kind;o.active=true;upd++}else same++}});
-      if($('#pjOff').checked)list.forEach(o=>{if(!seen.has(o.id)&&o.active!==false){o.active=false;off++}});
+          if(ch){if(name)o.name=name;if(kindK)o.kind=kind;o.active=true;stamp(o);upd++}else same++}});
+      if($('#pjOff').checked)list.forEach(o=>{if(!seen.has(o.id)&&o.active!==false){o.active=false;stamp(o);off++}});
       sum.push(`${label}: ใหม่ ${add} · อัปเดต ${upd} · เหมือนเดิม ${same}${off?` · ปิดใช้งาน ${off}`:''} (ในไฟล์ ${seen.size} รหัสไม่ซ้ำ)`)};
     if(pr)run(nd.projects,pr,'Project Code','Project Name',true,'Project');
     if(cr)run(nd.contracts,cr,'Sales Contract No.','Sales Contract Name',false,'Sales Contract');
@@ -1008,8 +1014,8 @@ $('#xImp').onchange=async ev=>{
     let r;
     if(r=rows('Departments')){nd.depts=r.filter(x=>S(x['Dept.No'])).map(x=>({id:S(x['Dept.No']),name:S(x['Dept.Name']),active:true}));done.push('Departments '+nd.depts.length)}
     if(r=rows('Employees')){nd.employees=r.filter(x=>S(x['Emp.No'])).map(x=>({id:S(x['Emp.No']),name:S(x.Name),nick:S(x.Nickname),dept:S(x.Dept||x['Dept.No']),level:S(x.Level),position:S(x.Position),email:S(x.Email),username:S(x.Username),role:S(x.Role).toLowerCase()==='admin'?'admin':'user',workSat:B(x.WorkSat)&&S(x.WorkSat)!=='',active:x.Active===''?true:B(x.Active)}));nd.employees.forEach(e=>{const o=find(db.employees,e.id);if(o){e.salt=o.salt;e.hash=o.hash;e.linked=o.linked;e.uid=o.uid;e.approved=o.approved;e.mustChange=o.mustChange;if(!e.username)e.username=o.username}});const noMail=nd.employees.filter(e=>!e.email).length;if(noMail)warn.push('พนักงาน '+noMail+' คนไม่มีอีเมล (ต้องมีอีเมลก่อนจึงตั้งบัญชีสมาชิกได้)');done.push('Employees '+nd.employees.length)}
-    if(r=rows('Projects')){nd.projects=r.filter(x=>S(x['Project Code'])).map(x=>({id:S(x['Project Code']),name:S(x['Project Name']),kind:['mt','backlog'].includes(S(x.Kind).toLowerCase())?S(x.Kind).toLowerCase():'cost',active:x.Active===''?true:B(x.Active)}));done.push('Projects '+nd.projects.length)}
-    if(r=rows('SalesContracts')){nd.contracts=r.filter(x=>S(x['Sales Contract No.'])).map(x=>({id:S(x['Sales Contract No.']),name:S(x['Sales Contract Name']),active:x.Active===''?true:B(x.Active)}));done.push('SalesContracts '+nd.contracts.length)}
+    if(r=rows('Projects')){nd.projects=r.filter(x=>S(x['Project Code'])).map(x=>({id:S(x['Project Code']),name:S(x['Project Name']),kind:['mt','backlog'].includes(S(x.Kind).toLowerCase())?S(x.Kind).toLowerCase():'cost',active:x.Active===''?true:B(x.Active),updatedBy:S(x['Updated By']),updatedAt:S(x['Updated At'])}));done.push('Projects '+nd.projects.length)}
+    if(r=rows('SalesContracts')){nd.contracts=r.filter(x=>S(x['Sales Contract No.'])).map(x=>({id:S(x['Sales Contract No.']),name:S(x['Sales Contract Name']),active:x.Active===''?true:B(x.Active),updatedBy:S(x['Updated By']),updatedAt:S(x['Updated At'])}));done.push('SalesContracts '+nd.contracts.length)}
     if(r=rows('Holidays')){nd.holidays=r.filter(x=>S(x.Date)).map(x=>({id:xDate(x.Date),name:S(x.Name)}));done.push('Holidays '+nd.holidays.length)}
     if(r=rows('Assignments')){nd.assign=r.filter(x=>S(x['Emp.No'])&&S(x.Code)).map(x=>({empId:S(x['Emp.No']),code:S(x.Code)}));done.push('Assignments '+nd.assign.length)}
     if(r=rows('WorkLog')){
@@ -1436,9 +1442,9 @@ const TBL={
   depts:{t:'departments',pk:'id',admin:true,key:r=>r.id,
     to:d=>({id:d.id,name:d.name||'',active:d.active!==false}),from:r=>({id:r.id,name:r.name,active:r.active!==false})},
   projects:{t:'projects',pk:'id',admin:true,key:r=>r.id,
-    to:p=>({id:p.id,name:p.name||'',kind:['mt','backlog'].includes(p.kind)?p.kind:'cost',active:p.active!==false}),from:r=>({id:r.id,name:r.name,kind:r.kind,active:r.active!==false})},
+    to:p=>({id:p.id,name:p.name||'',kind:['mt','backlog'].includes(p.kind)?p.kind:'cost',active:p.active!==false,updated_by:p.updatedBy||'',...(p.updatedAt?{updated_at:p.updatedAt}:{})}),from:r=>({id:r.id,name:r.name,kind:r.kind,active:r.active!==false,updatedBy:r.updated_by||'',updatedAt:r.updated_at||''})},
   contracts:{t:'contracts',pk:'id',admin:true,key:r=>r.id,
-    to:c=>({id:c.id,name:c.name||'',active:c.active!==false}),from:r=>({id:r.id,name:r.name,active:r.active!==false})},
+    to:c=>({id:c.id,name:c.name||'',active:c.active!==false,updated_by:c.updatedBy||'',...(c.updatedAt?{updated_at:c.updatedAt}:{})}),from:r=>({id:r.id,name:r.name,active:r.active!==false,updatedBy:r.updated_by||'',updatedAt:r.updated_at||''})},
   assign:{t:'assignments',pk:'emp_id',admin:true,key:r=>r.emp_id+'|'+r.code,conf:'emp_id,code',
     to:a=>({emp_id:a.empId,code:a.code}),from:r=>({empId:r.emp_id,code:r.code})},
   holidays:{t:'holidays',pk:'day',admin:true,key:r=>r.day,conf:'day',
