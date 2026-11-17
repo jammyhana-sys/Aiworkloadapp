@@ -97,7 +97,14 @@ td.n,th.n{text-align:right;white-space:nowrap}
   #entries td,#hList td{font-size:13px}
   .x{padding:8px 12px;font-size:18px}
 }
-@media (display-mode:standalone){body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}}.meBox{padding:10px 12px;border-radius:11px;background:var(--pri-soft);font-weight:600;min-height:46px;display:flex;align-items:center}.pwbox{text-align:left;margin-top:14px}.pwbox label{margin-top:0}#syncState{font-size:12px;opacity:.9}</style>
+@media (display-mode:standalone){body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}}.meBox{padding:10px 12px;border-radius:11px;background:var(--pri-soft);font-weight:600;min-height:46px;display:flex;align-items:center}.pwbox{text-align:left;margin-top:14px}.pwbox label{margin-top:0}#syncState{font-size:12px;opacity:.9}.ringwrap{display:flex;gap:22px;align-items:center;flex-wrap:wrap;justify-content:center}
+#ring{width:210px;height:210px;flex:none}
+#ring .seg{transition:stroke-dasharray .5s ease}
+.ringlegend{flex:1;min-width:220px}
+.lg{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
+.lg:last-child{border-bottom:0}.lg i{width:12px;height:12px;border-radius:4px;flex:none}
+.lg b{margin-left:auto;white-space:nowrap}.lg span.p{color:var(--mut);font-size:12.5px;min-width:42px;text-align:right}
+</style>
 </head>
 <body>
 <div id="login"><div class="box">
@@ -111,6 +118,7 @@ td.n,th.n{text-align:right;white-space:nowrap}
   </form>
   <form id="regBox" class="pwbox hide">
     <div class="hint" style="margin-bottom:10px">สมัครสมาชิกสำหรับพนักงาน — ต้องมีรหัสพนักงานอยู่ในระบบแล้ว และรอ Admin อนุมัติ</div>
+    <label class="hide">ชื่อ-นามสกุล</label><input id="rgName" class="hide" autocomplete="name">
     <label>รหัสพนักงาน (Emp.No)</label><input id="rgEmp" autocomplete="off" required>
     <label style="margin-top:10px">อีเมลบริษัท</label><input id="rgEmail" type="email" autocomplete="email" required>
     <label style="margin-top:10px">ชื่อผู้ใช้ที่ต้องการ</label><input id="rgUser" autocomplete="username" autocapitalize="none" spellcheck="false" required>
@@ -168,6 +176,14 @@ td.n,th.n{text-align:right;white-space:nowrap}
     <div class="sum" id="empInfo"></div>
     <div class="sum"><span>สถานะ: <span id="status" class="tag st">Draft</span></span></div>
     <div id="dayNotice" class="notice hide"></div>
+  </div>
+
+  <div class="card" id="ringCard">
+    <h2>ความคืบหน้า 8 ชั่วโมงของวันนี้</h2>
+    <div class="ringwrap">
+      <svg id="ring" viewBox="0 0 200 200" role="img" aria-label="วงกลมแสดงชั่วโมงทำงานแยกตามประเภท"></svg>
+      <div id="ringLegend" class="ringlegend"></div>
+    </div>
   </div>
 
   <div class="card" id="formCard">
@@ -483,6 +499,27 @@ const txNo=(t,i)=>`${t.empId}-${ddmmyy(t.date)}-${pad(i+1)}`;
 const entryCode=e=>e.cat==='Cost'||e.code?e.code:'-';
 const entryName=e=>e.code?(codeInfo(e.code)?.name||''):'-';
 
+/* ---- Dashboard: วงกลม progress 8 ชั่วโมง แยกตามประเภท (Cost / SG&A N1–N8) ---- */
+const SGA_COL={N1:'#f29b2f',N2:'#e8711a',N3:'#d94f5c',N4:'#9b6bd6',N5:'#4f8cf5',N6:'#2bb3c0',N7:'#8fa6bf',N8:'#c28b6b'};
+function renderRing(t){
+  const ents=t?.entries||[],segs=[];
+  const cost=ents.filter(e=>e.cat==='Cost').reduce((a,e)=>a+e.hours,0);
+  if(cost)segs.push({label:'Cost (โครงการ)',h:cost,c:'#14a37f'});
+  db.sgaTypes.forEach(s=>{const hh=ents.filter(e=>e.cat==='SG&A'&&e.sgaId===s.id).reduce((a,e)=>a+e.hours,0);
+    if(hh)segs.push({label:`SG&A ${s.id} ${s.name}`,h:hh,c:SGA_COL[s.id]||'#e08a00'})});
+  const total=segs.reduce((a,s)=>a+s.h,0),R=78,C=2*Math.PI*R;let used=0;
+  const arcs=segs.map(s=>{const len=Math.max(0,Math.min(s.h,TARGET-used))/TARGET*C;
+    const el=`<circle class="seg" cx="100" cy="100" r="${R}" fill="none" stroke="${s.c}" stroke-width="22" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-used/TARGET*C}" transform="rotate(-90 100 100)"><title>${esc(s.label)}: ${s.h} ชม.</title></circle>`;
+    used+=Math.min(s.h,TARGET-used);return el}).join('');
+  const pct=Math.round(total/TARGET*100),done=total===TARGET,over=total>TARGET;
+  $('#ring').innerHTML=`<circle cx="100" cy="100" r="${R}" fill="none" stroke="var(--line)" stroke-width="22"/>${arcs}
+    <text x="100" y="98" text-anchor="middle" style="font-size:38px;font-weight:700;fill:var(--ink)">${total}<tspan style="font-size:18px;font-weight:500;fill:var(--mut)"> / ${TARGET}</tspan></text>
+    <text x="100" y="122" text-anchor="middle" style="font-size:13px;fill:var(--mut)">ชั่วโมง · ${pct}%</text>
+    <text x="100" y="142" text-anchor="middle" style="font-size:13px;font-weight:600;fill:${done?'#14a37f':over?'#e5484d':'var(--mut)'}">${done?'ครบ 8 ชม. ✓':over?'เกิน '+(total-TARGET)+' ชม.':'เหลือ '+(TARGET-total)+' ชม.'}</text>`;
+  const left=Math.max(0,TARGET-total);
+  $('#ringLegend').innerHTML=(segs.length?segs.map(s=>`<div class="lg"><i style="background:${s.c}"></i><span>${esc(s.label)}</span><b>${s.h} ชม.</b><span class="p">${Math.round(s.h/TARGET*100)}%</span></div>`).join(''):'<div class="hint">ยังไม่มีรายการบันทึกของวันนี้</div>')
+    +(left?`<div class="lg"><i style="background:var(--line)"></i><span>คงเหลือ</span><b>${left} ชม.</b><span class="p">${Math.round(left/TARGET*100)}%</span></div>`:'');
+}
 function renderLog(){
   const e=emp(), t=curSheet(false), tot=totals(t), d=dayInfo(e,$('#date').value);
   const locked=t&&t.status==='Submitted';
@@ -493,7 +530,7 @@ function renderLog(){
   $('#formCard').classList.toggle('hide',!!locked||!d.work||!e);if(!e){$('#dayNotice').classList.remove('hide');$('#dayNotice').textContent='บัญชีนี้ยังไม่ผูกกับรหัสพนักงาน จึงบันทึกงานไม่ได้ — ให้ Admin ใส่อีเมลบริษัทของคุณในข้อมูลพนักงาน'}
   $('#reopen').classList.toggle('hide',!locked);
   $('#submit').classList.toggle('hide',!!locked);
-  $('#tTotal').textContent=tot.all;$('#tCost').textContent=tot.cost;$('#tSga').textContent=tot.sga;
+  $('#tTotal').textContent=tot.all;$('#tCost').textContent=tot.cost;$('#tSga').textContent=tot.sga;renderRing(t);
   $('#bCost').style.width=Math.min(100,tot.cost/TARGET*100)+'%';
   $('#bSga').style.width=Math.min(100-Math.min(100,tot.cost/TARGET*100),tot.sga/TARGET*100)+'%';
   const diff=TARGET-tot.all;
@@ -890,7 +927,7 @@ function renderAcct(){
 
 /* ---- สมัครสมาชิก (self-registration) ---- */
 $('#regBox').onsubmit=async ev=>{ev.preventDefault();normDb();
-  const empId=$('#rgEmp').value.trim(),email=$('#rgEmail').value.trim(),un=$('#rgUser').value.trim(),p1=$('#rgPass').value,p2=$('#rgPass2').value;
+  const name=$('#rgName').value.trim(),empId=$('#rgEmp').value.trim(),email=$('#rgEmail').value.trim(),un=$('#rgUser').value.trim(),p1=$('#rgPass').value,p2=$('#rgPass2').value;
   const e=find(db.employees,empId);
   if(!db.settings.regOpen)return loginMsg('ขณะนี้ปิดรับสมัครสมาชิก กรุณาติดต่อ Admin');
   if(!e||e.active===false)return loginMsg('ไม่พบรหัสพนักงานนี้ในระบบ กรุณาตรวจสอบหรือติดต่อ Admin');
@@ -1165,7 +1202,8 @@ if(CLOUD){
     $('#lgUser').previousElementSibling.textContent='อีเมลบริษัท';$('#lgUser').type='email';$('#lgUser').autocomplete='email';
     ['#rgUser'].forEach(s=>{const i=$(s);i.required=false;i.classList.add('hide');if(i.previousElementSibling)i.previousElementSibling.classList.add('hide')});
     $('#rgEmp').previousElementSibling.textContent='รหัสพนักงาน (Emp.No)';
-    const h=$('#regBox .hint');if(h)h.textContent='สมัครสมาชิกด้วยรหัสพนักงานและอีเมลบริษัท ที่ตรงกับรายชื่อซึ่ง Admin เพิ่มไว้ — หลังสมัคร ต้องรอ Admin อนุมัติก่อนจึงเข้าใช้งานได้';
+    $('#rgName').required=true;$('#rgName').classList.remove('hide');$('#rgName').previousElementSibling.classList.remove('hide');
+    const h=$('#regBox .hint');if(h)h.textContent='สมัครสมาชิกด้วยชื่อ รหัสพนักงาน และอีเมลบริษัท — หลังสมัครต้องรอ Admin ตรวจสอบและอนุมัติก่อนจึงเข้าใช้งานได้';
     $('#rgEmail').previousElementSibling.textContent='อีเมลบริษัท';
   })();
   const _finish=finishEnter;
@@ -1193,14 +1231,15 @@ if(CLOUD){
     await onSignedIn(data.session);
   };
   $('#regBox').onsubmit=async ev=>{ev.preventDefault();
-    const empId=$('#rgEmp').value.trim(),email=$('#rgEmail').value.trim(),p1=$('#rgPass').value,p2=$('#rgPass2').value;
+    const name=$('#rgName').value.trim(),empId=$('#rgEmp').value.trim(),email=$('#rgEmail').value.trim(),p1=$('#rgPass').value,p2=$('#rgPass2').value;
     if(!/^\S+@\S+\.\S+$/.test(email))return loginMsg('กรุณากรอกอีเมลบริษัทให้ถูกต้อง');
     if(!pwOk(p1))return loginMsg(PWRULE);
     if(p1!==p2)return loginMsg('รหัสผ่านทั้งสองช่องไม่ตรงกัน');
+    if(!name)return loginMsg('กรุณากรอกชื่อ-นามสกุล');
     if(!empId)return loginMsg('กรุณากรอกรหัสพนักงาน');
-    const {data,error}=await sb.auth.signUp({email,password:p1,options:{emailRedirectTo:location.origin+location.pathname,data:{emp_id:empId}}});
-    if(error)return loginMsg(/already|registered/i.test(error.message)?'อีเมลนี้สมัครแล้ว — เข้าสู่ระบบ หรือกด "ลืมรหัสผ่าน?"':'สมัครไม่สำเร็จ: รหัสพนักงานและอีเมลต้องตรงกับรายชื่อที่ Admin เพิ่มไว้ (หรือรหัสผ่านไม่ผ่านเงื่อนไข)');
-    ['#rgEmp','#rgEmail','#rgPass','#rgPass2'].forEach(s=>$(s).value='');
+    const {data,error}=await sb.auth.signUp({email,password:p1,options:{emailRedirectTo:location.origin+location.pathname,data:{emp_id:empId,full_name:name}}});
+    if(error)return loginMsg(/already|registered/i.test(error.message)?'อีเมลนี้สมัครแล้ว — เข้าสู่ระบบ หรือกด "ลืมรหัสผ่าน?"':'สมัครไม่สำเร็จ — ตรวจสอบอีเมลและรหัสผ่านให้ถูกต้อง (รหัสผ่านต้อง 8 ตัวขึ้นไป มีตัวอักษรและตัวเลข)');
+    ['#rgName','#rgEmp','#rgEmail','#rgPass','#rgPass2'].forEach(s=>$(s).value='');
     if(data&&data.session){await onSignedIn(data.session);return}
     showMode('login');loginMsg('สมัครสำเร็จ — รอ Admin อนุมัติก่อน จึงจะเข้าสู่ระบบได้',true);
   };
@@ -1250,15 +1289,24 @@ if(CLOUD){
       const t=c.querySelector('h2')?.textContent||'';
       if(/ตั้งค่าการสมัคร|คำขอสมัคร|ตั้งชื่อผู้ใช้/.test(t))c.classList.add('hide')});
     if(!$('#cloudMemNote')){const n=document.createElement('div');n.id='cloudMemNote';n.className='notice';n.style.margin='0 0 16px';
-      n.textContent='เพิ่มรายชื่อสมาชิก (พร้อมอีเมล) ที่นี่ก่อน แล้วให้พนักงานกด "สมัครสมาชิก" ที่หน้า login ด้วยรหัสพนักงานและอีเมลเดียวกัน แล้วกด "อนุมัติ" ที่แถวของเขาก่อนจึงจะใช้งานได้ (ไม่มีการเก็บรหัสผ่านในแอป)';
+      n.textContent='เพิ่มรายชื่อสมาชิก (พร้อมอีเมล) ที่นี่ก่อน แล้วให้พนักงานกด "สมัครสมาชิก" ที่หน้า login (หรือให้พนักงานสมัครเองได้เลยโดยไม่ต้องมีรายชื่อก่อน) แล้วตรวจสอบข้อมูลและกด "อนุมัติ" ที่แถวของเขา — ผู้สมัครใหม่จะอยู่สถานะ "รออนุมัติ" และยังใช้งานไม่ได้ (ไม่มีการเก็บรหัสผ่านในแอป)';
       $('#tab-mem').insertBefore(n,$('#tab-mem').firstChild)}
     [...$('#memList').children].forEach((tr,i)=>{const e=db.employees[i],td=tr.lastElementChild;if(!e||!td)return;
       const stc=tr.children[4];if(stc)stc.innerHTML=!e.linked?'<span class="tag st">ยังไม่สมัคร</span>'+(e.approved?' <span class="hint">(อนุมัติล่วงหน้า)</span>':''):(e.approved?'<span class="tag cost">ใช้งานได้</span>':'<span class="tag sga">รออนุมัติ</span>');
       const selfRow=me&&me.id===e.id;
+      const pendBtns=(!selfRow&&e.linked&&!e.approved)?`<button class="btn" style="padding:4px 10px;color:var(--bad)" data-crej="${esc(e.id)}" title="ปฏิเสธและลบคำขอสมัครนี้">ปฏิเสธ</button> <button class="btn" style="padding:4px 10px" data-cid="${esc(e.id)}" title="แก้รหัสพนักงานให้ถูกต้อง">แก้รหัส</button> `:'';
       const apBtn=selfRow?'':(e.approved?`<button class="btn" style="padding:4px 10px" data-capp="${esc(e.id)}" title="ระงับการใช้งาน">ระงับ</button> `:`<button class="btn ok" style="padding:4px 10px" data-capp="${esc(e.id)}">อนุมัติ</button> `);
-      td.innerHTML=apBtn+`<button class="x" style="color:var(--pri)" data-medit="${esc(e.id)}" title="แก้ไขชื่อ/อีเมล/ข้อมูล">✎</button> `+(e.linked?`<button class="btn" style="padding:4px 10px" data-cmail="${esc(e.id)}" title="ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่">✉ รีเซ็ต</button>`:'');
+      td.innerHTML=apBtn+pendBtns+`<button class="x" style="color:var(--pri)" data-medit="${esc(e.id)}" title="แก้ไขชื่อ/อีเมล/ข้อมูล">✎</button> `+(e.linked?`<button class="btn" style="padding:4px 10px" data-cmail="${esc(e.id)}" title="ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่">✉ รีเซ็ต</button>`:'');
       td.querySelectorAll('[data-medit]').forEach(b=>b.onclick=()=>startEditMember(b.dataset.medit));
       td.querySelectorAll('[data-capp]').forEach(b=>b.onclick=()=>{e.approved=!e.approved;save();renderMem()});
+      td.querySelectorAll('[data-crej]').forEach(b=>b.onclick=async()=>{
+        if(!confirm(`ปฏิเสธและลบคำขอสมัครของ ${e.name} (${e.email})? ผู้สมัครจะต้องสมัครใหม่`))return;
+        const {error}=await sb.rpc('admin_reject',{p_id:e.id});if(error)return alert('ปฏิเสธไม่สำเร็จ: '+error.message);
+        db.employees=db.employees.filter(x=>x.id!==e.id);if(snap.employees)delete snap.employees[e.id];renderMem()});
+      td.querySelectorAll('[data-cid]').forEach(b=>b.onclick=async()=>{
+        const nid=(prompt('รหัสพนักงานที่ถูกต้องของ '+e.name,e.id)||'').trim();if(!nid||nid===e.id)return;
+        const {error}=await sb.rpc('admin_rename_emp',{p_old:e.id,p_new:nid});if(error)return alert('เปลี่ยนรหัสไม่สำเร็จ: '+(/ID_EXISTS/.test(error.message)?'รหัสนี้มีอยู่แล้ว':error.message));
+        const oldId=e.id;e.id=nid;if(snap.employees){delete snap.employees[oldId];snap.employees[nid]=JSON.stringify(TBL.employees.to(e))}renderMem()});
       td.querySelectorAll('[data-cmail]').forEach(b=>b.onclick=async()=>{
         if(!confirm(`ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่ไปที่ ${e.email}?`))return;
         const {error}=await sb.auth.resetPasswordForEmail(e.email,{redirectTo:location.origin+location.pathname});
