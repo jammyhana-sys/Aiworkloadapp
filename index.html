@@ -122,7 +122,16 @@ td.n,th.n{text-align:right;white-space:nowrap}
 .tr{height:16px;border-radius:8px;background:var(--line);overflow:hidden;display:flex}.tr.big{height:30px;border-radius:10px}.tr.big span{display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600}
 .xrow2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}.pl{display:flex;justify-content:space-between;gap:8px;font-size:13.5px;padding:5px 0;border-bottom:1px dashed var(--line)}
 @media (max-width:700px){.xrow.two{grid-template-columns:1fr}.hb{grid-template-columns:minmax(90px,120px) 1fr 46px}}
-@media print{header,nav,.noprint{display:none!important}body{background:#fff!important}.xcard,.kpi{box-shadow:none;break-inside:avoid}}.seg2{display:flex;gap:4px;background:var(--pri-soft);padding:4px;border-radius:12px}
+@media print{header,nav,.noprint{display:none!important}body{background:#fff!important}.xcard,.kpi{box-shadow:none;break-inside:avoid}}.rpwrap{max-height:70vh;overflow:auto;border:1px solid var(--line);border-radius:12px}
+table.rp{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%}
+table.rp th,table.rp td{padding:6px 9px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap;background:var(--card)}
+table.rp td:first-child,table.rp th:first-child{position:sticky;left:0;text-align:left;z-index:1}
+table.rp tr.h4 th{position:sticky;top:0;z-index:2;color:#fff;background:#1f2a6b;text-align:center}table.rp tr.h4 th:first-child{z-index:3}
+table.rp tr.h4 th.cst{background:#7030a0}
+table.rp tr.y1 td{font-weight:700;background:var(--pri-soft)}table.rp tr.y2 td{font-weight:700;border-bottom:2px solid var(--ink)}table.rp tr.y3 td{font-size:11px;color:var(--mut);text-align:center;white-space:normal;min-width:70px}
+table.rp td.hrs{background:rgba(79,141,245,.14);font-weight:600}table.rp td.tot{background:rgba(128,128,128,.12);font-weight:600}
+table.rp tr.off td{background:rgba(128,128,128,.2);color:var(--mut)}
+@media print{.rpwrap{max-height:none;overflow:visible}}.seg2{display:flex;gap:4px;background:var(--pri-soft);padding:4px;border-radius:12px}
 .seg2 button{border:0;background:none;color:var(--mut);padding:7px 14px;border-radius:9px;cursor:pointer;font:inherit;font-weight:500}
 .seg2 button.on{background:var(--card);color:var(--pri);box-shadow:0 1px 4px rgba(34,48,73,.15);font-weight:600}
 .sumline{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-weight:600;font-size:13.5px}
@@ -287,7 +296,7 @@ header>*{min-width:0}
 
 <!-- ===== HISTORY ===== -->
 <section id="tab-hist" class="hide">
-  <div class="dashhead noprint" style="margin-bottom:12px"><div class="seg2" id="hView"><button data-v="exec" class="on">📊 ภาพรวมผู้บริหาร</button><button data-v="detail">📋 รายละเอียด</button></div><button class="btn" id="hPrint" title="พิมพ์ หรือบันทึกเป็น PDF">🖨 พิมพ์ / PDF</button></div>
+  <div class="dashhead noprint" style="margin-bottom:12px"><div class="seg2" id="hView"><button data-v="exec" class="on">📊 ภาพรวมผู้บริหาร</button><button data-v="detail">📋 รายละเอียด</button><button data-v="person">📄 รายงานรายคน</button></div><button class="btn" id="hPrint" title="พิมพ์ หรือบันทึกเป็น PDF">🖨 พิมพ์ / PDF</button></div>
   <div class="card noprint">
     <div class="dashhead">
       <div class="seg2" id="hMode">
@@ -300,7 +309,7 @@ header>*{min-width:0}
         <button class="btn" id="hToday">ปัจจุบัน</button>
       </div>
     </div>
-    <div class="dashhead" style="margin-bottom:0">
+    <div class="dashhead" style="margin-bottom:0" id="hScopeRow">
       <div class="seg2" id="hScope"></div>
       <div class="hfilters">
         <select id="hDept" class="hide" aria-label="ฝ่าย"></select>
@@ -315,6 +324,7 @@ header>*{min-width:0}
   </div>
 
   <div id="hExec" class="xg"></div>
+  <div id="hPerson" class="hide"></div>
   <div id="hDetail" class="hide">
   <div class="card">
     <h2 id="hTitle">สรุป</h2>
@@ -936,8 +946,8 @@ function renderHist(){
     $('#hList').innerHTML=sheets.slice(0,hs.limit).map(t=>{const o=totals(t);return `<tr><td>${t.date}</td><td>${esc(t.empId)}</td><td><span class="tag ${stCls(t.status)}">${stTxt(t.status)}</span></td><td class="n">${o.cost}</td><td class="n">${o.sga}</td><td class="n">${o.all}/8</td><td><button class="btn" data-open="${esc(t.id)}">เปิด</button></td></tr>`}).join('')||'<tr><td colspan="7" class="hint">ไม่มีใบบันทึกงาน</td></tr>';
     $$('[data-open]').forEach(b=>b.onclick=()=>{const t=find(db.timesheets,b.dataset.open);if(!isAdmin&&t.empId!==me?.id)return;$('#emp').value=t.empId;$('#date').value=t.date;$('nav button[data-tab=log]').click();syncForm();renderLog()});
   }
-  $$('#hView button').forEach(b=>b.classList.toggle('on',b.dataset.v===hv));$('#hExec').classList.toggle('hide',hv!=='exec');$('#hDetail').classList.toggle('hide',hv==='exec');
-  if(hv==='exec')renderExec(D,proj);
+  $$('#hView button').forEach(b=>b.classList.toggle('on',b.dataset.v===hv));$('#hExec').classList.toggle('hide',hv!=='exec');$('#hDetail').classList.toggle('hide',hv!=='detail');$('#hPerson').classList.toggle('hide',hv!=='person');$('#hScopeRow').classList.toggle('hide',hv==='person');
+  if(hv==='exec')renderExec(D,proj);if(hv==='person')renderPersonReport();
 }
 $$('#hMode button').forEach(b=>b.onclick=()=>{hs.mode=b.dataset.m;hs.limit=100;renderHist()});
 $('#hPrev').onclick=()=>{hs.anchor=pShift(hs.mode,hs.anchor,-1);hs.limit=100;renderHist()};
@@ -1056,7 +1066,7 @@ function renderExec(D,proj){
    ${utilCard}`;
 }
 $$('#hView button').forEach(b=>b.onclick=()=>{hv=b.dataset.v;renderHist()});
-$('#hPrint').onclick=()=>{if(hv!=='exec'){hv='exec';renderHist()}window.print()};
+$('#hPrint').onclick=()=>window.print();
 
 /* ===== รายงานรายคน (Excel) — 1 แถวต่อวัน คอลัมน์ Hours / Cost แยกโครงการ / SG&A แยก N1–N8 + YTD % ===== */
 const loadExcelJS=()=>window.ExcelJS?Promise.resolve(true):new Promise(res=>{const s=document.createElement('script');
@@ -1076,10 +1086,10 @@ function personReportData(e){
   days.forEach(o=>{tot.h+=o.h;tot.cost+=o.cost;tot.sga+=o.sga;pc.forEach(c=>tot.p[c]=(tot.p[c]||0)+(o.p[c]||0));sgaT.forEach(s=>tot.n[s.id]=(tot.n[s.id]||0)+(o.n[s.id]||0))});
   return{e,r,mode,days,pc,sgaT,tot,target};
 }
-async function exportPersonReport(){
-  const e=(!isAdmin?me:(hs.scope==='me'?me:find(db.employees,hs.emp)))||me;
+async function exportPersonReport(pe){
+  const e=pe||(!isAdmin?me:(hs.scope==='me'?me:find(db.employees,hs.emp)))||me;
   if(!e)return alert('ไม่พบพนักงานที่จะออกรายงาน (เลือกขอบเขต "รายคน" แล้วเลือกพนักงานก่อน)');
-  if(isAdmin&&hs.scope!=='emp'&&hs.scope!=='me'&&!confirm(`ออกรายงานรายคนของ ${e.id} ${e.name}?\n(เปลี่ยนคนได้โดยเลือกขอบเขต "รายคน" แล้วเลือกพนักงาน)`))return;
+  if(!pe&&isAdmin&&hs.scope!=='emp'&&hs.scope!=='me'&&!confirm(`ออกรายงานรายคนของ ${e.id} ${e.name}?\n(เปลี่ยนคนได้โดยเลือกขอบเขต "รายคน" แล้วเลือกพนักงาน)`))return;
   const D=personReportData(e),pLab=pLabel(D.mode,hs.anchor,D.r).replace(/[^\w฀-๿.-]+/g,'_');
   const fname=`Timesheet_${e.id}_${D.mode}_${D.r.s}.xlsx`,pcts=v=>D.target?v/D.target:0;
   const ncol=11+1+D.pc.length+1+D.sgaT.length+1;                         // A..K, Cost, projects, SG&A, N*, Status
@@ -1124,7 +1134,29 @@ async function exportPersonReport(){
   const buf=await wb.xlsx.writeBuffer(),a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));a.download=fname;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
 }
-$('#xPerson').onclick=()=>exportPersonReport().catch(er=>alert('ออกรายงานไม่สำเร็จ: '+er.message));
+function renderPersonReport(){
+  const el=$('#hPerson');
+  const e=(!isAdmin?me:find(db.employees,hs.emp))||me;
+  if(!e){el.innerHTML='<div class="card"><div class="hint">ไม่พบพนักงาน — เลือกพนักงานในรายการ</div></div>';return}
+  const D=personReportData(e),fx=v=>v?Number(v).toFixed(2):'-',pc=v=>D.target?Math.round(v/D.target*100)+'%':'-';
+  const cc=D.pc.length,nc=D.sgaT.length;
+  const sel=isAdmin?`<select id="rpEmp" style="max-width:320px">${db.employees.slice().sort(byId).map(x=>`<option value="${esc(x.id)}" ${x.id===e.id?'selected':''}>${esc(x.id+' — '+x.name)}</option>`).join('')}</select>`:'';
+  const cols=[{t:'Hours',v:D.tot.h,k:'h'},{t:'Cost',v:D.tot.cost,k:'c',cst:1},...D.pc.map(c=>({t:c,v:D.tot.p[c]||0,k:'p:'+c,cst:1,nm:trunc(codeInfo(c)?.name||'',14)})),{t:'SG&A',v:D.tot.sga,k:'s'},...D.sgaT.map(s=>({t:s.id,v:D.tot.n[s.id]||0,k:'n:'+s.id,nm:s.name}))];
+  const val=(o,k)=>k==='h'?o.h:k==='c'?o.cost:k==='s'?o.sga:k[0]==='p'?(o.p[k.slice(2)]||0):(o.n[k.slice(2)]||0);
+  const head=`<thead><tr class="y1"><td>YTD %</td>${cols.map(c=>`<td>${pc(c.v)}</td>`).join('')}<td></td></tr>
+    <tr class="y2"><td>YTD (ชม.)</td>${cols.map(c=>`<td>${fx(c.v)}</td>`).join('')}<td></td></tr>
+    <tr class="y3"><td></td>${cols.map(c=>`<td>${esc(c.nm||'')}</td>`).join('')}<td></td></tr>
+    <tr class="h4"><th>วันที่</th>${cols.map(c=>`<th class="${c.cst?'cst':''}">${esc(c.t)}</th>`).join('')}<th>สถานะ</th></tr></thead>`;
+  const body=D.days.map(o=>`<tr class="${o.work?'':'off'}"><td>${o.dn} ${+o.ds.slice(8)}/${o.m}/${o.y}</td>${cols.map(c=>{const v=val(o,c.k);return `<td class="${c.k==='h'?'hrs':c.k==='c'||c.k==='s'?'tot':''}">${v?fx(v):(c.k==='h'||c.k==='c'||c.k==='s'?'-':'')}</td>`}).join('')}<td>${esc(o.status)}</td></tr>`).join('');
+  el.innerHTML=`<div class="card">
+    <div class="dashhead" style="margin-bottom:10px"><div><h2 style="margin:0">รายงานรายคน</h2>
+      <div class="hint">${esc(e.id)} ${esc(e.name)}${e.nick?' ('+esc(e.nick)+')':''} · ฝ่าย ${esc(e.dept||'-')} ${esc(find(db.depts,e.dept)?.name||'')} · ${esc(e.position||'')} ${esc(e.level||'')} · ${esc(pLabel(D.mode,hs.anchor,D.r))} · เป้า ${D.target} ชม.</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${sel}<button class="btn pri" id="rpX">⬇ ส่งออก Excel</button></div></div>
+    <div class="rpwrap"><table class="rp">${head}<tbody>${body}</tbody></table></div>
+    <div class="hint" style="margin-top:8px">${D.mode==='day'?'โหมดวัน แสดงทั้งเดือน · ':''}เปอร์เซ็นต์ = ชั่วโมง ÷ เป้า (วันทำการ × 8 ชม.) · เสาร์-อาทิตย์/วันหยุดเป็นแถวสีเทา · เลือกช่วงเวลาด้านบน (สัปดาห์/เดือน/ไตรมาส/ปี)</div></div>`;
+  const s2=$('#rpEmp');if(s2)s2.onchange=()=>{hs.emp=s2.value;renderPersonReport()};
+  $('#rpX').onclick=()=>exportPersonReport(e).catch(er=>alert('ออกรายงานไม่สำเร็จ: '+er.message));
+}$('#xPerson').onclick=()=>exportPersonReport().catch(er=>alert('ออกรายงานไม่สำเร็จ: '+er.message));
 
 /* ส่งออกตามตัวกรอง (ช่วงเวลา + ขอบเขต) */
 function histExportRows(){
