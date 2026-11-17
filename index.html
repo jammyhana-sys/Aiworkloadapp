@@ -128,10 +128,12 @@ table.rp th,table.rp td{padding:6px 9px;border-bottom:1px solid var(--line);text
 table.rp td:first-child,table.rp th:first-child{position:sticky;left:0;text-align:left;z-index:1}
 table.rp tr.h4 th{position:sticky;top:0;z-index:2;color:#fff;background:#1f2a6b;text-align:center}table.rp tr.h4 th:first-child{z-index:3}
 table.rp tr.h4 th.cst{background:#7030a0}
+table.rp tr.ysal td{background:#fff1e6;color:#9a3412}
 table.rp tr.y1 td{font-weight:700;background:var(--pri-soft)}table.rp tr.y2 td{font-weight:700;border-bottom:2px solid var(--ink)}table.rp tr.y3 td{font-size:11px;color:var(--mut);text-align:center;white-space:normal;min-width:70px}
 table.rp td.hrs{background:rgba(79,141,245,.14);font-weight:600}table.rp td.tot{background:rgba(128,128,128,.12);font-weight:600}
 table.rp tr.off td{background:rgba(128,128,128,.2);color:var(--mut)}
-@media print{.rpwrap{max-height:none;overflow:visible}}.seg2{display:flex;gap:4px;background:var(--pri-soft);padding:4px;border-radius:12px}
+@media print{.rpwrap{max-height:none;overflow:visible}}#tab-hist.nosal .sal-col{display:none}
+.seg2{display:flex;gap:4px;background:var(--pri-soft);padding:4px;border-radius:12px}
 .seg2 button{border:0;background:none;color:var(--mut);padding:7px 14px;border-radius:9px;cursor:pointer;font:inherit;font-weight:500}
 .seg2 button.on{background:var(--card);color:var(--pri);box-shadow:0 1px 4px rgba(34,48,73,.15);font-weight:600}
 .sumline{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-weight:600;font-size:13.5px}
@@ -330,7 +332,7 @@ header>*{min-width:0}
     <h2 id="hTitle">สรุป</h2>
     <div class="sum" id="hSum"></div>
     <div class="hint" id="hBase" style="margin-top:6px"></div>
-    <div class="scroll" style="margin-top:12px"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>ประเภท</th><th class="n">ชม.</th><th class="n">สัดส่วน</th></tr></thead><tbody id="hBreak"></tbody></table></div>
+    <div class="scroll" style="margin-top:12px"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>ประเภท</th><th class="n">ชม.</th><th class="n">สัดส่วน</th><th class="n sal-col">ต้นทุน (บาท)</th></tr></thead><tbody id="hBreak"></tbody></table></div>
   </div>
 
   <div class="card hide" id="hPeopleCard">
@@ -340,13 +342,13 @@ header>*{min-width:0}
 
   <div class="card">
     <h2>รายการงาน</h2>
-    <div class="scroll"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th>ประเภท</th><th>รหัส / ชื่อ</th><th>รายละเอียด</th><th class="n">ชม.</th></tr></thead><tbody id="hEntries"></tbody></table></div>
+    <div class="scroll"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th>ประเภท</th><th>รหัส / ชื่อ</th><th>รายละเอียด</th><th class="n">ชม.</th><th class="n sal-col">ต้นทุน (บาท)</th></tr></thead><tbody id="hEntries"></tbody></table></div>
     <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button class="btn hide" id="hMore">แสดงเพิ่ม</button><span class="hint" id="hCount"></span></div>
   </div>
 
   <div class="card" id="hSheetsCard">
     <h2>ใบบันทึกงานรายวัน</h2>
-    <div class="scroll"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th>สถานะ</th><th class="n">Cost</th><th class="n">SG&amp;A</th><th class="n">รวม</th><th></th></tr></thead><tbody id="hList"></tbody></table></div>
+    <div class="scroll"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th>สถานะ</th><th class="n">Cost</th><th class="n">SG&amp;A</th><th class="n">รวม</th><th class="n sal-col">ต้นทุน (บาท)</th><th></th></tr></thead><tbody id="hList"></tbody></table></div>
   </div>
   </div>
 </section>
@@ -909,34 +911,37 @@ function renderHist(){
   const who=hs.scope==='dept'?'ฝ่าย '+hs.dept:hs.scope==='emp'?(find(db.employees,hs.emp)?.name||hs.emp):proj?pl+code:hs.scope==='me'?'ของฉัน':'ทุกคน';
   $('#hTitle').textContent=`สรุป${MODE_TH[hs.mode]} — ${who}`;
   // ---- สรุปรวม ----
-  let c=0,s=0;const brk={};
-  D.rows.forEach(({x})=>{const k=x.cat==='Cost'?x.code:(x.sgaId+(x.code?' · '+x.code:''));
-    brk[k]=brk[k]||{cat:x.cat,h:0,name:x.cat==='Cost'?entryName(x):(find(db.sgaTypes,x.sgaId)?.name||'')};brk[k].h+=x.hours;x.cat==='Cost'?c+=x.hours:s+=x.hours});
+  const SAL=hasSal();$('#tab-hist').classList.toggle('nosal',!SAL);
+  let c=0,s=0,bC=0,bS=0,unr=0;const brk={};
+  D.rows.forEach(({t,x})=>{const k=x.cat==='Cost'?x.code:(x.sgaId+(x.code?' · '+x.code:''));
+    brk[k]=brk[k]||{cat:x.cat,h:0,b:0,name:x.cat==='Cost'?entryName(x):(find(db.sgaTypes,x.sgaId)?.name||'')};brk[k].h+=x.hours;x.cat==='Cost'?c+=x.hours:s+=x.hours;
+    if(SAL){const b=bahtOf(t,x);brk[k].b+=b;x.cat==='Cost'?bC+=b:bS+=b;if(!isRated(t))unr+=x.hours}});
   const all=c+s,den=(!proj&&D.target)?D.target:all,pc=v=>den?`${Math.round(v/den*100)}%`:'0%';
   $('#hSum').innerHTML=`<span>รวม <b>${all}</b> ชม.</span><span style="color:var(--cost)">${esc(costShort())} <b>${c}</b> (${pc(c)})</span><span style="color:var(--sga)">SG&A <b>${s}</b> (${pc(s)})</span>`
-    +(!proj&&D.target?`<span>เป้า <b>${D.target}</b> ชม. · ทำได้ ${Math.round(all/D.target*100)}%</span>`:'');
+    +(!proj&&D.target?`<span>เป้า <b>${D.target}</b> ชม. · ทำได้ ${Math.round(all/D.target*100)}%</span>`:'')
+    +(SAL?`<span style="color:#c2410c">ต้นทุนแรงงาน <b>฿${xm(bC+bS)}</b> (${esc(costShort())} ฿${xm(bC)} · SG&amp;A ฿${xm(bS)})</span>${unr?`<span style="color:var(--bad)">⚠ ${xh(unr)} ชม. ยังไม่มีเงินเดือน</span>`:''}`:'');
   $('#hBase').textContent=proj?`เปอร์เซ็นต์เทียบกับชั่วโมงรวมของ ${code} ในช่วงนี้`:`ฐานคำนวณ: วันทำการ × 8 ชม. ต่อคน (${D.active.length} คน) — ไม่นับเสาร์-อาทิตย์/วันหยุด`;
-  $('#hBreak').innerHTML=Object.entries(brk).sort((a,b)=>b[1].h-a[1].h).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${esc(v.name)}</td><td><span class="tag ${v.cat==='Cost'?'cost':'sga'}">${esc(v.cat)}</span></td><td class="n">${v.h}</td><td class="n">${pctTxt(v.h,den||1)}</td></tr>`).join('')||'<tr><td colspan="5" class="hint">ไม่มีข้อมูลในช่วงนี้</td></tr>';
+  $('#hBreak').innerHTML=Object.entries(brk).sort((a,b)=>b[1].h-a[1].h).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${esc(v.name)}</td><td><span class="tag ${v.cat==='Cost'?'cost':'sga'}">${esc(v.cat)}</span></td><td class="n">${v.h}</td><td class="n">${pctTxt(v.h,den||1)}</td><td class="n sal-col">${xm(v.b)}</td></tr>`).join('')||'<tr><td colspan="6" class="hint">ไม่มีข้อมูลในช่วงนี้</td></tr>';
   // ---- สรุปรายคน (ทั้งหมด / รายฝ่าย / Project) ----
   const showPeople=hs.scope==='all'||hs.scope==='dept'||proj;
   $('#hPeopleCard').classList.toggle('hide',!showPeople);
   if(showPeople){
-    const by={};D.rows.forEach(({t,x})=>{const o=by[t.empId]=by[t.empId]||{c:0,s:0};x.cat==='Cost'?o.c+=x.hours:o.s+=x.hours});
-    const list=(proj?Object.keys(by).map(id=>find(db.employees,id)||{id,name:id}):D.active.filter(e=>true)).map(e=>({e,c:by[e.id]?.c||0,s:by[e.id]?.s||0}));
+    const by={};D.rows.forEach(({t,x})=>{const o=by[t.empId]=by[t.empId]||{c:0,s:0,b:0};x.cat==='Cost'?o.c+=x.hours:o.s+=x.hours;if(SAL)o.b+=bahtOf(t,x)});
+    const list=(proj?Object.keys(by).map(id=>find(db.employees,id)||{id,name:id}):D.active.filter(e=>true)).map(e=>({e,c:by[e.id]?.c||0,s:by[e.id]?.s||0,b:by[e.id]?.b||0}));
     list.forEach(o=>{o.t=o.c+o.s;o.tg=proj?0:D.wdOf(o.e)*TARGET});
     list.sort((a,b)=>proj?b.t-a.t:a.e.id.localeCompare(b.e.id));
     $('#hPeopleTitle').textContent=proj?`พนักงานที่ลงเวลาใน ${code} (${list.length} คน)`:`สรุปรายคน (${list.length} คน)`;
-    $('#hPeopleHead').innerHTML=proj?'<tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th class="n">ชม.</th><th class="n">สัดส่วน</th></tr>'
-      :'<tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th class="n">Cost</th><th class="n">SG&amp;A</th><th class="n">รวม</th><th class="n">เป้า</th><th class="n">%</th></tr>';
-    $('#hPeople').innerHTML=list.map(o=>proj?`<tr><td>${esc(o.e.id)}</td><td>${esc(o.e.name)}</td><td>${esc(o.e.dept||'')}</td><td class="n">${o.t}</td><td class="n">${pctTxt(o.t,all||1)}</td></tr>`
-      :`<tr><td>${esc(o.e.id)}</td><td>${esc(o.e.name)}</td><td>${esc(o.e.dept||'')}</td><td class="n">${o.c}</td><td class="n">${o.s}</td><td class="n">${o.t}</td><td class="n">${o.tg}</td><td class="n" style="color:${o.tg&&o.t>=o.tg?'var(--cost)':o.t?'var(--ink)':'var(--bad)'}">${o.tg?Math.round(o.t/o.tg*100)+'%':'-'}</td></tr>`).join('')
-      ||`<tr><td colspan="${proj?5:8}" class="hint">ไม่มีข้อมูล</td></tr>`;
+    $('#hPeopleHead').innerHTML=proj?'<tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th class="n">ชม.</th><th class="n">สัดส่วน</th><th class="n sal-col">ต้นทุน (บาท)</th></tr>'
+      :'<tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th class="n">Cost</th><th class="n">SG&amp;A</th><th class="n">รวม</th><th class="n">เป้า</th><th class="n">%</th><th class="n sal-col">ต้นทุน (บาท)</th></tr>';
+    $('#hPeople').innerHTML=list.map(o=>proj?`<tr><td>${esc(o.e.id)}</td><td>${esc(o.e.name)}</td><td>${esc(o.e.dept||'')}</td><td class="n">${o.t}</td><td class="n">${pctTxt(o.t,all||1)}</td><td class="n sal-col">${xm(o.b)}</td></tr>`
+      :`<tr><td>${esc(o.e.id)}</td><td>${esc(o.e.name)}</td><td>${esc(o.e.dept||'')}</td><td class="n">${o.c}</td><td class="n">${o.s}</td><td class="n">${o.t}</td><td class="n">${o.tg}</td><td class="n" style="color:${o.tg&&o.t>=o.tg?'var(--cost)':o.t?'var(--ink)':'var(--bad)'}">${o.tg?Math.round(o.t/o.tg*100)+'%':'-'}</td><td class="n sal-col">${xm(o.b)}</td></tr>`).join('')
+      ||`<tr><td colspan="${proj?6:9}" class="hint">ไม่มีข้อมูล</td></tr>`;
   }
   // ---- รายการงาน (ละเอียด) ----
   const sorted=D.rows.slice().sort((a,b)=>b.t.date.localeCompare(a.t.date)||a.t.empId.localeCompare(b.t.empId)||a.i-b.i);
   $('#hEntries').innerHTML=sorted.slice(0,hs.limit).map(({t,x})=>{const e=find(db.employees,t.empId)||{};
     const lbl=x.cat==='Cost'?`${esc(x.code)} ${esc(entryName(x))}`:`${esc(x.sgaId)}: ${esc(find(db.sgaTypes,x.sgaId)?.name||'')}${x.code?` <span class="hint">(${esc(x.code)} ${esc(entryName(x))})</span>`:''}`;
-    return `<tr><td>${t.date}</td><td>${esc(t.empId)}${e.name?' '+esc(e.name):''}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${esc(x.note||'')}</td><td class="n">${x.hours}</td></tr>`}).join('')||'<tr><td colspan="6" class="hint">ไม่มีรายการในช่วงนี้</td></tr>';
+    return `<tr><td>${t.date}</td><td>${esc(t.empId)}${e.name?' '+esc(e.name):''}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${esc(x.note||'')}</td><td class="n">${x.hours}</td><td class="n sal-col">${SAL?xm(bahtOf(t,x)):''}</td></tr>`}).join('')||'<tr><td colspan="7" class="hint">ไม่มีรายการในช่วงนี้</td></tr>';
   $('#hMore').classList.toggle('hide',sorted.length<=hs.limit);
   $('#hCount').textContent=sorted.length?`แสดง ${Math.min(hs.limit,sorted.length)} จาก ${sorted.length} รายการ`:'';
   // ---- ใบบันทึกงานรายวัน (ไม่แสดงในมุมมอง Project) ----
@@ -944,7 +949,7 @@ function renderHist(){
   if(!proj){
     const ids=new Set(D.people.map(e=>e.id)),r=D.r;
     const sheets=db.timesheets.filter(t=>t.date>=r.s&&t.date<=r.e&&ids.has(t.empId)&&(isAdmin||t.empId===me?.id)).sort((a,b)=>b.date.localeCompare(a.date)||a.empId.localeCompare(b.empId));
-    $('#hList').innerHTML=sheets.slice(0,hs.limit).map(t=>{const o=totals(t);return `<tr><td>${t.date}</td><td>${esc(t.empId)}</td><td><span class="tag ${stCls(t.status)}">${stTxt(t.status)}</span></td><td class="n">${o.cost}</td><td class="n">${o.sga}</td><td class="n">${o.all}/8</td><td><button class="btn" data-open="${esc(t.id)}">เปิด</button></td></tr>`}).join('')||'<tr><td colspan="7" class="hint">ไม่มีใบบันทึกงาน</td></tr>';
+    $('#hList').innerHTML=sheets.slice(0,hs.limit).map(t=>{const o=totals(t);return `<tr><td>${t.date}</td><td>${esc(t.empId)}</td><td><span class="tag ${stCls(t.status)}">${stTxt(t.status)}</span></td><td class="n">${o.cost}</td><td class="n">${o.sga}</td><td class="n">${o.all}/8</td><td class="n sal-col">${SAL?xm(t.entries.reduce((a,x)=>a+bahtOf(t,x),0)):''}</td><td><button class="btn" data-open="${esc(t.id)}">เปิด</button></td></tr>`}).join('')||'<tr><td colspan="8" class="hint">ไม่มีใบบันทึกงาน</td></tr>';
     $$('[data-open]').forEach(b=>b.onclick=()=>{const t=find(db.timesheets,b.dataset.open);if(!isAdmin&&t.empId!==me?.id)return;$('#emp').value=t.empId;$('#date').value=t.date;$('nav button[data-tab=log]').click();syncForm();renderLog()});
   }
   $$('#hView button').forEach(b=>b.classList.toggle('on',b.dataset.v===hv));$('#hExec').classList.toggle('hide',hv!=='exec');$('#hDetail').classList.toggle('hide',hv!=='detail');$('#hPerson').classList.toggle('hide',hv!=='person');$('#hScopeRow').classList.toggle('hide',hv==='person');
@@ -968,9 +973,9 @@ const trunc=(s,n)=>{s=String(s||'');return s.length>n?s.slice(0,n-1)+'…':s};
 
 function xDonut(parts,total){
   const R=68,C=2*Math.PI*R,sum=parts.reduce((a,p)=>a+p.v,0)||1;let off=0;
-  const arcs=parts.filter(p=>p.v>0).map(p=>{const len=p.v/sum*C,o=`<circle r="${R}" cx="100" cy="100" fill="none" stroke="${p.c}" stroke-width="30" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 100 100)"><title>${esc(p.l)}: ${xh(p.v)} ชม.</title></circle>`;off+=len;return o}).join('');
+  const arcs=parts.filter(p=>p.v>0).map(p=>{const len=p.v/sum*C,o=`<circle r="${R}" cx="100" cy="100" fill="none" stroke="${p.c}" stroke-width="30" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 100 100)"><title>${esc(p.l)}: ${xu(p.v)}${U()?'':' ชม.'}</title></circle>`;off+=len;return o}).join('');
   return `<svg viewBox="0 0 200 200" role="img" aria-label="สัดส่วนชั่วโมงตามประเภท" style="width:100%;max-width:230px"><circle r="${R}" cx="100" cy="100" fill="none" stroke="var(--line)" stroke-width="30"/>${arcs}
-    <text x="100" y="98" text-anchor="middle" style="font-size:30px;font-weight:700;fill:var(--ink)">${xh(total)}</text><text x="100" y="120" text-anchor="middle" style="font-size:12px;fill:var(--mut)">ชั่วโมงรวม</text></svg>`;
+    <text x="100" y="98" text-anchor="middle" style="font-size:${U()?24:30}px;font-weight:700;fill:var(--ink)">${U()?xk(total):xh(total)}</text><text x="100" y="120" text-anchor="middle" style="font-size:12px;fill:var(--mut)">${U()?'ต้นทุนรวม (บาท)':'ชั่วโมงรวม'}</text></svg>`;
 }
 function xBuckets(D){
   const m=hs.mode,r=D.r,b=[];
@@ -983,16 +988,17 @@ function xBuckets(D){
 function xTrend(D,proj){
   const bk=xBuckets(D);if(!bk.length)return '';
   bk.forEach(k=>{k.c=0;k.s2=0;let ws=0,wn=0;for(let d=new Date(k.sd);d<=k.ed;d.setDate(d.getDate()+1)){const ds=DF(d);if(dayInfo({workSat:true},ds).work)ws++;if(dayInfo({workSat:false},ds).work)wn++}k.tg=proj?0:D.active.reduce((a,e)=>a+(e.workSat?ws:wn)*TARGET,0)});
-  D.rows.forEach(({t,x})=>{const k=bk.find(z=>t.date>=z.s&&t.date<=z.e);if(k)x.cat==='Cost'?k.c+=x.hours:k.s2+=x.hours});
+  D.rows.forEach(({t,x})=>{const k=bk.find(z=>t.date>=z.s&&t.date<=z.e);if(k)x.cat==='Cost'?k.c+=uv(t,x):k.s2+=uv(t,x)});
+  if(U())bk.forEach(k=>k.tg=0);
   const W=640,H=230,L=40,B=26,T=14,pw=W-L-8,ph=H-B-T,mx=Math.max(1,...bk.map(k=>Math.max(k.c+k.s2,k.tg)))*1.08,n=bk.length,bw=pw/n,bar=Math.max(2,bw*0.62);
   const y=v=>T+ph-v/mx*ph,ticks=[0,.25,.5,.75,1].map(f=>f*mx);
-  const grid=ticks.map(v=>`<line x1="${L}" x2="${W-8}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end" style="font-size:10px;fill:var(--mut)">${Math.round(v)}</text>`).join('');
+  const grid=ticks.map(v=>`<line x1="${L}" x2="${W-8}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end" style="font-size:10px;fill:var(--mut)">${U()?xk(v):Math.round(v)}</text>`).join('');
   const step=n>16?Math.ceil(n/12):1,cc=costSty().color;
   const bars=bk.map((k,i)=>{const x=L+i*bw+(bw-bar)/2,hc=k.c/mx*ph,hs2=k.s2/mx*ph;
-    return `<g><title>${esc(k.l)}: ${xh(k.c+k.s2)} ชม. (Cost ${xh(k.c)} · SG&amp;A ${xh(k.s2)})${k.tg?` · เป้า ${xh(k.tg)}`:''}</title>
+    return `<g><title>${esc(k.l)}: ${xu(k.c+k.s2)}${U()?'':' ชม.'} (Cost ${xu(k.c)} · SG&amp;A ${xu(k.s2)})${k.tg?` · เป้า ${xh(k.tg)}`:''}</title>
       <rect x="${x}" y="${y(k.c)}" width="${bar}" height="${hc}" fill="${cc}" rx="2"/><rect x="${x}" y="${y(k.c+k.s2)}" width="${bar}" height="${hs2}" fill="var(--sga)" rx="2"/>
       ${i%step===0?`<text x="${x+bar/2}" y="${H-8}" text-anchor="middle" style="font-size:10px;fill:var(--mut)">${esc(k.l)}</text>`:''}
-      ${n<=12&&k.c+k.s2>0?`<text x="${x+bar/2}" y="${y(k.c+k.s2)-4}" text-anchor="middle" style="font-size:10px;fill:var(--ink)">${xh(k.c+k.s2)}</text>`:''}</g>`}).join('');
+      ${n<=12&&k.c+k.s2>0?`<text x="${x+bar/2}" y="${y(k.c+k.s2)-4}" text-anchor="middle" style="font-size:10px;fill:var(--ink)">${U()?xk(k.c+k.s2):xh(k.c+k.s2)}</text>`:''}</g>`}).join('');
   const tl=!proj&&bk.some(k=>k.tg)?`<polyline fill="none" stroke="var(--pri2)" stroke-width="2" stroke-dasharray="5 4" points="${bk.map((k,i)=>`${L+i*bw+bw/2},${y(k.tg)}`).join(' ')}"/>`:'';
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="แนวโน้มชั่วโมงตามช่วงเวลา" style="width:100%;height:auto">${grid}${bars}${tl}</svg>
     <div class="hint" style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px"><span><i class="dot" style="background:${cc}"></i>Cost</span><span><i class="dot" style="background:var(--sga)"></i>SG&amp;A</span>${tl?'<span><i class="dot" style="background:var(--pri2)"></i>เป้า (วันทำการ × 8 ชม.)</span>':''}</div>`;
@@ -1002,21 +1008,23 @@ const xBar=(label,title,segs,right)=>{const tot=segs.reduce((a,s)=>a+s.v,0);
 
 function renderExec(D,proj){
   const el=$('#hExec');if(!el)return;
-  const rows=D.rows,cc=costSty().color;let cost=0,sga=0;const sgaBy={},pj={},dp={},em={};
-  rows.forEach(({t,x})=>{const h=x.hours,isC=x.cat==='Cost';isC?cost+=h:sga+=h;
-    if(!isC)sgaBy[x.sgaId]=(sgaBy[x.sgaId]||0)+h;
-    if(x.code){const o=pj[x.code]=pj[x.code]||{c:0,s:0};isC?o.c+=h:o.s+=h}
-    const e=find(db.employees,t.empId),d=(e&&e.dept)||'-',od=dp[d]=dp[d]||{c:0,s:0};isC?od.c+=h:od.s+=h;
+  const rows=D.rows,cc=costSty().color,SAL=hasSal();let cost=0,sga=0,cv=0,sv=0,bC=0,bS=0,unr=0;const sgaBy={},pj={},dp={},em={};
+  rows.forEach(({t,x})=>{const h=x.hours,v=uv(t,x),isC=x.cat==='Cost';isC?cost+=h:sga+=h;isC?cv+=v:sv+=v;
+    if(SAL){const b=bahtOf(t,x);isC?bC+=b:bS+=b;if(!isRated(t))unr+=h}
+    if(!isC)sgaBy[x.sgaId]=(sgaBy[x.sgaId]||0)+v;
+    if(x.code){const o=pj[x.code]=pj[x.code]||{c:0,s:0};isC?o.c+=v:o.s+=v}
+    const e=find(db.employees,t.empId),d=(e&&e.dept)||'-',od=dp[d]=dp[d]||{c:0,s:0};isC?od.c+=v:od.s+=v;
     const oe=em[t.empId]=em[t.empId]||{c:0,s:0};isC?oe.c+=h:oe.s+=h});
-  const all=cost+sga,tg=proj?0:D.target;
+  const all=cost+sga,allV=cv+sv,tg=proj?0:D.target,pcv=v=>allV?Math.round(v/allV*100):0;
   if(!all){el.innerHTML=`<div class="card"><h2>ภาพรวมผู้บริหาร</h2><div class="hint">ไม่มีข้อมูลการบันทึกงานในช่วง/ขอบเขตที่เลือก — ลองเลื่อนช่วงเวลา หรือเปลี่ยนขอบเขต</div></div>`;return}
-  const prev=histAt(pShift(hs.mode,hs.anchor,-1)),pAll=prev.rows.reduce((a,{x})=>a+x.hours,0);
+  const prev=histAt(pShift(hs.mode,hs.anchor,-1)),pAll=prev.rows.reduce((a,{x})=>a+x.hours,0),pBaht=SAL?prev.rows.reduce((a,{t,x})=>a+bahtOf(t,x),0):0,bAll=bC+bS,dB=pBaht?Math.round((bAll-pBaht)/pBaht*100):null;
   const dlt=pAll?Math.round((all-pAll)/pAll*100):null;
   const people=Object.keys(em).length,pcount=Object.keys(pj).length,util=tg?Math.round(all/tg*100):null;
   const pc=v=>all?Math.round(v/all*100):0;
   const kpi=(l,v,s,c)=>`<div class="kpi" style="--kc:${c}"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
   const dtxt=dlt===null?'ไม่มีข้อมูลช่วงก่อนหน้า':`<span class="dl ${dlt>=0?'up':'dn'}">${dlt>=0?'▲':'▼'} ${Math.abs(dlt)}%</span> เทียบช่วงก่อนหน้า (${xh(pAll)} ชม.)`;
   const kpis=[kpi('ชั่วโมงรวม',xh(all),dtxt,'var(--pri)'),
+    SAL?kpi('ต้นทุนแรงงานรวม (บาท)','฿'+xm(bAll),`${esc(costShort())} ฿${xm(bC)} · SG&amp;A ฿${xm(bS)}${dB===null?'':` · <span class="dl ${dB>=0?'up':'dn'}">${dB>=0?'▲':'▼'} ${Math.abs(dB)}%</span>`}${unr?`<div style="color:var(--bad)">⚠ ${xh(unr)} ชม. ยังไม่มีเรทเงินเดือน</div>`:''}`,'#c2410c'):'',
     proj?kpi('พนักงานที่ลงเวลา',people+' คน','เฉลี่ย '+xh(all/Math.max(1,people))+' ชม./คน','var(--pri2)')
         :kpi('Utilization (ทำได้ vs เป้า)',util+'%','เป้า '+xh(tg)+' ชม. · '+D.active.length+' คน',util>=95?'var(--cost)':util>=75?'var(--sga)':'var(--bad)'),
     kpi(esc(costShort())+' (สัดส่วนชั่วโมง)',pc(cost)+'%',xh(cost)+' ชม.',cc),
@@ -1024,18 +1032,18 @@ function renderExec(D,proj){
     proj?'':kpi('พนักงานที่ลงเวลา',people+' / '+D.active.length,'คนที่มีบันทึกงานในช่วงนี้','var(--pri2)'),
     kpi('โครงการ/สัญญาที่มีชั่วโมง',pcount,'จำนวนรหัสที่มีการลงเวลา','#2bb3c0')].join('');
   // ---- donut ----
-  const parts=[{l:costShort(),v:cost,c:cc},...db.sgaTypes.filter(t=>sgaBy[t.id]).map(t=>({l:t.id+' '+t.name,v:sgaBy[t.id],c:sgaColor(t)}))];
-  const legend=parts.filter(p=>p.v>0).map(p=>`<div class="lg"><i class="dot" style="background:${p.c}"></i><span>${esc(p.l)}</span><b>${xh(p.v)}</b><span class="hint">${pc(p.v)}%</span></div>`).join('');
+  const parts=[{l:costShort(),v:cv,c:cc},...db.sgaTypes.filter(t=>sgaBy[t.id]).map(t=>({l:t.id+' '+t.name,v:sgaBy[t.id],c:sgaColor(t)}))];
+  const legend=parts.filter(p=>p.v>0).map(p=>`<div class="lg"><i class="dot" style="background:${p.c}"></i><span>${esc(p.l)}</span><b>${xu(p.v)}</b><span class="hint">${pcv(p.v)}%</span></div>`).join('');
   // ---- top projects ----
   const topP=Object.entries(pj).map(([k,o])=>({k,h:o.c+o.s,...o})).sort((a,b)=>b.h-a.h).slice(0,10),mp=topP[0]?topP[0].h:1;
-  const projBars=topP.map(o=>xBar(`<b>${esc(o.k)}</b> ${esc(trunc(codeInfo(o.k)?.name||'',28))}`,o.k+' '+(codeInfo(o.k)?.name||''),[{v:o.c,w:o.c/mp*100,c:cc,t:'Cost '+xh(o.c)},{v:o.s,w:o.s/mp*100,c:'var(--sga)',t:'SG&A '+xh(o.s)}],xh(o.h))).join('')||'<div class="hint">ไม่มีข้อมูล</div>';
+  const projBars=topP.map(o=>xBar(`<b>${esc(o.k)}</b> ${esc(trunc(codeInfo(o.k)?.name||'',28))}`,o.k+' '+(codeInfo(o.k)?.name||''),[{v:o.c,w:o.c/mp*100,c:cc,t:'Cost '+xu(o.c)},{v:o.s,w:o.s/mp*100,c:'var(--sga)',t:'SG&A '+xu(o.s)}],xu(o.h))).join('')||'<div class="hint">ไม่มีข้อมูล</div>';
   // ---- SG&A types ----
   const sgaRows=db.sgaTypes.filter(t=>sgaBy[t.id]).sort((a,b)=>sgaBy[b.id]-sgaBy[a.id]),ms=sgaRows[0]?sgaBy[sgaRows[0].id]:1;
-  const sgaBars=sgaRows.map(t=>xBar(`<b>${esc(t.id)}</b> ${esc(trunc(t.name,26))}`,t.name,[{v:sgaBy[t.id],w:sgaBy[t.id]/ms*100,c:sgaColor(t)}],xh(sgaBy[t.id]))).join('')||'<div class="hint">ไม่มีชั่วโมง SG&amp;A</div>';
+  const sgaBars=sgaRows.map(t=>xBar(`<b>${esc(t.id)}</b> ${esc(trunc(t.name,26))}`,t.name,[{v:sgaBy[t.id],w:sgaBy[t.id]/ms*100,c:sgaColor(t)}],xu(sgaBy[t.id]))).join('')||'<div class="hint">ไม่มีชั่วโมง SG&amp;A</div>';
   // ---- by dept ----
   const dName=id=>(find(db.depts,id)?.name)||'';
-  const deptRows=Object.entries(dp).map(([k,o])=>{const ppl=D.active.filter(e=>(e.dept||'-')===k);return{k,...o,h:o.c+o.s,tg:proj?0:ppl.reduce((a,e)=>a+D.wdOf(e)*TARGET,0)}}).sort((a,b)=>b.h-a.h).slice(0,10),md=Math.max(1,...deptRows.map(o=>Math.max(o.h,o.tg)));
-  const deptBars=deptRows.map(o=>xBar(`<b>${esc(o.k)}</b> ${esc(trunc(dName(o.k),22))}`,o.k+' '+dName(o.k),[{v:o.c,w:o.c/md*100,c:cc,t:'Cost '+xh(o.c)},{v:o.s,w:o.s/md*100,c:'var(--sga)',t:'SG&A '+xh(o.s)}],o.tg?Math.round(o.h/o.tg*100)+'%':xh(o.h))).join('');
+  const deptRows=Object.entries(dp).map(([k,o])=>{const ppl=D.active.filter(e=>(e.dept||'-')===k);return{k,...o,h:o.c+o.s,tg:(proj||U())?0:ppl.reduce((a,e)=>a+D.wdOf(e)*TARGET,0)}}).sort((a,b)=>b.h-a.h).slice(0,10),md=Math.max(1,...deptRows.map(o=>Math.max(o.h,o.tg)));
+  const deptBars=deptRows.map(o=>xBar(`<b>${esc(o.k)}</b> ${esc(trunc(dName(o.k),22))}`,o.k+' '+dName(o.k),[{v:o.c,w:o.c/md*100,c:cc,t:'Cost '+xu(o.c)},{v:o.s,w:o.s/md*100,c:'var(--sga)',t:'SG&A '+xu(o.s)}],o.tg?Math.round(o.h/o.tg*100)+'%':xu(o.h))).join('');
   // ---- utilization distribution + people ----
   let utilCard='';
   if(!proj&&D.active.length>1){
@@ -1053,20 +1061,22 @@ function renderExec(D,proj){
   const ins=[];
   ins.push(`ชั่วโมงรวม <b>${xh(all)}</b> ชม.${dlt===null?'':` ${dlt>=0?'เพิ่มขึ้น':'ลดลง'} <b>${Math.abs(dlt)}%</b> จากช่วงก่อนหน้า`} — ${esc(costShort())} ${pc(cost)}% / SG&amp;A ${pc(sga)}%`);
   if(tg)ins.push(`Utilization อยู่ที่ <b>${util}%</b> ของเป้า ${xh(tg)} ชม. ${util>=95?'(ตามเป้า)':util>=75?'(ใกล้เป้า)':'(ต่ำกว่าเป้าอย่างมีนัยสำคัญ ควรตรวจสอบการลงเวลา)'}`);
-  if(topP[0])ins.push(`โครงการ/สัญญาที่ใช้ชั่วโมงสูงสุดคือ <b>${esc(topP[0].k)}</b> ${esc(trunc(codeInfo(topP[0].k)?.name||'',40))} (${xh(topP[0].h)} ชม. · ${pc(topP[0].h)}% ของทั้งหมด)`);
-  if(sgaRows[0])ins.push(`SG&amp;A ส่วนใหญ่อยู่ที่ <b>${esc(sgaRows[0].id)} ${esc(sgaRows[0].name)}</b> (${xh(sgaBy[sgaRows[0].id])} ชม. · ${sga?Math.round(sgaBy[sgaRows[0].id]/sga*100):0}% ของ SG&amp;A)`);
+  if(topP[0])ins.push(`โครงการ/สัญญาที่ใช้ชั่วโมงสูงสุดคือ <b>${esc(topP[0].k)}</b> ${esc(trunc(codeInfo(topP[0].k)?.name||'',40))} (${xu(topP[0].h)}${U()?'':' ชม.'} · ${pcv(topP[0].h)}% ของทั้งหมด)`);
+  if(sgaRows[0])ins.push(`SG&amp;A ส่วนใหญ่อยู่ที่ <b>${esc(sgaRows[0].id)} ${esc(sgaRows[0].name)}</b> (${xu(sgaBy[sgaRows[0].id])}${U()?'':' ชม.'} · ${sv?Math.round(sgaBy[sgaRows[0].id]/sv*100):0}% ของ SG&amp;A)`);
+  if(SAL)ins.unshift(`ต้นทุนแรงงานรวม <b>฿${xm(bAll)}</b>${dB===null?'':` ${dB>=0?'เพิ่มขึ้น':'ลดลง'} <b>${Math.abs(dB)}%</b> จากช่วงก่อนหน้า`} — ${esc(costShort())} ฿${xm(bC)} (${bAll?Math.round(bC/bAll*100):0}%) / SG&amp;A ฿${xm(bS)}${unr?` · มี ${xh(unr)} ชม. ที่ยังไม่ได้กำหนดเงินเดือน จึงไม่นับเป็นบาท`:''}`);
   const trend=xTrend(D,proj);
-  el.innerHTML=`<div class="xhead"><div><div class="xt">ภาพรวมผู้บริหาร</div><div class="hint">${esc($('#hTitle').textContent.replace(/^สรุป/,'ขอบเขต: ').replace(' — ',' · '))} · ${esc($('#hLabel').textContent)}</div></div><div class="hint">ข้อมูล ณ ${new Date().toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'})}</div></div>
+  el.innerHTML=`<div class="xhead"><div><div class="xt">ภาพรวมผู้บริหาร</div><div class="hint">${esc($('#hTitle').textContent.replace(/^สรุป/,'ขอบเขต: ').replace(' — ',' · '))} · ${esc($('#hLabel').textContent)}</div></div><div style="text-align:right">${SAL?`<div class="seg2 noprint" id="xUnit" style="display:inline-flex;margin-bottom:6px"><button data-u="h" class="${U()?'':'on'}">ชั่วโมง</button><button data-u="b" class="${U()?'on':''}">บาท (฿)</button></div>`:''}<div class="hint">ข้อมูล ณ ${new Date().toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'})}</div></div></div>
    <div class="kpis">${kpis}</div>
    <div class="xcard ins"><h3>สรุปประเด็นสำคัญ</h3><ul>${ins.map(s=>`<li>${s}</li>`).join('')}</ul></div>
-   <div class="xrow two"><div class="xcard"><h3>สัดส่วนชั่วโมงตามประเภทงาน</h3><div class="donutwrap">${xDonut(parts,all)}<div class="legend">${legend}</div></div></div>
-     ${trend?`<div class="xcard"><h3>แนวโน้มชั่วโมง${hs.mode==='year'?'รายเดือน':hs.mode==='quarter'?'รายสัปดาห์':'รายวัน'}</h3>${trend}</div>`:''}</div>
-   <div class="xrow"><div class="xcard"><h3>Top 10 โครงการ / สัญญา (ชั่วโมง)</h3>${projBars}<div class="hint" style="margin-top:6px"><i class="dot" style="background:${cc}"></i>Cost <i class="dot" style="background:var(--sga)"></i>SG&amp;A</div></div>
-     <div class="xcard"><h3>ชั่วโมง SG&amp;A แยกตามประเภท</h3>${sgaBars}</div>
-     ${deptBars?`<div class="xcard"><h3>ตามฝ่าย${proj?'':' (ตัวเลขท้าย = % ต่อเป้า)'}</h3>${deptBars}</div>`:''}</div>
+   <div class="xrow two"><div class="xcard"><h3>สัดส่วน${U()?'ต้นทุน':'ชั่วโมง'}ตามประเภทงาน</h3><div class="donutwrap">${xDonut(parts,allV)}<div class="legend">${legend}</div></div></div>
+     ${trend?`<div class="xcard"><h3>แนวโน้ม${U()?'ต้นทุน':'ชั่วโมง'}${hs.mode==='year'?'รายเดือน':hs.mode==='quarter'?'รายสัปดาห์':'รายวัน'}</h3>${trend}</div>`:''}</div>
+   <div class="xrow"><div class="xcard"><h3>Top 10 โครงการ / สัญญา (${U()?'บาท':'ชั่วโมง'})</h3>${projBars}<div class="hint" style="margin-top:6px"><i class="dot" style="background:${cc}"></i>Cost <i class="dot" style="background:var(--sga)"></i>SG&amp;A</div></div>
+     <div class="xcard"><h3>${U()?'ต้นทุน':'ชั่วโมง'} SG&amp;A แยกตามประเภท</h3>${sgaBars}</div>
+     ${deptBars?`<div class="xcard"><h3>ตามฝ่าย${(proj||U())?'':' (ตัวเลขท้าย = % ต่อเป้า)'}</h3>${deptBars}</div>`:''}</div>
    ${utilCard}`;
 }
 $$('#hView button').forEach(b=>b.onclick=()=>{hv=b.dataset.v;renderHist()});
+document.addEventListener('click',ev=>{const b=ev.target.closest&&ev.target.closest('#xUnit button');if(b){hu=b.dataset.u;renderHist()}});
 $('#hPrint').onclick=()=>window.print();
 
 /* ===== รายงานรายคน (Excel) — 1 แถวต่อวัน คอลัมน์ Hours / Cost แยกโครงการ / SG&A แยก N1–N8 + YTD % ===== */
@@ -1095,12 +1105,13 @@ async function exportPersonReport(pe){
   const fname=`Timesheet_${e.id}_${D.mode}_${D.r.s}.xlsx`,pcts=v=>D.target?v/D.target:0;
   const ncol=11+1+D.pc.length+1+D.sgaT.length+1;                         // A..K, Cost, projects, SG&A, N*, Status
   const cCost=12,cP0=13,cSga=13+D.pc.length,cN0=cSga+1,cSt=cN0+D.sgaT.length;
+  const rate=hourlyRate(e),SALR=hasSal()&&rate!=null,sh=SALR?1:0,cStat=SALR?cSt+1:cSt;   // มีเงินเดือน (Super Admin) → เพิ่มแถว YTD (บาท) และคอลัมน์ต้นทุนรายวัน
   if(!(await loadExcelJS())){                                              // สำรอง: ไม่มีสี ถ้าโหลดไลบรารีจัดรูปแบบไม่ได้
     if(!xlsxReady())return;
-    const head=['ปี','เดือน','วัน','D/M/Y','ฝ่าย','รหัสพนง.','ชื่อ','ตำแหน่ง','Level','ชื่อเล่น','Hours','Cost',...D.pc,'SG&A',...D.sgaT.map(s=>s.id),'Status'];
-    const rows=D.days.map(o=>[o.y,o.m,o.dn,o.ds,e.dept,e.id,e.name,e.position||'',e.level||'',e.nick||'',o.h||'',o.cost||'',...D.pc.map(c=>o.p[c]||''),o.sga||'',...D.sgaT.map(s=>o.n[s.id]||''),o.status]);
+    const head=['ปี','เดือน','วัน','D/M/Y','ฝ่าย','รหัสพนง.','ชื่อ','ตำแหน่ง','Level','ชื่อเล่น','Hours','Cost',...D.pc,'SG&A',...D.sgaT.map(s=>s.id),...(SALR?['Labor Cost (THB)']:[]),'Status'];
+    const rows=D.days.map(o=>[o.y,o.m,o.dn,o.ds,e.dept,e.id,e.name,e.position||'',e.level||'',e.nick||'',o.h||'',o.cost||'',...D.pc.map(c=>o.p[c]||''),o.sga||'',...D.sgaT.map(s=>o.n[s.id]||''),...(SALR?[o.h?Math.round(o.h*rate*100)/100:'']:[]),o.status]);
     const ws=XLSX.utils.aoa_to_sheet([head,...rows]),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Report');XLSX.writeFile(wb,fname);return}
-  const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('รายงานรายคน',{views:[{state:'frozen',xSplit:7,ySplit:4}]});
+  const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('รายงานรายคน',{views:[{state:'frozen',xSplit:7,ySplit:4+sh}]});
   const fill=c=>({type:'pattern',pattern:'solid',fgColor:{argb:'FF'+c}}),thin={style:'thin',color:{argb:'FF999999'}};
   const NUM='#,##0.00;-#,##0.00;"-"',PCT='0%;-0%;"-"';
   // แถว 1-2: YTD %
@@ -1111,27 +1122,31 @@ async function exportPersonReport(pe){
     ws.getCell(1,c).font={bold:true};ws.getCell(2,c).font={bold:true};ws.getCell(1,c).alignment=ws.getCell(2,c).alignment={horizontal:'center'};ws.getCell(2,c).border={bottom:thin}};
   put(11,D.tot.h);put(cCost,D.tot.cost);D.pc.forEach((c,i)=>put(cP0+i,D.tot.p[c]||0));put(cSga,D.tot.sga);D.sgaT.forEach((s,i)=>put(cN0+i,D.tot.n[s.id]||0));
   ws.getCell(1,11).fill=ws.getCell(2,11).fill=fill('DDEBF7');ws.getCell(1,cCost).fill=ws.getCell(2,cCost).fill=fill('E7E6E6');ws.getCell(1,cSga).fill=ws.getCell(2,cSga).fill=fill('E7E6E6');
-  ws.getCell(3,1).value=`${e.name}${e.nick?' ('+e.nick+')':''} · ${pLabel(D.mode,hs.anchor,D.r)} · เป้า ${D.target} ชม.`;ws.getCell(3,1).font={bold:true,size:12};
+  ws.getCell(3+sh,1).value=`${e.name}${e.nick?' ('+e.nick+')':''} · ${pLabel(D.mode,hs.anchor,D.r)} · เป้า ${D.target} ชม.`;ws.getCell(3+sh,1).font={bold:true,size:12};
+  if(SALR){   // แถว 3: YTD (บาท) = ชั่วโมง × เรทต่อชั่วโมง
+    ws.getCell(3,5).value='เรท ฿/ชม.';ws.getCell(3,6).value=Math.round(rate*100)/100;ws.getCell(3,6).numFmt='#,##0.00';ws.getCell(3,7).value='YTD (บาท)';ws.getCell(3,7).fill=fill('FCE4D6');ws.mergeCells(3,7,3,10);
+    const pb=(c,tot)=>{const x=ws.getCell(3,c);x.value=tot*rate;x.numFmt='#,##0.00;-#,##0.00;"-"';x.font={bold:true};x.alignment={horizontal:'center'};x.fill=fill('FCE4D6')};
+    pb(11,D.tot.h);pb(cCost,D.tot.cost);D.pc.forEach((c,i)=>pb(cP0+i,D.tot.p[c]||0));pb(cSga,D.tot.sga);D.sgaT.forEach((s,i)=>pb(cN0+i,D.tot.n[s.id]||0))}
   // แถว 3: ชื่อโครงการ / ชื่อประเภท SG&A
-  D.pc.forEach((c,i)=>{const cell=ws.getCell(3,cP0+i);cell.value=trunc(codeInfo(c)?.name||'',16);cell.font={size:8,color:{argb:'FF666666'}};cell.alignment={horizontal:'center',wrapText:true}});
-  D.sgaT.forEach((s,i)=>{const cell=ws.getCell(3,cN0+i);cell.value=s.name;cell.font={bold:true,size:9};cell.alignment={horizontal:'center'};cell.fill=fill('DDE3FF')});
-  ws.getRow(3).height=26;
+  D.pc.forEach((c,i)=>{const cell=ws.getCell(3+sh,cP0+i);cell.value=trunc(codeInfo(c)?.name||'',16);cell.font={size:8,color:{argb:'FF666666'}};cell.alignment={horizontal:'center',wrapText:true}});
+  D.sgaT.forEach((s,i)=>{const cell=ws.getCell(3+sh,cN0+i);cell.value=s.name;cell.font={bold:true,size:9};cell.alignment={horizontal:'center'};cell.fill=fill('DDE3FF')});
+  ws.getRow(3+sh).height=26;
   // แถว 4: หัวตาราง
-  const heads=['ปี','เดือน','วัน','D/M/Y','ฝ่าย','รหัสพนง.','ชื่อ','ตำแหน่ง','Level','ชื่อเล่น','Hours','Cost',...D.pc,'SG&A',...D.sgaT.map(s=>s.id),'สถานะ'];
-  heads.forEach((h,i)=>{const c=ws.getCell(4,i+1);c.value=h;c.font={bold:true,color:{argb:'FFFFFFFF'}};c.alignment={horizontal:'center',vertical:'middle'};
-    c.fill=fill(i+1>=cCost&&i+1<cSga?'7030A0':'1F2A6B')});
-  ws.getRow(4).height=22;
+  const heads=['ปี','เดือน','วัน','D/M/Y','ฝ่าย','รหัสพนง.','ชื่อ','ตำแหน่ง','Level','ชื่อเล่น','Hours','Cost',...D.pc,'SG&A',...D.sgaT.map(s=>s.id),...(SALR?['ต้นทุน (บาท)']:[]),'สถานะ'];
+  heads.forEach((h,i)=>{const c=ws.getCell(4+sh,i+1);c.value=h;c.font={bold:true,color:{argb:'FFFFFFFF'}};c.alignment={horizontal:'center',vertical:'middle'};
+    c.fill=fill(i+1>=cCost&&i+1<cSga?'7030A0':(SALR&&i+1===cSt?'C2410C':'1F2A6B'))});
+  ws.getRow(4+sh).height=22;
   // ข้อมูลรายวัน
-  D.days.forEach((o,k)=>{const rI=5+k,row=ws.getRow(rI);
-    const vals=[o.y,o.m,o.dn,o.date,e.dept||'',e.id,e.name,e.position||'',e.level||'',e.nick||'',o.h||0,o.cost||0,...D.pc.map(c=>o.p[c]||null),o.sga||0,...D.sgaT.map(s=>o.n[s.id]||null),o.status];
-    vals.forEach((v,i)=>{const c=row.getCell(i+1);c.value=v;if(i>=10&&i<cSt-1)c.numFmt=NUM;if(i===3)c.numFmt='d/m/yyyy'});
+  D.days.forEach((o,k)=>{const rI=5+sh+k,row=ws.getRow(rI);
+    const vals=[o.y,o.m,o.dn,o.date,e.dept||'',e.id,e.name,e.position||'',e.level||'',e.nick||'',o.h||0,o.cost||0,...D.pc.map(c=>o.p[c]||null),o.sga||0,...D.sgaT.map(s=>o.n[s.id]||null),...(SALR?[o.h?o.h*rate:0]:[]),o.status];
+    vals.forEach((v,i)=>{const c=row.getCell(i+1);c.value=v;if(i>=10&&i<cStat-1)c.numFmt=NUM;if(i===3)c.numFmt='d/m/yyyy'});
     row.getCell(11).font={bold:true};row.getCell(11).fill=fill('DDEBF7');row.getCell(cCost).fill=fill('F2F2F2');row.getCell(cSga).fill=fill('F2F2F2');
     row.getCell(cCost).font=row.getCell(cSga).font={bold:true};
     if(!o.work){[3,4].forEach(i=>row.getCell(i).fill=fill('D9D9D9'))}
-    for(let i=1;i<=cSt;i++)row.getCell(i).alignment={horizontal:i>=11&&i<cSt?'right':'center'};
+    for(let i=1;i<=cStat;i++)row.getCell(i).alignment={horizontal:i>=11&&i<cStat?'right':'center'};
     row.getCell(7).alignment={horizontal:'left'};row.getCell(8).alignment={horizontal:'left'}});
   [6,7,6,11,8,10,18,16,7,10,10,10].forEach((w,i)=>ws.getColumn(i+1).width=w);
-  for(let c=cP0;c<=cSga;c++)ws.getColumn(c).width=11;for(let c=cN0;c<=cN0+D.sgaT.length-1;c++)ws.getColumn(c).width=8;ws.getColumn(cSt).width=12;
+  for(let c=cP0;c<=cSga;c++)ws.getColumn(c).width=11;for(let c=cN0;c<=cN0+D.sgaT.length-1;c++)ws.getColumn(c).width=8;ws.getColumn(cStat).width=12;if(SALR)ws.getColumn(cSt).width=14;
   const buf=await wb.xlsx.writeBuffer(),a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));a.download=fname;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
 }
@@ -1140,18 +1155,19 @@ function renderPersonReport(){
   const e=(!isAdmin?me:find(db.employees,hs.emp))||me;
   if(!e){el.innerHTML='<div class="card"><div class="hint">ไม่พบพนักงาน — เลือกพนักงานในรายการ</div></div>';return}
   const D=personReportData(e),fx=v=>v?Number(v).toFixed(2):'-',pc=v=>D.target?Math.round(v/D.target*100)+'%':'-';
-  const cc=D.pc.length,nc=D.sgaT.length;
+  const cc=D.pc.length,nc=D.sgaT.length,rate=hourlyRate(e),SALR=hasSal()&&rate!=null,sinfo=SALR?salaryOf(e):null;
   const sel=isAdmin?`<select id="rpEmp" style="max-width:320px">${db.employees.slice().sort(byId).map(x=>`<option value="${esc(x.id)}" ${x.id===e.id?'selected':''}>${esc(x.id+' — '+x.name)}</option>`).join('')}</select>`:'';
   const cols=[{t:'Hours',v:D.tot.h,k:'h'},{t:'Cost',v:D.tot.cost,k:'c',cst:1},...D.pc.map(c=>({t:c,v:D.tot.p[c]||0,k:'p:'+c,cst:1,nm:trunc(codeInfo(c)?.name||'',14)})),{t:'SG&A',v:D.tot.sga,k:'s'},...D.sgaT.map(s=>({t:s.id,v:D.tot.n[s.id]||0,k:'n:'+s.id,nm:s.name}))];
   const val=(o,k)=>k==='h'?o.h:k==='c'?o.cost:k==='s'?o.sga:k[0]==='p'?(o.p[k.slice(2)]||0):(o.n[k.slice(2)]||0);
-  const head=`<thead><tr class="y1"><td>YTD %</td>${cols.map(c=>`<td>${pc(c.v)}</td>`).join('')}<td></td></tr>
-    <tr class="y2"><td>YTD (ชม.)</td>${cols.map(c=>`<td>${fx(c.v)}</td>`).join('')}<td></td></tr>
-    <tr class="y3"><td></td>${cols.map(c=>`<td>${esc(c.nm||'')}</td>`).join('')}<td></td></tr>
-    <tr class="h4"><th>วันที่</th>${cols.map(c=>`<th class="${c.cst?'cst':''}">${esc(c.t)}</th>`).join('')}<th>สถานะ</th></tr></thead>`;
-  const body=D.days.map(o=>`<tr class="${o.work?'':'off'}"><td>${o.dn} ${+o.ds.slice(8)}/${o.m}/${o.y}</td>${cols.map(c=>{const v=val(o,c.k);return `<td class="${c.k==='h'?'hrs':c.k==='c'||c.k==='s'?'tot':''}">${v?fx(v):(c.k==='h'||c.k==='c'||c.k==='s'?'-':'')}</td>`}).join('')}<td>${esc(o.status)}</td></tr>`).join('');
+  const head=`<thead><tr class="y1"><td>YTD %</td>${cols.map(c=>`<td>${pc(c.v)}</td>`).join('')}${SALR?'<td></td>':''}<td></td></tr>
+    <tr class="y2"><td>YTD (ชม.)</td>${cols.map(c=>`<td>${fx(c.v)}</td>`).join('')}${SALR?'<td></td>':''}<td></td></tr>
+    ${SALR?`<tr class="y2 ysal"><td>YTD (บาท)</td>${cols.map(c=>`<td>${fx(c.v*rate)}</td>`).join('')}<td class="n">${fx(D.tot.h*rate)}</td><td></td></tr>`:''}
+    <tr class="y3"><td></td>${cols.map(c=>`<td>${esc(c.nm||'')}</td>`).join('')}${SALR?'<td></td>':''}<td></td></tr>
+    <tr class="h4"><th>วันที่</th>${cols.map(c=>`<th class="${c.cst?'cst':''}">${esc(c.t)}</th>`).join('')}${SALR?'<th style="background:#c2410c">ต้นทุน (บาท)</th>':''}<th>สถานะ</th></tr></thead>`;
+  const body=D.days.map(o=>`<tr class="${o.work?'':'off'}"><td>${o.dn} ${+o.ds.slice(8)}/${o.m}/${o.y}</td>${cols.map(c=>{const v=val(o,c.k);return `<td class="${c.k==='h'?'hrs':c.k==='c'||c.k==='s'?'tot':''}">${v?fx(v):(c.k==='h'||c.k==='c'||c.k==='s'?'-':'')}</td>`}).join('')}${SALR?`<td class="tot">${o.h?fx(o.h*rate):'-'}</td>`:''}<td>${esc(o.status)}</td></tr>`).join('');
   el.innerHTML=`<div class="card">
     <div class="dashhead" style="margin-bottom:10px"><div><h2 style="margin:0">รายงานรายคน</h2>
-      <div class="hint">${esc(e.id)} ${esc(e.name)}${e.nick?' ('+esc(e.nick)+')':''} · ฝ่าย ${esc(e.dept||'-')} ${esc(find(db.depts,e.dept)?.name||'')} · ${esc(e.position||'')} ${esc(e.level||'')} · ${esc(pLabel(D.mode,hs.anchor,D.r))} · เป้า ${D.target} ชม.</div></div>
+      <div class="hint">${esc(e.id)} ${esc(e.name)}${e.nick?' ('+esc(e.nick)+')':''} · ฝ่าย ${esc(e.dept||'-')} ${esc(find(db.depts,e.dept)?.name||'')} · ${esc(e.position||'')} ${esc(e.level||'')} · ${esc(pLabel(D.mode,hs.anchor,D.r))} · เป้า ${D.target} ชม.${SALR?` · <b style="color:#c2410c">เรท ฿${fx(rate)}/ชม.</b> (เงินเดือน ฿${xm(sinfo.amt)} จาก ${esc(sinfo.src)})`:(hasSal()?' · <span style="color:var(--bad)">ยังไม่ได้กำหนดเงินเดือนของคนนี้ จึงไม่แสดงต้นทุนเป็นบาท</span>':'')}</div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${sel}<button class="btn pri" id="rpX">⬇ ส่งออก Excel</button></div></div>
     <div class="rpwrap"><table class="rp">${head}<tbody>${body}</tbody></table></div>
     <div class="hint" style="margin-top:8px">${D.mode==='day'?'โหมดวัน แสดงทั้งเดือน · ':''}เปอร์เซ็นต์ = ชั่วโมง ÷ เป้า (วันทำการ × 8 ชม.) · เสาร์-อาทิตย์/วันหยุดเป็นแถวสีเทา · เลือกช่วงเวลาด้านบน (สัปดาห์/เดือน/ไตรมาส/ปี)</div></div>`;
@@ -1170,7 +1186,17 @@ function salaryOf(e){
   const d=e.dept&&salRow('dept',e.dept);if(d)return{amt:Number(d.amount),src:'ฝ่าย '+e.dept};
   return null;
 }
-const hourlyRate=e=>{const s=salaryOf(e);return s?s.amt/hoursPerMonth():null};
+const hourlyRate=e=>{const s=e&&salaryOf(e);return s?s.amt/hoursPerMonth():null};
+/* ต้นทุนแรงงาน (บาท) = ชั่วโมง × เรทต่อชั่วโมงของพนักงาน — เห็นได้เฉพาะ Super Admin (ข้อมูลเงินเดือนโหลดมาเฉพาะบัญชีนี้) */
+const hasSal=()=>isSuperAdmin&&(db.salary||[]).some(r=>r.scope!=='config');
+const bahtOf=(t,x)=>{const e=find(db.employees,t.empId),r=e?hourlyRate(e):null;return r==null?0:x.hours*r};
+const isRated=t=>{const e=find(db.employees,t.empId);return !!e&&hourlyRate(e)!=null};
+const xm=n=>Number(n||0).toLocaleString('th-TH',{maximumFractionDigits:0});
+const xk=n=>{n=Number(n||0);const a=Math.abs(n);return a>=1e6?(n/1e6).toFixed(2)+' ล้าน':a>=1e4?(n/1e3).toFixed(0)+'K':xm(n)};
+let hu='h';
+const U=()=>hu==='b'&&hasSal();
+const uv=(t,x)=>U()?bahtOf(t,x):x.hours;
+const xu=n=>U()?'฿'+xm(n):xh(n);
 const money=v=>v==null?'—':Number(v).toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:2});
 function salSet(scope,key,amount){
   db.salary=db.salary||[];const id=scope+'|'+key,i=db.salary.findIndex(r=>r.id===id);
@@ -1242,7 +1268,7 @@ const _rsetup=renderSetup;renderSetup=function(){_rsetup();renderSalary()};
 function histExportRows(){
   return histCompute().rows.sort((a,b)=>a.t.date.localeCompare(b.t.date)||a.t.empId.localeCompare(b.t.empId)||a.i-b.i).map(({t,x,i})=>{const e=find(db.employees,t.empId)||{};
     return{'Transaction No.':txNo(t,i),Date:t.date,'Emp.No':t.empId,Name:e.name||'',Nickname:e.nick||'',Dept:e.dept||'',Level:e.level||'',Position:e.position||'',
-      'PL Type':x.cat,'SG&A Type':x.cat==='Cost'?'-':`${x.sgaId}:${find(db.sgaTypes,x.sgaId)?.name||''}`,Hours:x.hours,'Project Code':x.code||'-','Project Name':x.code?entryName(x):'-',Text:x.note||'',Status:t.status}});
+      'PL Type':x.cat,'SG&A Type':x.cat==='Cost'?'-':`${x.sgaId}:${find(db.sgaTypes,x.sgaId)?.name||''}`,Hours:x.hours,'Project Code':x.code||'-','Project Name':x.code?entryName(x):'-',Text:x.note||'',Status:t.status,...(hasSal()?{'Labor Cost (THB)':Math.round(bahtOf(t,x)*100)/100}:{})}});
 }
 const histFileTag=()=>`${hs.scope}${hs.scope==='dept'?'_'+hs.dept:hs.scope==='emp'?'_'+hs.emp:hs.scope==='project'||hs.scope==='contract'?'_'+hsCode():''}_${hs.mode}_${hs.anchor}`.replace(/[^\w.-]+/g,'_');
 $('#xlsxLog').onclick=()=>{
