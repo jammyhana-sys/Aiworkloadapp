@@ -378,6 +378,7 @@ header>*{min-width:0}
     </form>
     <div class="scroll" style="margin-top:12px"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>พนักงานที่ได้รับ assign</th></tr></thead><tbody id="asgList"></tbody></table></div>
   </div>
+  <div id="salaryCard"></div>
   <div class="card"><h2>นำเข้าโครงการ / Sales Contract จาก Excel (อัปเดตอัตโนมัติ)</h2>
     <p class="hint">เลือกไฟล์ .xlsx ที่มีคอลัมน์ <b>Project Code, Project Name</b> (ชีต Projects หรือชีตแรก; มีคอลัมน์ <b>Kind</b> = cost / mt / backlog ได้ ถ้าไม่มีระบบจัดให้เอง: รหัสลงท้าย -MT = mt ที่เหลือ = cost) และ/หรือชีต SalesContracts (คอลัมน์ <b>Sales Contract No., Sales Contract Name</b>) — ระบบ<b>เพิ่มรหัสใหม่ + อัปเดตชื่อ/ประเภทของรหัสเดิม</b> ไม่ลบรหัสอื่นที่มีอยู่ และตัดรหัสซ้ำในไฟล์ให้เอง</p>
     <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="pjOff" style="width:auto;min-height:0"> ปิดการใช้งานรหัสโครงการที่ไม่อยู่ในไฟล์ (ไม่ลบ ย้อนกลับได้)</label>
@@ -1158,6 +1159,85 @@ function renderPersonReport(){
   $('#rpX').onclick=()=>exportPersonReport(e).catch(er=>alert('ออกรายงานไม่สำเร็จ: '+er.message));
 }$('#xPerson').onclick=()=>exportPersonReport().catch(er=>alert('ออกรายงานไม่สำเร็จ: '+er.message));
 
+/* ===== ตารางเงินเดือน (เฉพาะ Super Admin) — กำหนดตาม Level / ฝ่าย / รายบุคคล ===== */
+// ลำดับความสำคัญ: รายบุคคล > Level > ฝ่าย  ·  เรทต่อชั่วโมง = เงินเดือน ÷ ชั่วโมงมาตรฐานต่อเดือน (ค่าเริ่มต้น 160)
+let sal={tab:'level',q:'',lim:100};
+const salRow=(scope,key)=>(db.salary||[]).find(r=>r.scope===scope&&r.key===key);
+const hoursPerMonth=()=>{const v=Number(salRow('config','hours')?.amount);return v>0?v:160};
+function salaryOf(e){
+  const a=salRow('emp',e.id);if(a)return{amt:Number(a.amount),src:'รายบุคคล'};
+  const l=e.level&&salRow('level',e.level);if(l)return{amt:Number(l.amount),src:'Level '+e.level};
+  const d=e.dept&&salRow('dept',e.dept);if(d)return{amt:Number(d.amount),src:'ฝ่าย '+e.dept};
+  return null;
+}
+const hourlyRate=e=>{const s=salaryOf(e);return s?s.amt/hoursPerMonth():null};
+const money=v=>v==null?'—':Number(v).toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:2});
+function salSet(scope,key,amount){
+  db.salary=db.salary||[];const id=scope+'|'+key,i=db.salary.findIndex(r=>r.id===id);
+  if(!(amount>=0)||amount===null){if(i>=0)db.salary.splice(i,1)}
+  else{const o={id,scope,key,amount,updatedBy:(me&&me.name)||(user&&user.name)||'',updatedAt:new Date().toISOString()};if(i>=0)db.salary[i]=o;else db.salary.push(o)}
+}
+function renderSalary(){
+  const host=$('#salaryCard');if(!host)return;
+  if(!isSuperAdmin){host.innerHTML='';return}
+  db.salary=db.salary||[];
+  const nat=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true});
+  const levels=[...new Set([...db.employees.map(e=>e.level).filter(Boolean),...db.salary.filter(r=>r.scope==='level').map(r=>r.key)])].sort(nat);
+  const inp=(scope,key)=>{const r=salRow(scope,key);return `<input type="number" min="0" step="0.01" inputmode="decimal" data-sk="${esc(scope+'|'+key)}" value="${r?esc(r.amount):''}" placeholder="บาท/เดือน" style="min-height:0;padding:6px 8px;max-width:170px;text-align:right">`};
+  const miss=db.employees.filter(e=>e.active!==false&&!salaryOf(e)).length;
+  let body='';
+  if(sal.tab==='level'){
+    body=`<div class="scroll"><table><thead><tr><th>Level</th><th class="n">พนักงาน (คน)</th><th>เงินเดือน (บาท/เดือน)</th></tr></thead><tbody>${levels.map(l=>`<tr><td>${esc(l)}</td><td class="n">${db.employees.filter(e=>e.level===l&&e.active!==false).length}</td><td>${inp('level',l)}</td></tr>`).join('')||'<tr><td colspan="3" class="hint">ยังไม่มี Level (ใส่ Level ในข้อมูลพนักงาน หรือเพิ่มด้านล่าง)</td></tr>'}</tbody></table></div>
+      <form id="salAddLv" class="row" style="margin-top:10px;align-items:end"><div><label>เพิ่ม Level</label><input name="k" placeholder="เช่น L10" required></div><div><label>เงินเดือน (บาท)</label><input name="a" type="number" min="0" step="0.01" required></div><div><button class="btn pri">+ เพิ่ม</button></div></form>`;
+  }else if(sal.tab==='dept'){
+    const ds=db.depts.slice().sort(byId);
+    body=`<div class="scroll"><table><thead><tr><th>ฝ่าย</th><th class="n">พนักงาน (คน)</th><th>เงินเดือน (บาท/เดือน)</th></tr></thead><tbody>${ds.map(d=>`<tr><td>${esc(d.id)} ${esc(d.name)}</td><td class="n">${db.employees.filter(e=>e.dept===d.id&&e.active!==false).length}</td><td>${inp('dept',d.id)}</td></tr>`).join('')||'<tr><td colspan="3" class="hint">ยังไม่มีฝ่าย</td></tr>'}</tbody></table></div>`;
+  }else if(sal.tab==='emp'){
+    const q=sal.q.trim().toLowerCase(),list=db.employees.slice().sort(byId).filter(e=>!q||(e.id+' '+e.name+' '+(e.nick||'')).toLowerCase().includes(q));
+    body=`<input id="salQ" placeholder="ค้นหารหัส/ชื่อพนักงาน" value="${esc(sal.q)}" style="max-width:300px;margin-bottom:10px">
+      <div class="scroll"><table><thead><tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th>Level</th><th>เงินเดือนรายบุคคล (กำหนดเฉพาะคน)</th><th class="n">ใช้คำนวณจริง</th><th>มาจาก</th></tr></thead><tbody>${list.slice(0,sal.lim).map(e=>{const s=salaryOf(e);return `<tr><td>${esc(e.id)}</td><td>${esc(e.name)}</td><td>${esc(e.dept||'')}</td><td>${esc(e.level||'')}</td><td>${inp('emp',e.id)}</td><td class="n">${money(s&&s.amt)}</td><td class="hint">${s?esc(s.src):'<span style="color:var(--bad)">ยังไม่กำหนด</span>'}</td></tr>`}).join('')||'<tr><td colspan="7" class="hint">ไม่พบพนักงาน</td></tr>'}</tbody></table></div>
+      ${list.length>sal.lim?`<button class="btn" id="salMore" style="margin-top:8px">แสดงเพิ่ม (${list.length-sal.lim})</button>`:''}`;
+  }else{
+    const list=db.employees.filter(e=>e.active!==false).sort(byId);
+    body=`<div class="scroll"><table><thead><tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th>Level</th><th class="n">เงินเดือน</th><th>มาจาก</th><th class="n">เรท/ชม.</th></tr></thead><tbody>${list.slice(0,sal.lim).map(e=>{const s=salaryOf(e),h=hourlyRate(e);return `<tr><td>${esc(e.id)}</td><td>${esc(e.name)}</td><td>${esc(e.dept||'')}</td><td>${esc(e.level||'')}</td><td class="n">${money(s&&s.amt)}</td><td class="hint">${s?esc(s.src):'<span style="color:var(--bad)">ยังไม่กำหนด</span>'}</td><td class="n">${h==null?'—':money(Math.round(h*100)/100)}</td></tr>`}).join('')}</tbody></table></div>
+      ${list.length>sal.lim?`<button class="btn" id="salMore" style="margin-top:8px">แสดงเพิ่ม (${list.length-sal.lim})</button>`:''}`;
+  }
+  const tabs=[['level','ตาม Level'],['dept','ตามฝ่าย'],['emp','รายบุคคล'],['sum','สรุปที่ใช้จริง']];
+  host.innerHTML=`<div class="card"><h2>ตารางเงินเดือน <span class="tag st" style="font-size:11px">เฉพาะ Super Admin</span></h2>
+    <p class="hint">กำหนดเงินเดือนตาม <b>Level</b> / <b>ฝ่าย</b> / <b>รายบุคคล</b> — ลำดับที่ใช้: <b>รายบุคคล → Level → ฝ่าย</b> (ถ้าคนนั้นมีกำหนดรายบุคคลจะใช้ค่านั้นก่อน) · เรทต่อชั่วโมง = เงินเดือน ÷ ชั่วโมงมาตรฐานต่อเดือน · ข้อมูลนี้ไม่รวมในไฟล์ส่งออกทั่วไป และดูได้เฉพาะ Super Admin</p>
+    ${miss?`<div class="notice">พนักงานที่ใช้งานอยู่ ${miss} คน ยังไม่มีเงินเดือนจากกฎใดเลย</div>`:''}
+    <div class="dashhead" style="margin:12px 0"><div class="seg2" id="salTabs">${tabs.map(([k,l])=>`<button data-t="${k}" class="${sal.tab===k?'on':''}">${l}</button>`).join('')}</div>
+      <label style="display:flex;gap:8px;align-items:center;margin:0">ชั่วโมงมาตรฐาน/เดือน <input id="salHours" type="number" min="1" step="1" value="${hoursPerMonth()}" style="width:90px;min-height:0;padding:6px 8px"></label></div>
+    ${body}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+      <button class="btn" id="salExp">⬇ ส่งออกตารางกำหนด (Scope/Key/Amount)</button>
+      <label class="btn" style="display:inline-block;cursor:pointer">⬆ นำเข้าตารางกำหนด (Excel)<input type="file" id="salImp" accept=".xlsx,.xls" class="hide"></label>
+      <button class="btn" id="salSum">⬇ ส่งออกสรุปรายพนักงาน</button></div>
+    <div class="hint" id="salMsg" style="margin-top:8px">ไฟล์นำเข้า: ชีต Salary คอลัมน์ <b>Scope</b> (level / dept / emp), <b>Key</b> (เช่น L4 / 43001 / 12345), <b>Amount</b> — เพิ่มและอัปเดตตามที่ระบุ ไม่ลบรายการอื่น</div></div>`;
+  $$('#salTabs button').forEach(b=>b.onclick=()=>{sal.tab=b.dataset.t;sal.lim=100;renderSalary()});
+  $$('[data-sk]').forEach(i=>i.onchange=()=>{const [sc,...k]=i.dataset.sk.split('|'),v=i.value===''?null:parseFloat(i.value);
+    if(v!==null&&!(v>=0)){i.value='';return}salSet(sc,k.join('|'),v);save();renderSalary()});
+  $('#salHours').onchange=ev=>{const v=parseInt(ev.target.value,10);if(!(v>0)){ev.target.value=hoursPerMonth();return}salSet('config','hours',v);save();renderSalary()};
+  const q=$('#salQ');if(q)q.oninput=()=>{sal.q=q.value;sal.lim=100;const pos=q.selectionStart;renderSalary();const n=$('#salQ');n.focus();n.setSelectionRange(pos,pos)};
+  const mr=$('#salMore');if(mr)mr.onclick=()=>{sal.lim+=200;renderSalary()};
+  const af=$('#salAddLv');if(af)af.onsubmit=ev=>{ev.preventDefault();const d=Object.fromEntries(new FormData(af));salSet('level',d.k.trim(),parseFloat(d.a));save();renderSalary()};
+  $('#salExp').onclick=()=>{if(!window.XLSX)return alert('โหลดไลบรารี Excel ไม่สำเร็จ');
+    const rows=db.salary.filter(r=>r.scope!=='config').map(r=>({Scope:r.scope,Key:r.key,Amount:Number(r.amount)}));
+    if(!rows.length)rows.push({Scope:'level',Key:'L4',Amount:''},{Scope:'dept',Key:'43001',Amount:''},{Scope:'emp',Key:'12345',Amount:''});
+    writeXlsx({Salary:rows},'Salary_Table_'+todayStr()+'.xlsx')};
+  $('#salSum').onclick=()=>{if(!window.XLSX)return alert('โหลดไลบรารี Excel ไม่สำเร็จ');
+    writeXlsx({Summary:db.employees.slice().sort(byId).map(e=>{const s=salaryOf(e),h=hourlyRate(e);return{'Emp.No':e.id,Name:e.name,Dept:e.dept||'',Level:e.level||'',Salary:s?s.amt:'',Source:s?s.src:'','Hourly Rate':h==null?'':Math.round(h*100)/100}})},'Salary_Summary_'+todayStr()+'.xlsx')};
+  $('#salImp').onchange=async ev=>{const f=ev.target.files[0];ev.target.value='';if(!f||!window.XLSX)return;const msg=$('#salMsg');
+    try{const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});const nm=wb.SheetNames.includes('Salary')?'Salary':wb.SheetNames[0];
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[nm],{defval:''});let ok=0,bad=0;const prev=JSON.stringify(db.salary);
+      rows.forEach(x=>{const sc=S(x.Scope).toLowerCase(),k=S(x.Key),a=x.Amount===''?null:parseFloat(x.Amount);
+        if(!['level','dept','emp'].includes(sc)||!k||a===null||!(a>=0)){if(k||sc)bad++;return}salSet(sc,k,a);ok++});
+      if(!ok)return msg.textContent=`ไม่พบแถวที่ใช้ได้ (ผิดรูปแบบ ${bad} แถว)`;
+      if(!confirm(`นำเข้า/อัปเดตเงินเดือน ${ok} รายการ${bad?` (ข้าม ${bad} แถวที่ผิดรูปแบบ)`:''}?`)){db.salary=JSON.parse(prev);return msg.textContent='ยกเลิกแล้ว'}
+      save();renderSalary();$('#salMsg').textContent=`นำเข้าแล้ว ${ok} รายการ`+(bad?` · ข้าม ${bad}`:'')}catch(e){msg.textContent='นำเข้าไม่สำเร็จ: '+e.message}};
+}
+
+const _rsetup=renderSetup;renderSetup=function(){_rsetup();renderSalary()};
 /* ส่งออกตามตัวกรอง (ช่วงเวลา + ขอบเขต) */
 function histExportRows(){
   return histCompute().rows.sort((a,b)=>a.t.date.localeCompare(b.t.date)||a.t.empId.localeCompare(b.t.empId)||a.i-b.i).map(({t,x,i})=>{const e=find(db.employees,t.empId)||{};
@@ -1399,6 +1479,7 @@ const lc=s=>String(s||'').trim().toLowerCase();
 const loginMsg=(m,ok)=>{const el=$('#loginMsg');el.textContent=m||'';el.style.color=ok?'var(--cost)':''};
 function normDb(){db.regs=db.regs||[];db.settings=Object.assign({regOpen:true,autoApprove:false},db.settings||{});
   if(!db.admins){db.admins=db.admin?[Object.assign({id:'A1',name:'ผู้ดูแลระบบ',active:true,at:new Date().toISOString()},db.admin)]:[];delete db.admin}}
+db.salary=db.salary||[];
 normDb();
 const usernameTaken=(un,exceptEmpId)=>db.admins.some(a=>lc(a.username)===lc(un))||db.employees.some(e=>e.id!==exceptEmpId&&e.username&&lc(e.username)===lc(un));
 function findAcct(un){
@@ -1749,8 +1830,11 @@ const TBL={
     to:t=>({id:t.id,emp_id:t.empId,day:t.date,status:['Pending','Submitted'].includes(t.status)?t.status:'Draft',submitted_at:t.submittedAt||null,approved_by:t.approvedBy||'',approved_at:t.approvedAt||null,reject_note:t.rejectNote||'',entries:t.entries||[]}),
     from:r=>({id:r.id,empId:r.emp_id,date:r.day,status:r.status,submittedAt:r.submitted_at,approvedBy:r.approved_by||'',approvedAt:r.approved_at||null,rejectNote:r.reject_note||'',entries:r.entries||[]})}
 };
+TBL.salary={t:'salary_rates',pk:'id',admin:true,sup:true,key:r=>r.id,
+  to:r=>({id:r.id,scope:r.scope,key:r.key,amount:Number(r.amount),updated_by:r.updatedBy||'',...(r.updatedAt?{updated_at:r.updatedAt}:{})}),
+  from:r=>({id:r.id,scope:r.scope,key:r.key,amount:Number(r.amount),updatedBy:r.updated_by||'',updatedAt:r.updated_at||''})};
 TBL.ui={t:'app_settings',pk:'key',admin:true,key:r=>r.key,to:o=>({key:'ui',value:o.value}),from:r=>({id:r.key,value:r.value})};
-function emptyCloudDb(){const s=seed();return{...s,employees:[],depts:[],projects:[],contracts:[],assign:[],holidays:[],timesheets:[],regs:[],admins:[],ui:[],settings:{regOpen:true,autoApprove:false}}}
+function emptyCloudDb(){const s=seed();return{...s,employees:[],depts:[],projects:[],contracts:[],assign:[],holidays:[],timesheets:[],salary:[],regs:[],admins:[],ui:[],settings:{regOpen:true,autoApprove:false}}}
 function rowsOf(k){const s=TBL[k];return new Map(db[k].map(x=>s.to(x)).filter(r=>k!=='employees'||r.email).map(r=>[s.key(r),r]))}
 function takeSnap(){snap={};Object.keys(TBL).forEach(k=>{snap[k]=Object.fromEntries([...rowsOf(k)].map(([key,r])=>[key,JSON.stringify(r)]))})}
 function setSync(st,msg){
@@ -1768,7 +1852,7 @@ async function fetchAll(t,pk,filter){
 async function loadCloud(){
   const cut=new Date();cut.setMonth(cut.getMonth()-18);const cutS=cut.toISOString().slice(0,10);   // โหลดบันทึกงานย้อนหลัง 18 เดือน
   const keys=Object.keys(TBL);
-  const res=await Promise.all(keys.map(k=>fetchAll(TBL[k].t,TBL[k].pk,k==='timesheets'?q=>q.gte('day',cutS):null).catch(er=>{if(k==='ui')return [];throw er})));
+  const res=await Promise.all(keys.map(k=>fetchAll(TBL[k].t,TBL[k].pk,k==='timesheets'?q=>q.gte('day',cutS):null).catch(er=>{if(k==='ui'||k==='salary')return [];throw er})));
   db=emptyCloudDb();keys.forEach((k,i)=>{db[k]=res[i].map(TBL[k].from)});applyUi();takeSnap();
 }
 function cloudSave(){if(!sb||!cur)return;clearTimeout(cloudT);setSync('saving');cloudT=setTimeout(syncUp,300)}
@@ -1777,7 +1861,7 @@ async function syncUp(){
   syncing=true;
   try{
     for(const k of Object.keys(TBL)){
-      const s=TBL[k];if(s.admin&&!isAdmin)continue;
+      const s=TBL[k];if((s.admin&&!isAdmin)||(s.sup&&!isSuperAdmin))continue;
       const now=rowsOf(k),old=snap[k]||{};
       const up=[...now].filter(([key,r])=>old[key]!==JSON.stringify(r)).map(([,r])=>r);
       const gone=Object.keys(old).filter(key=>!now.has(key));
