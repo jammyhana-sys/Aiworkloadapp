@@ -452,7 +452,8 @@ const CONFIG={
   supabaseUrl:'https://vhhekmpkcqlgesojvlws.supabase.co',
   supabaseKey:'sb_publishable_I5aGYPaJKemi6HP8Liijeg_Hb_M7-SQ',
   /* ลิงก์เพิ่มเพื่อน LINE@ ของบริษัท เช่น 'https://line.me/R/ti/p/@123abcde' (เว้นว่าง = ไม่แสดงปุ่มเพิ่มเพื่อน) */
-  lineOaUrl:'https://line.me/R/ti/p/@099lvbfw'
+  lineOaUrl:'https://line.me/R/ti/p/@099lvbfw',
+  lineOaId:'@099lvbfw'
 };
 const CLOUD=!!(CONFIG.supabaseUrl&&CONFIG.supabaseKey);
 const REC_URL=/type=recovery/.test(location.hash);   // เปิดจากลิงก์รีเซ็ตรหัสผ่านใน Supabase
@@ -1495,16 +1496,19 @@ if(CLOUD){
       const out=el.querySelector('#lineCodeOut');if(out)out.innerHTML='<div class="notice" style="margin:0 0 10px">ผูก LINE สำเร็จ ✓</div>'}},5000)}
   function renderLineBox(el){
     const linked=!!(me&&me.lineLinked);
-    el.innerHTML=`<div class="hint" style="margin-bottom:10px">${linked?'<b style="color:var(--cost)">ผูก LINE แล้ว ✓</b> — ระบบจะแจ้งเตือนทาง LINE ส่วนตัว (เช่น เตือนบันทึกเวลาไม่ครบ 8 ชม.)':'ยังไม่ได้ผูก LINE — ทำตาม 3 ขั้นตอน: เพิ่มเพื่อน LINE@ → กดสร้างรหัส → ส่งรหัสไปที่แชต LINE@'}</div>
+    el.innerHTML=`<div class="hint" style="margin-bottom:10px">${linked?'<b style="color:var(--cost)">ผูก LINE แล้ว ✓</b> — ระบบจะแจ้งเตือนทาง LINE ส่วนตัว (เช่น เตือนบันทึกเวลาไม่ครบ 8 ชม.)':'ยังไม่ได้ผูก LINE — กด "ผูก LINE" แล้วกด "เปิด LINE และส่งรหัส" (ถ้ายังไม่ได้เป็นเพื่อน LINE@ ระบบ LINE จะขอให้เพิ่มเพื่อนก่อน)'}</div>
       <div id="lineCodeOut"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-      ${CONFIG.lineOaUrl?`<a class="btn" href="${esc(CONFIG.lineOaUrl)}" target="_blank" rel="noopener" style="text-decoration:none">1) เพิ่มเพื่อน LINE@</a>`:''}
-      <button class="btn pri" data-lgen>${linked?'ผูกใหม่ / เปลี่ยนบัญชี LINE':'2) สร้างรหัสผูก LINE'}</button>
+      ${CONFIG.lineOaUrl?`<a class="btn" href="${esc(CONFIG.lineOaUrl)}" target="_blank" rel="noopener" style="text-decoration:none">เพิ่มเพื่อน LINE@</a>`:''}
+      <button class="btn pri" data-lgen>${linked?'ผูกใหม่ / เปลี่ยนบัญชี LINE':'ผูก LINE'}</button>
       ${linked?'<button class="btn" data-lunlink>ยกเลิกการผูก</button>':''}</div>`;
     el.querySelector('[data-lgen]').onclick=async()=>{
       const out=el.querySelector('#lineCodeOut');const {data,error}=await sb.rpc('request_line_link');
       if(error)return out.innerHTML=`<div class="err">สร้างรหัสไม่สำเร็จ: ${esc(error.message)}</div>`;
-      out.innerHTML=`<div class="notice" style="margin:0 0 10px">3) ส่งรหัสนี้ไปที่ LINE@ ของบริษัท ภายใน 10 นาที: <b style="font-size:24px;letter-spacing:4px">${esc(data)}</b></div>`;
+      const oaId=CONFIG.lineOaId||((CONFIG.lineOaUrl||'').match(/@[\w.-]+/)||[''])[0];
+      const oaMsg=oaId?`https://line.me/R/oaMessage/${encodeURIComponent(oaId)}/?${encodeURIComponent(data)}`:'';
+      out.innerHTML=`<div class="notice" style="margin:0 0 10px">รหัสผูก LINE (ใช้ได้ 10 นาที): <b style="font-size:24px;letter-spacing:4px">${esc(data)}</b></div>`
+        +(oaMsg?`<a class="btn ok" href="${esc(oaMsg)}" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;margin-bottom:8px">เปิด LINE และส่งรหัส</a><div class="hint" style="margin-bottom:8px">กดปุ่มด้านบน LINE จะเปิดแชต LINE@ พร้อมรหัสที่พิมพ์ไว้แล้ว (ถ้ายังไม่เป็นเพื่อน จะขอให้เพิ่มเพื่อนก่อน) แล้วกด <b>ส่ง</b></div>`:`<div class="hint" style="margin-bottom:8px">ส่งรหัสนี้ไปที่แชต LINE@ ของบริษัท</div>`);
       pollLine(el)};
     const un=el.querySelector('[data-lunlink]');
     if(un)un.onclick=async()=>{if(!confirm('ยกเลิกการผูก LINE? จะไม่ได้รับการแจ้งเตือนทาง LINE อีก'))return;
