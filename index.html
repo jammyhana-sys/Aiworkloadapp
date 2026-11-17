@@ -453,7 +453,9 @@ const CONFIG={
   supabaseKey:'sb_publishable_I5aGYPaJKemi6HP8Liijeg_Hb_M7-SQ',
   /* ลิงก์เพิ่มเพื่อน LINE@ ของบริษัท เช่น 'https://line.me/R/ti/p/@123abcde' (เว้นว่าง = ไม่แสดงปุ่มเพิ่มเพื่อน) */
   lineOaUrl:'https://line.me/R/ti/p/@099lvbfw',
-  lineOaId:'@099lvbfw'
+  lineOaId:'@099lvbfw',
+  /* ชื่อ (slug) ของ Edge Function line-forgot ที่ deploy ไว้ — ใช้ส่งลิงก์ลืมรหัสผ่านไป LINE@ (เว้นว่าง = ส่งทางอีเมลอย่างเดียว) */
+  lineForgotFn:''
 };
 const CLOUD=!!(CONFIG.supabaseUrl&&CONFIG.supabaseKey);
 const REC_URL=/type=recovery/.test(location.hash);   // เปิดจากลิงก์รีเซ็ตรหัสผ่านใน Supabase
@@ -1477,6 +1479,7 @@ if(CLOUD){
     $('#rgName').required=true;$('#rgName').classList.remove('hide');$('#rgName').previousElementSibling.classList.remove('hide');
     const h=$('#regBox .hint');if(h)h.textContent='สมัครสมาชิกด้วยชื่อ รหัสพนักงาน และอีเมลบริษัท — หลังสมัครต้องรอ Admin ตรวจสอบและอนุมัติก่อนจึงเข้าใช้งานได้';
     $('#rgEmail').previousElementSibling.textContent='อีเมลบริษัท';
+    {const fh=$('#fgBox .hint');if(fh)fh.textContent='กรอกอีเมลบริษัทที่ลงทะเบียนไว้ ระบบจะส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ LINE@ ของคุณ (ถ้าผูก LINE ไว้) หรือทางอีเมล';}
   })();
   function signupErrMsg(er){const m=er.message||'',c=er.code||'';
     if(/already|registered/i.test(m))return 'อีเมลนี้สมัครแล้ว — เข้าสู่ระบบ หรือกด "ลืมรหัสผ่าน?" (ถ้าเข้าไม่ได้ ให้แจ้ง Admin ตรวจในแท็บสมาชิก)';
@@ -1488,6 +1491,14 @@ if(CLOUD){
   finishEnter=function(l,f){_finish(l,f);$('#navAdm').classList.add('hide');const pend=isAdmin?db.employees.filter(e=>e.linked&&!e.approved).length:0;$('#navMem').textContent=pend?'สมาชิก ('+pend+')':'สมาชิก'};
 
   /* ---- ผูก LINE: รหัส 6 หลัก → ส่งไปที่ LINE@ → Edge Function ผูกบัญชีให้ ---- */
+  // ส่งลิงก์ตั้งรหัสผ่านใหม่: ถ้าผู้ใช้ผูก LINE ไว้ → ส่งทาง LINE@ ส่วนตัว ไม่เช่นนั้นส่งทางอีเมล
+  async function sendResetLink(email){
+    let ch='email';
+    if(CONFIG.lineForgotFn){try{const {data}=await sb.functions.invoke(CONFIG.lineForgotFn,{body:{email}});if(data&&data.channel)ch=data.channel}catch(_){}}
+    if(ch==='line')return{channel:'line'};
+    const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+    return{channel:'email',error};
+  }
   let lineTimer=null,pendTimer=null;
   function pollLine(el){clearInterval(lineTimer);let n=0;lineTimer=setInterval(async()=>{
     if(++n>120||!me){clearInterval(lineTimer);return}
@@ -1564,9 +1575,9 @@ if(CLOUD){
   };
   $('#fgBox').onsubmit=async ev=>{ev.preventDefault();
     const email=$('#fgEmail').value.trim();
-    await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+    await sendResetLink(email);
     $('#fgEmail').value='';showMode('login');
-    loginMsg('หากอีเมลนี้มีบัญชีในระบบ จะได้รับอีเมลลิงก์ตั้งรหัสผ่านใหม่ภายในไม่กี่นาที',true);
+    loginMsg('หากอีเมลนี้มีบัญชีในระบบ ระบบจะส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ LINE@ ของคุณ (ถ้าผูก LINE ไว้) หรือทางอีเมล',true);
   };
   $('#rsBox').onsubmit=async ev=>{ev.preventDefault();
     const p1=$('#rsPass').value,p2=$('#rsPass2').value;
@@ -1632,8 +1643,8 @@ if(CLOUD){
         const oldId=e.id;e.id=nid;if(snap.employees){delete snap.employees[oldId];snap.employees[nid]=JSON.stringify(TBL.employees.to(e))}renderMem()});
       td.querySelectorAll('[data-cmail]').forEach(b=>b.onclick=async()=>{
         if(!confirm(`ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่ไปที่ ${e.email}?`))return;
-        const {error}=await sb.auth.resetPasswordForEmail(e.email,{redirectTo:location.origin+location.pathname});
-        alert(error?'ส่งอีเมลไม่สำเร็จ: '+error.message:'ส่งอีเมลรีเซ็ตรหัสผ่านแล้ว')});
+        const {channel,error}=await sendResetLink(e.email);
+        alert(error?'ส่งอีเมลไม่สำเร็จ: '+error.message:channel==='line'?'ส่งลิงก์รีเซ็ตรหัสผ่านไปที่ LINE ของเขาแล้ว':'ส่งอีเมลรีเซ็ตรหัสผ่านแล้ว')});
     });
   };
 
