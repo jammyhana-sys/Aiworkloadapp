@@ -524,7 +524,7 @@ const opt=(arr,fmt,ph)=>(ph?`<option value="">${ph}</option>`:'')+arr.map(x=>`<o
 function dayInfo(e,ds){
   const h=find(db.holidays,ds); if(h)return{work:false,why:'วันหยุด: '+h.name};
   const d=dow(ds); if(d===0)return{work:false,why:'วันอาทิตย์ (วันหยุด)'};
-  if(d===6&&!(e&&e.workSat))return{work:false,why:'วันเสาร์ (office หยุด) — พนักงาน Site ที่ทำงานวันเสาร์ให้ติ๊ก "ทำงานวันเสาร์" ในข้อมูลพนักงาน'};
+  if(d===6&&!(e&&e.workSat))return{work:false,why:'วันเสาร์ (วันหยุด) — พนักงาน Site ที่ทำงานวันเสาร์ให้ติ๊ก "ทำงานวันเสาร์" ในข้อมูลพนักงาน'};
   return{work:true};
 }
 
