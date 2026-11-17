@@ -204,6 +204,7 @@ header>*{min-width:0}
   <nav>
     <button data-tab="log" class="on">บันทึกงาน</button>
     <button data-tab="hist">ประวัติ/สรุป</button>
+    <button data-tab="appr" id="navAppr" class="hide">อนุมัติ</button>
     <button data-tab="setup" id="navSetup">ตั้งค่าข้อมูล</button>
     <button data-tab="mem" id="navMem">สมาชิก</button>
     <button data-tab="adm" id="navAdm">ผู้ดูแล</button>
@@ -276,9 +277,10 @@ header>*{min-width:0}
       <tbody id="entries"></tbody></table>
     </div>
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn ok" id="submit">ส่งใบบันทึกงาน</button>
+      <button class="btn ok" id="submit">ส่งให้ Project Admin อนุมัติ</button>
       <button class="btn hide" id="reopen">ยกเลิกการส่ง (แก้ไข)</button>
     </div>
+    <div class="notice hide" id="rejNote" style="border-left-color:var(--bad)"></div>
     <div class="hint" id="submitHint" style="margin-top:6px"></div>
   </div>
 </section>
@@ -339,8 +341,22 @@ header>*{min-width:0}
   </div>
 </section>
 
-<!-- ===== SETUP ===== -->
-<section id="tab-setup" class="hide">
+<!-- ===== APPROVE ===== -->
+<section id="tab-appr" class="hide">
+  <div class="card"><h2>รายการรออนุมัติ</h2>
+    <p class="hint">ใบบันทึกงานที่พนักงานส่งมา จะเป็นสถานะ <b>Submitted</b> ก็ต่อเมื่อ Project Admin อนุมัติแล้วเท่านั้น — ส่งกลับให้แก้ไขได้พร้อมระบุเหตุผล (พนักงานจะเห็นข้อความนี้ในหน้าบันทึกงาน)</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+      <button class="btn ok" id="apprAll">✓ อนุมัติที่เลือก</button><button class="btn" id="apprSel">เลือกทั้งหมด</button><button class="btn" id="apprRef">↻ โหลดใหม่</button>
+    </div>
+    <div class="scroll"><table><thead><tr><th></th><th>วันที่</th><th>พนักงาน</th><th class="n">Cost</th><th class="n">SG&amp;A</th><th class="n">รวม</th><th>รายการ</th><th></th></tr></thead><tbody id="apprList"></tbody></table></div>
+    <div class="hint" id="apprMsg" style="margin-top:8px"></div>
+  </div>
+  <div class="card"><h2>อนุมัติแล้วล่าสุด (30 รายการ)</h2>
+    <div class="scroll"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th class="n">รวม</th><th>อนุมัติโดย</th><th>เมื่อ</th><th></th></tr></thead><tbody id="apprDone"></tbody></table></div>
+  </div>
+</section>
+
+<!-- ===== SETUP ===== --><section id="tab-setup" class="hide">
   <p class="hint">ข้อมูลเก็บในเบราว์เซอร์เครื่องนี้ (localStorage) — ใช้ทดลองก่อนย้ายไประบบกลาง ในระบบจริง Cost ให้ PM/Admin เป็นผู้ assign และ SG&amp;A ให้ฝ่ายขายเป็นผู้ assign</p>
   <div id="masters"></div>
   <div class="card"><h2>การ Assign งานให้พนักงาน</h2>
@@ -557,8 +573,8 @@ function dayInfo(e,ds){
 $$('nav button').forEach(b=>b.onclick=()=>{
   if(forceChange&&b.dataset.tab!=='acct')return;   // ต้องเปลี่ยนรหัสผ่านชั่วคราวก่อน
   $$('nav button').forEach(x=>x.classList.toggle('on',x===b));
-  ['log','hist','setup','mem','adm','acct'].forEach(t=>$('#tab-'+t).classList.toggle('hide',t!==b.dataset.tab));
-  if(b.dataset.tab==='hist')renderHist(); if(b.dataset.tab==='setup')renderSetup(); if(b.dataset.tab==='acct')renderAcct(); if(b.dataset.tab==='mem')renderMem(); if(b.dataset.tab==='adm')renderAdm();
+  ['log','hist','appr','setup','mem','adm','acct'].forEach(t=>$('#tab-'+t).classList.toggle('hide',t!==b.dataset.tab));
+  if(b.dataset.tab==='hist')renderHist(); if(b.dataset.tab==='appr')renderAppr(); if(b.dataset.tab==='setup')renderSetup(); if(b.dataset.tab==='acct')renderAcct(); if(b.dataset.tab==='mem')renderMem(); if(b.dataset.tab==='adm')renderAdm();
 });
 
 /* ---- log ---- */
@@ -708,13 +724,14 @@ function renderRing(){
 }
 function renderLog(){
   const e=emp(), t=curSheet(false), tot=totals(t), d=dayInfo(e,$('#date').value);
-  const locked=t&&t.status==='Submitted';
+  const st=t?t.status:'Draft',locked=!!t&&st!=='Draft';
   $('#empInfo').innerHTML=e?`<span class="hint">ฝ่าย ${esc(e.dept)} ${esc(find(db.depts,e.dept)?.name||'')} · ${esc(e.position||'')} · ${esc(e.level||'')}</span>`:'';
   $('#dayNotice').classList.toggle('hide',d.work);$('#dayNotice').textContent=d.work?'':d.why+' — ไม่ต้องบันทึกชั่วโมงทำงาน';
-  $('#status').textContent=t?t.status:'Draft';
-  $('#status').className='tag '+(locked?'sub':'st');
+  $('#status').textContent=stTxt(st);
+  $('#status').className='tag '+stCls(st);
   $('#formCard').classList.toggle('hide',!!locked||!d.work||!e);if(!e){$('#dayNotice').classList.remove('hide');$('#dayNotice').textContent='บัญชีนี้ยังไม่ผูกกับรหัสพนักงาน จึงบันทึกงานไม่ได้ — ให้ Admin ใส่อีเมลบริษัทของคุณในข้อมูลพนักงาน'}
-  $('#reopen').classList.toggle('hide',!locked);
+  $('#reopen').classList.toggle('hide',st!=='Pending');
+  {const rn=$('#rejNote');const has=!locked&&t&&t.rejectNote;rn.classList.toggle('hide',!has);rn.textContent=has?'⚠ ถูกส่งกลับให้แก้ไข: '+t.rejectNote:''}
   $('#submit').classList.toggle('hide',!!locked);
   $('#tTotal').textContent=tot.all;$('#tCost').textContent=tot.cost;$('#tSga').textContent=tot.sga;renderRing();
   $('#bCost').style.width=Math.min(100,tot.cost/TARGET*100)+'%';
@@ -728,7 +745,7 @@ function renderLog(){
   $$('[data-del]').forEach(b=>b.onclick=()=>{t.entries=t.entries.filter(x=>x.id!==b.dataset.del);if(!t.entries.length)db.timesheets=db.timesheets.filter(x=>x!==t);save();renderLog()});
   const ok=d.work&&t&&diff===0&&!locked;
   $('#submit').disabled=!ok;
-  $('#submitHint').textContent=locked?`ส่งแล้วเมื่อ ${new Date(t.submittedAt).toLocaleString('th-TH')}`:ok?'':'กรอกไม่ได้ขาด/เกิน — ต้องครบ 8 ชั่วโมงพอดีจึงจะส่งได้';
+  $('#submitHint').textContent=locked?(st==='Pending'?`ส่งให้ Project Admin เมื่อ ${new Date(t.submittedAt).toLocaleString('th-TH')} — รออนุมัติ (ยังไม่เป็น Submitted)`:`อนุมัติแล้วโดย ${t.approvedBy||'-'}${t.approvedAt?' เมื่อ '+new Date(t.approvedAt).toLocaleString('th-TH'):''}`):ok?'':'กรอกไม่ได้ขาด/เกิน — ต้องครบ 8 ชั่วโมงพอดีจึงจะส่งได้';
 }
 $('#add').onclick=()=>{
   const err=m=>($('#err').textContent=m,false);$('#err').textContent='';
@@ -744,10 +761,58 @@ $('#add').onclick=()=>{
   if(totals(t).all+hours>TARGET)return err(`ชั่วโมงรวมจะเกิน ${TARGET} ชม. (เหลือ ${TARGET-totals(t).all})`);
   t.entries.push(x);save();$('#hours').value='';$('#note').value='';renderLog();
 };
-$('#submit').onclick=()=>{const t=curSheet(false);if(!t)return;t.status='Submitted';t.submittedAt=new Date().toISOString();save();renderLog()};
-$('#reopen').onclick=()=>{const t=curSheet(false);if(!t||!confirm('ยกเลิกการส่งเพื่อแก้ไข?'))return;t.status='Draft';t.submittedAt=null;save();renderLog()};
+$('#submit').onclick=()=>{const t=curSheet(false);if(!t)return;t.status='Pending';t.submittedAt=new Date().toISOString();t.rejectNote='';t.approvedBy='';t.approvedAt=null;save();renderLog()};
+$('#reopen').onclick=()=>{const t=curSheet(false);if(!t||t.status!=='Pending'||!confirm('ยกเลิกการส่งเพื่อแก้ไข?'))return;t.status='Draft';t.submittedAt=null;save();renderLog()};
 $('#emp').onchange=()=>{syncForm();renderLog()};$('#date').onchange=renderLog;
 
+/* ===== ขั้นตอนอนุมัติ: พนักงานส่ง → Pending → Project Admin อนุมัติ → Submitted (หรือส่งกลับ → Draft) ===== */
+const stTxt=s=>({Draft:'Draft',Pending:'รออนุมัติ',Submitted:'Submitted'}[s]||s);
+const stCls=s=>s==='Submitted'?'sub':s==='Pending'?'sga':'st';
+const stNorm=s=>({Submitted:'Submitted',Pending:'Pending'}[S(s)]||'Draft');
+const canApprove=()=>isSuperAdmin||(!!me&&normRole(me.role)==='project_admin');
+const pendingList=()=>db.timesheets.filter(t=>t.status==='Pending');
+function updApprBadge(){const b=$('#navAppr');if(!b)return;const n=canApprove()?pendingList().length:0;b.textContent=n?'อนุมัติ ('+n+')':'อนุมัติ'}
+const _rl=renderLog;renderLog=function(){_rl();updApprBadge()};
+const selfSheet=t=>!isSuperAdmin&&!!me&&t.empId===me.id;     // อนุมัติใบของตัวเองไม่ได้ (ยกเว้น Super Admin)
+const dayLines=t=>t.entries.map(x=>{const lbl=x.cat==='Cost'?`${esc(x.code)} ${esc(trunc(entryName(x),22))}`:`${esc(x.sgaId)} ${esc(trunc(find(db.sgaTypes,x.sgaId)?.name||'',16))}${x.code?' ('+esc(x.code)+')':''}`;
+  return `<div style="white-space:nowrap">${lbl} <b>${x.hours}</b>${x.note?` <span class="hint">· ${esc(trunc(x.note,24))}</span>`:''}</div>`}).join('');
+async function stillStatus(t){if(typeof CLOUD==='undefined'||!CLOUD)return t.status;
+  try{const {data,error}=await sb.from('timesheets').select('status').eq('id',t.id).maybeSingle();if(error)throw error;return data?data.status:null}catch(e){return t.status}}
+async function apprApprove(list){
+  let ok=0,skip=0;
+  for(const t of list){
+    if(t.status!=='Pending'||selfSheet(t)||totals(t).all!==TARGET){skip++;continue}
+    if(await stillStatus(t)!=='Pending'){skip++;continue}   // พนักงานอาจเพิ่งเรียกกลับไปแก้
+    t.status='Submitted';t.approvedBy=(me&&me.name)||(user&&user.name)||'';t.approvedAt=new Date().toISOString();t.rejectNote='';ok++}
+  save();renderApprView();updApprBadge();
+  $('#apprMsg').textContent=`อนุมัติแล้ว ${ok} ใบ`+(skip?` · ข้าม ${skip} ใบ (ใบของตัวเอง / สถานะเปลี่ยนแล้ว / ชั่วโมงไม่ครบ 8)`:'');
+}
+async function apprReject(t){
+  if(selfSheet(t)&&t.status==='Pending')return alert('ส่งกลับใบของตัวเองไม่ได้ — ใช้ปุ่ม "ยกเลิกการส่ง" ในหน้าบันทึกงาน');
+  const note=(prompt(`เหตุผลที่ส่งกลับให้แก้ไข (${t.empId} ${t.date}) — พนักงานจะเห็นข้อความนี้`)||'').trim();if(!note)return;
+  const by=(me&&me.name)||(user&&user.name)||'';
+  t.status='Draft';t.rejectNote=`${note} (โดย ${by})`;t.submittedAt=null;t.approvedBy='';t.approvedAt=null;
+  save();renderApprView();updApprBadge();$('#apprMsg').textContent='ส่งกลับให้พนักงานแก้ไขแล้ว';
+}
+function renderAppr(){renderApprView()}
+function renderApprView(){
+  if(!canApprove()){$('#apprList').innerHTML='<tr><td colspan="8" class="hint">เฉพาะ Project Admin / Super Admin</td></tr>';return}
+  const pend=pendingList().sort((a,b)=>a.date.localeCompare(b.date)||a.empId.localeCompare(b.empId));
+  $('#apprList').innerHTML=pend.map(t=>{const o=totals(t),e=find(db.employees,t.empId)||{},self=selfSheet(t),bad=o.all!==TARGET;
+    return `<tr><td><input type="checkbox" data-ak="${esc(t.id)}" ${self||bad?'disabled':''} style="width:auto;min-height:0"></td><td>${t.date}</td><td>${esc(t.empId)} ${esc(e.name||'')}<div class="hint">${esc(e.dept||'')}</div></td><td class="n">${o.cost}</td><td class="n">${o.sga}</td><td class="n" style="${bad?'color:var(--bad)':''}">${o.all}</td><td style="font-size:13px">${dayLines(t)}</td>
+      <td style="white-space:nowrap">${self?'<span class="hint">รอผู้อื่นอนุมัติ</span>':`<button class="btn ok" style="padding:5px 12px" data-aok="${esc(t.id)}" ${bad?'disabled':''}>อนุมัติ</button> <button class="btn" style="padding:5px 12px;color:var(--bad)" data-arj="${esc(t.id)}">ส่งกลับ</button>`}</td></tr>`}).join('')||'<tr><td colspan="8" class="hint">ไม่มีรายการรออนุมัติ 🎉</td></tr>';
+  $$('[data-aok]').forEach(b=>b.onclick=()=>apprApprove([find(db.timesheets,b.dataset.aok)]));
+  $$('[data-arj]').forEach(b=>b.onclick=()=>apprReject(find(db.timesheets,b.dataset.arj)));
+  const done=db.timesheets.filter(t=>t.status==='Submitted').sort((a,b)=>String(b.approvedAt||b.date).localeCompare(String(a.approvedAt||a.date))).slice(0,30);
+  $('#apprDone').innerHTML=done.map(t=>{const e=find(db.employees,t.empId)||{};
+    return `<tr><td>${t.date}</td><td>${esc(t.empId)} ${esc(e.name||'')}</td><td class="n">${totals(t).all}</td><td>${esc(t.approvedBy||'—')}</td><td class="hint">${t.approvedAt?new Date(t.approvedAt).toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'}):'—'}</td><td><button class="btn" style="padding:4px 10px" data-arj="${esc(t.id)}" title="ส่งกลับให้พนักงานแก้ไข">ส่งกลับ</button></td></tr>`}).join('')||'<tr><td colspan="6" class="hint">ยังไม่มีรายการ</td></tr>';
+  $$('#apprDone [data-arj]').forEach(b=>b.onclick=()=>apprReject(find(db.timesheets,b.dataset.arj)));
+  updApprBadge();
+}
+$('#apprAll').onclick=()=>{const ids=$$('#apprList [data-ak]:checked').map(c=>c.dataset.ak);if(!ids.length)return alert('ยังไม่ได้เลือกรายการ');
+  if(confirm(`อนุมัติ ${ids.length} ใบที่เลือก?`))apprApprove(ids.map(i=>find(db.timesheets,i)))};
+$('#apprSel').onclick=()=>{const cs=$$('#apprList [data-ak]:not(:disabled)'),all=cs.every(c=>c.checked);cs.forEach(c=>c.checked=!all)};
+$('#apprRef').onclick=()=>renderAppr();
 /* ---- ประวัติ/สรุป: รายวัน สัปดาห์ เดือน ไตรมาส ปี · ราย คน / ฝ่าย / Project / ทั้งหมด ---- */
 function pRange(mode,anchor){
   const a=DD(anchor),y=a.getFullYear(),m=a.getMonth();let s,e;
@@ -868,7 +933,7 @@ function renderHist(){
   if(!proj){
     const ids=new Set(D.people.map(e=>e.id)),r=D.r;
     const sheets=db.timesheets.filter(t=>t.date>=r.s&&t.date<=r.e&&ids.has(t.empId)&&(isAdmin||t.empId===me?.id)).sort((a,b)=>b.date.localeCompare(a.date)||a.empId.localeCompare(b.empId));
-    $('#hList').innerHTML=sheets.slice(0,hs.limit).map(t=>{const o=totals(t);return `<tr><td>${t.date}</td><td>${esc(t.empId)}</td><td><span class="tag ${t.status==='Submitted'?'sub':'st'}">${t.status}</span></td><td class="n">${o.cost}</td><td class="n">${o.sga}</td><td class="n">${o.all}/8</td><td><button class="btn" data-open="${esc(t.id)}">เปิด</button></td></tr>`}).join('')||'<tr><td colspan="7" class="hint">ไม่มีใบบันทึกงาน</td></tr>';
+    $('#hList').innerHTML=sheets.slice(0,hs.limit).map(t=>{const o=totals(t);return `<tr><td>${t.date}</td><td>${esc(t.empId)}</td><td><span class="tag ${stCls(t.status)}">${stTxt(t.status)}</span></td><td class="n">${o.cost}</td><td class="n">${o.sga}</td><td class="n">${o.all}/8</td><td><button class="btn" data-open="${esc(t.id)}">เปิด</button></td></tr>`}).join('')||'<tr><td colspan="7" class="hint">ไม่มีใบบันทึกงาน</td></tr>';
     $$('[data-open]').forEach(b=>b.onclick=()=>{const t=find(db.timesheets,b.dataset.open);if(!isAdmin&&t.empId!==me?.id)return;$('#emp').value=t.empId;$('#date').value=t.date;$('nav button[data-tab=log]').click();syncForm();renderLog()});
   }
   $$('#hView button').forEach(b=>b.classList.toggle('on',b.dataset.v===hv));$('#hExec').classList.toggle('hide',hv!=='exec');$('#hDetail').classList.toggle('hide',hv==='exec');
@@ -1152,14 +1217,14 @@ $('#xImp').onchange=async ev=>{
       const map={};
       r.filter(x=>S(x['Emp.No'])&&S(x.Date)).forEach(x=>{
         const date=xDate(x.Date),empId=S(x['Emp.No']),k=empId+'|'+date;
-        const t=map[k]=map[k]||{id:empId+'-'+date,empId,date,status:S(x.Status)==='Submitted'?'Submitted':'Draft',submittedAt:null,entries:[]};
+        const t=map[k]=map[k]||{id:empId+'-'+date,empId,date,status:stNorm(x.Status),submittedAt:null,entries:[]};
         const cat=S(x['PL Type'])==='Cost'?'Cost':'SG&A',code=S(x['Project Code']);
         const en={id:'E'+Math.random().toString(36).slice(2,9),cat,hours:Math.round(+x.Hours||0),note:S(x.Text)};
         if(cat==='SG&A')en.sgaId=S(x['SG&A Type']).split(':')[0];
         if(code&&code!=='-')en.code=code;
-        t.entries.push(en);if(t.status==='Submitted')t.submittedAt=new Date().toISOString()});
+        t.entries.push(en);if(t.status!=='Draft')t.submittedAt=new Date().toISOString()});
       nd.timesheets=Object.values(map);
-      nd.timesheets.forEach(t=>{const h=totals(t).all;if(t.status==='Submitted'&&h!==TARGET){t.status='Draft';t.submittedAt=null;warn.push(`${t.empId} ${t.date}: รวม ${h} ชม. ไม่เท่า 8 → ตั้งเป็น Draft`)}});
+      nd.timesheets.forEach(t=>{const h=totals(t).all;if(t.status!=='Draft'&&h!==TARGET){t.status='Draft';t.submittedAt=null;warn.push(`${t.empId} ${t.date}: รวม ${h} ชม. ไม่เท่า 8 → ตั้งเป็น Draft`)}});
       done.push('WorkLog '+nd.timesheets.length+' ใบ')}
     if(!done.length)return $('#xMsg').textContent='ไม่พบชีตที่รู้จักในไฟล์นี้ (ต้องมีอย่างน้อยหนึ่งชีตตามชื่อที่กำหนด)';
     // assignments referencing unknown employees/codes
@@ -1183,7 +1248,7 @@ $('#xMerge').onchange=async ev=>{
         const empId=S(x['Emp.No']),date=xDate(x.Date);
         if(!empId||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!(Math.round(+x.Hours)>=1)){bad++;continue}
         if(!find(db.employees,empId)){skipped.add(empId);continue}
-        const t=fileMap[empId+'|'+date]=fileMap[empId+'|'+date]||{id:empId+'-'+date,empId,date,status:S(x.Status)==='Submitted'?'Submitted':'Draft',submittedAt:null,entries:[]};
+        const t=fileMap[empId+'|'+date]=fileMap[empId+'|'+date]||{id:empId+'-'+date,empId,date,status:stNorm(x.Status),submittedAt:null,entries:[]};
         const cat=S(x['PL Type'])==='Cost'?'Cost':'SG&A',code=S(x['Project Code']);
         const en={id:'E'+Math.random().toString(36).slice(2,9),cat,hours:Math.round(+x.Hours),note:S(x.Text)};
         if(cat==='SG&A')en.sgaId=S(x['SG&A Type']).split(':')[0];
@@ -1195,7 +1260,7 @@ $('#xMerge').onchange=async ev=>{
     const list=Object.values(merged);
     if(!list.length)return msg('ไม่พบแถวบันทึกงานที่นำเข้าได้ในไฟล์ที่เลือก'+(skipped.size?' (รหัสพนักงานที่ไม่อยู่ในระบบ: '+[...skipped].join(', ')+')':''));
     let over=0;
-    list.forEach(t=>{if(t.status==='Submitted'){if(totals(t).all===TARGET)t.submittedAt=new Date().toISOString();else t.status='Draft'}if(totals(t).all>TARGET)over++});
+    list.forEach(t=>{if(t.status!=='Draft'){if(totals(t).all===TARGET)t.submittedAt=new Date().toISOString();else t.status='Draft'}if(totals(t).all>TARGET)over++});
     const exists=list.filter(t=>db.timesheets.some(x=>x.id===t.id)).length;
     const text=`รวม ${list.length} ใบบันทึกงาน (${rowsN} แถว) จาก ${files.length} ไฟล์\n- ใบที่มีอยู่แล้วในแอป (พนักงาน+วันที่เดียวกัน) จะถูกแทนที่: ${exists} ใบ\n- ใบใหม่: ${list.length-exists} ใบ`
       +(skipped.size?`\n- ข้ามรหัสพนักงานที่ไม่อยู่ในระบบ: ${[...skipped].slice(0,8).join(', ')}`:'')+(bad?`\n- ข้ามแถวที่ข้อมูลไม่ครบ ${bad} แถว`:'')+(over?`\n- คำเตือน: ${over} ใบมีชั่วโมงเกิน 8`:'')+'\n\nดำเนินการต่อ?';
@@ -1273,6 +1338,7 @@ function finishEnter(label,force){
   $('#whoName').textContent=label;
   $('#navSetup').classList.toggle('hide',!isAdmin);
   $('#navMem').classList.toggle('hide',!isSuperAdmin);
+  $('#navAppr').classList.toggle('hide',!canApprove());
   $('#navAdm').classList.toggle('hide',!isAdmin);
   init();
   $(`nav button[data-tab=${force?'acct':'log'}]`).click();
@@ -1580,8 +1646,8 @@ const TBL={
   holidays:{t:'holidays',pk:'day',admin:true,key:r=>r.day,conf:'day',
     to:h=>({day:h.id,name:h.name||''}),from:r=>({id:r.day,name:r.name||''})},
   timesheets:{t:'timesheets',pk:'id',admin:false,key:r=>r.id,
-    to:t=>({id:t.id,emp_id:t.empId,day:t.date,status:t.status==='Submitted'?'Submitted':'Draft',submitted_at:t.submittedAt||null,entries:t.entries||[]}),
-    from:r=>({id:r.id,empId:r.emp_id,date:r.day,status:r.status,submittedAt:r.submitted_at,entries:r.entries||[]})}
+    to:t=>({id:t.id,emp_id:t.empId,day:t.date,status:['Pending','Submitted'].includes(t.status)?t.status:'Draft',submitted_at:t.submittedAt||null,approved_by:t.approvedBy||'',approved_at:t.approvedAt||null,reject_note:t.rejectNote||'',entries:t.entries||[]}),
+    from:r=>({id:r.id,empId:r.emp_id,date:r.day,status:r.status,submittedAt:r.submitted_at,approvedBy:r.approved_by||'',approvedAt:r.approved_at||null,rejectNote:r.reject_note||'',entries:r.entries||[]})}
 };
 TBL.ui={t:'app_settings',pk:'key',admin:true,key:r=>r.key,to:o=>({key:'ui',value:o.value}),from:r=>({id:r.key,value:r.value})};
 function emptyCloudDb(){const s=seed();return{...s,employees:[],depts:[],projects:[],contracts:[],assign:[],holidays:[],timesheets:[],regs:[],admins:[],ui:[],settings:{regOpen:true,autoApprove:false}}}
@@ -1836,6 +1902,11 @@ if(CLOUD){
     });
   };
 
+  /* ----- หน้าอนุมัติ: โหลดข้อมูลล่าสุดจากฐานข้อมูลกลางก่อนแสดง ----- */
+  const _appr=renderAppr;
+  renderAppr=async function(){
+    if(canApprove()){try{const id=me&&me.id;clearTimeout(cloudT);await syncUp();await loadCloud();if(id)me=find(db.employees,id)||me}catch(e){console.warn('reload failed',e)}}
+    _appr()};
   /* ----- ปิดฟังก์ชันที่เสี่ยงทำข้อมูลกลางเสียหาย ----- */
   $('#reset').onclick=()=>alert('ปิดใช้งานในโหมดคลาวด์ — ข้อมูลอยู่ที่ฐานข้อมูลกลาง (ลบ/แก้ที่ Supabase เท่านั้น)');
   $('#rs').onchange=e=>{e.target.value='';alert('ปิดใช้งานในโหมดคลาวด์ — ใช้นำเข้า Excel แทน')};
