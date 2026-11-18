@@ -460,6 +460,15 @@ header>*{min-width:0}
   <div class="card"><h2>สมาชิกทั้งหมด</h2>
     <div class="scroll"><table><thead><tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th>อีเมล</th><th>ชื่อผู้ใช้</th><th>บัญชี</th><th>สิทธิ์</th><th>ใช้งาน</th><th></th></tr></thead><tbody id="memList"></tbody></table></div>
   </div>
+  <div class="card"><h2>นำเข้าสมาชิกจาก Excel (อัปเดตอัตโนมัติ)</h2>
+    <p class="hint">ไฟล์ .xlsx คอลัมน์: <b>Emp.No, Name, Email, Dept, Level, Position, Nickname, Role, WorkSat, Active</b> — จับคู่ด้วย <b>Emp.No</b>: ไม่มีในระบบ = <b>เพิ่มใหม่</b> (ต้องมี Name และ Email) · มีแล้ว = <b>อัปเดตเฉพาะช่องที่กรอก</b> (ช่องว่างไม่แก้) · ไม่ลบสมาชิกที่ไม่อยู่ในไฟล์ · Role: user / project_admin / controller_admin / super_admin · WorkSat และ Active ใช้ 1/0 · ถ้า Emp.No เป็นตัวเลขที่ Excel ตัดเลข 0 หน้าออก ระบบเติมให้ครบ 5 หลัก (แนะนำให้ตั้งคอลัมน์เป็น Text)</p>
+    <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink);margin:10px 0"><input type="checkbox" id="mpPre" style="width:auto;min-height:0;margin-top:4px"> <span>อนุมัติล่วงหน้าให้สมาชิกที่เพิ่มใหม่ (ใช้งานได้ทันทีเมื่อสมัครด้วยอีเมลตรงกัน)<br><span class="hint">ความเสี่ยง: ระบบยังไม่ยืนยันอีเมล ใครสมัครด้วยอีเมลของคนอื่นจะได้สิทธิ์นั้นทันที แนะนำให้ปิดไว้แล้วอนุมัติทีละคนในตารางสมาชิก</span></span></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label class="btn pri" style="display:inline-block;cursor:pointer">⬆ เลือกไฟล์ Excel สมาชิก<input type="file" id="mpImp" accept=".xlsx,.xls" class="hide"></label>
+      <button class="btn" id="mpTpl">⬇ ส่งออกรายชื่อปัจจุบัน / ไฟล์ต้นแบบ</button>
+    </div>
+    <div class="hint" id="mpMsg" style="margin-top:8px"></div>
+  </div>
   <div class="card"><h2 id="nmTitle">เพิ่มสมาชิกใหม่</h2>
     <form id="nmForm">
       <div class="row">
@@ -1739,7 +1748,59 @@ $('#nmForm').onsubmit=ev=>{ev.preventDefault();normDb();
   m.className='hint';m.style.color='var(--cost)';
   m.textContent=wasEdit?'บันทึกการแก้ไขแล้ว':'เพิ่มสมาชิกแล้ว — ตั้งชื่อผู้ใช้/รหัสผ่านให้ในส่วนด้านล่าง หรือให้พนักงานสมัครสมาชิกเอง';
 };
-$('#stReg').onchange=()=>{normDb();db.settings.regOpen=$('#stReg').checked;save()};
+/* นำเข้าสมาชิกจาก Excel: จับคู่ด้วย Emp.No — เพิ่มใหม่ / อัปเดตเฉพาะช่องที่กรอก / ไม่ลบรายการอื่น */
+const MP_HEAD=['Emp.No','Name','Email','Dept','Level','Position','Nickname','Role','WorkSat','Active'];
+$('#mpTpl').onclick=()=>{if(!window.XLSX)return alert('โหลดไลบรารี Excel ไม่สำเร็จ');
+  const rows=db.employees.slice().sort((a,b)=>String(a.id).localeCompare(String(b.id),undefined,{numeric:true})).map(e=>({'Emp.No':e.id,Name:e.name,Email:e.email||'',Dept:e.dept||'',Level:e.level||'',Position:e.position||'',Nickname:e.nick||'',Role:normRole(e.role),WorkSat:e.workSat?1:0,Active:e.active===false?0:1}));
+  if(!rows.length)rows.push(Object.fromEntries(MP_HEAD.map(h=>[h,h==='Role'?'user':h==='Active'?1:h==='WorkSat'?0:''])));
+  const ws=XLSX.utils.json_to_sheet(rows,{header:MP_HEAD});ws['!cols']=MP_HEAD.map(h=>({wch:h==='Email'||h==='Name'?28:14}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Members');XLSX.writeFile(wb,'Members_'+todayStr()+'.xlsx')};
+$('#mpImp').onchange=async ev=>{
+  const f=ev.target.files[0];ev.target.value='';if(!f)return;const msg=$('#mpMsg');
+  if(!window.XLSX)return msg.textContent='โหลดไลบรารี Excel ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)';
+  try{
+    const wb=XLSX.read(await f.arrayBuffer(),{type:'array'});
+    const nm=wb.SheetNames.includes('Members')?'Members':wb.SheetNames[0];
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[nm],{defval:''});
+    const pick=(x,...ks)=>{for(const k of ks){if(k in x&&S(x[k])!=='')return x[k]}return ''};
+    const idOf=v=>typeof v==='number'?String(v).padStart(5,'0'):S(v);
+    const nd=JSON.parse(JSON.stringify(db.employees)),depts=JSON.parse(JSON.stringify(db.depts));
+    let add=0,upd=0,same=0,newDept=0;const skip=[],seen=new Set();
+    const supers=()=>nd.filter(e=>isSuperRole(e.role)&&e.active!==false).length;
+    rows.forEach((x,i)=>{
+      const line=i+2,id=idOf(pick(x,'Emp.No','EmpNo','Emp No','รหัสพนักงาน'));
+      if(!id)return;                                                         // แถวว่าง
+      if(seen.has(id)){skip.push(`แถว ${line}: ${id} ซ้ำในไฟล์ (ใช้แถวแรก)`);return}seen.add(id);
+      const name=S(pick(x,'Name','ชื่อ','ชื่อ-นามสกุล')).replace(/\s+/g,' '),email=S(pick(x,'Email','อีเมล')),dept=idOf(pick(x,'Dept','Dept.No','ฝ่าย')),
+        level=S(pick(x,'Level')),pos=S(pick(x,'Position','ตำแหน่ง')),nick=S(pick(x,'Nickname','Nick','ชื่อเล่น')),roleRaw=S(pick(x,'Role','สิทธิ์')).toLowerCase(),
+        sat=pick(x,'WorkSat'),act=pick(x,'Active');
+      const role=roleRaw?(['user','project_admin','controller_admin','super_admin','admin'].includes(roleRaw)?normRole(roleRaw):null):null;
+      if(roleRaw&&role===null){skip.push(`แถว ${line}: ${id} Role "${roleRaw}" ไม่ถูกต้อง`);return}
+      if(email&&!/^\S+@\S+\.\S+$/.test(email)){skip.push(`แถว ${line}: ${id} อีเมลไม่ถูกต้อง`);return}
+      if(email&&nd.some(e=>e.id!==id&&e.email&&lc(e.email)===lc(email))){skip.push(`แถว ${line}: ${id} อีเมลซ้ำกับพนักงานอื่น`);return}
+      if(dept&&!depts.some(d=>d.id===dept)){depts.push({id:dept,name:'',active:true});newDept++}
+      const e=nd.find(z=>z.id===id);
+      if(!e){
+        if(!name||!email){skip.push(`แถว ${line}: ${id} พนักงานใหม่ต้องมี Name และ Email`);return}
+        nd.push({id,name,email,dept,level,position:pos,nick,role:role||'user',workSat:sat!==''&&B(sat),active:act===''?true:B(act),approved:$('#mpPre').checked});add++;return}
+      const before=JSON.stringify(e);
+      if(name)e.name=name;if(dept)e.dept=dept;if(level)e.level=level;if(pos)e.position=pos;if(nick)e.nick=nick;
+      if(sat!=='')e.workSat=B(sat);
+      if(email&&lc(email)!==lc(e.email||'')){if(e.linked||e.uid)skip.push(`แถว ${line}: ${id} สมาชิกมีบัญชีแล้ว จึงไม่เปลี่ยนอีเมล`);else e.email=email}
+      if(role&&role!==normRole(e.role)){
+        if(me&&e.id===me.id)skip.push(`แถว ${line}: ${id} เปลี่ยนสิทธิ์ของตัวเองไม่ได้`);
+        else if(isSuperRole(e.role)&&role!=='super_admin'&&supers()<=1)skip.push(`แถว ${line}: ${id} ต้องเหลือ Super Admin อย่างน้อย 1 คน`);
+        else e.role=role}
+      if(act!==''){const a=B(act);if(me&&e.id===me.id&&!a)skip.push(`แถว ${line}: ${id} ปิดการใช้งานตัวเองไม่ได้`);else e.active=a}
+      JSON.stringify(e)===before?same++:upd++});
+    if(!add&&!upd&&!same&&!skip.length)return msg.textContent='ไม่พบแถวข้อมูล (ต้องมีคอลัมน์ Emp.No)';
+    const sum=`เพิ่มใหม่ ${add} · อัปเดต ${upd} · เหมือนเดิม ${same} · ข้าม ${skip.length}${newDept?` · สร้างฝ่ายใหม่ ${newDept}`:''}`;
+    if(!add&&!upd&&!newDept)return msg.innerHTML=esc(sum)+(skip.length?'<br>'+skip.slice(0,8).map(esc).join('<br>'):'')+'<br>ไม่มีการเปลี่ยนแปลง';
+    if(!confirm('สรุปการนำเข้าสมาชิก\n'+sum+(skip.length?'\n\nรายการที่ข้าม:\n'+skip.slice(0,6).join('\n')+(skip.length>6?`\n… และอีก ${skip.length-6}`:''):'')+(add&&$('#mpPre').checked?'\n\n⚠ สมาชิกใหม่จะถูกอนุมัติล่วงหน้า':'')+'\n\nดำเนินการต่อ?'))return msg.textContent='ยกเลิกแล้ว';
+    db.employees=nd;db.depts=depts;if(me)me=find(db.employees,me.id)||me;save();renderMem();fillEmp();
+    msg.innerHTML='นำเข้าสำเร็จ — '+esc(sum)+(skip.length?'<br><span style="color:var(--bad)">'+skip.slice(0,10).map(esc).join('<br>')+'</span>':'');
+  }catch(e){msg.textContent='นำเข้าไม่สำเร็จ: '+e.message}
+};$('#stReg').onchange=()=>{normDb();db.settings.regOpen=$('#stReg').checked;save()};
 $('#stAuto').onchange=()=>{normDb();db.settings.autoApprove=$('#stAuto').checked;save()};
 function fillUaUser(){const e=find(db.employees,$('#uaEmp').value);$('#uaUser').value=e?(e.username||e.id):'';$('#uaEmail').value=e?(e.email||''):''}
 $('#uaEmp').onchange=fillUaUser;
