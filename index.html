@@ -364,8 +364,9 @@ header>*{min-width:0}
   <div class="card"><h2>รายการรออนุมัติ</h2>
     <p class="hint">อนุมัติตาม <b>ลำดับขั้น</b> (Role and permission) — คุณเห็นเฉพาะรายการที่ <b>ถึงคิวของ Role คุณ</b> เมื่อขั้นก่อนหน้าอนุมัติแล้ว · รายการครบทุกขั้น = อนุมัติ · ทุกรายการอนุมัติ ใบจึงเป็น <b>Submitted</b> · ส่งกลับพร้อมเหตุผล ใบจะกลับเป็น Draft ให้พนักงานแก้แล้วเริ่มขั้นแรกใหม่</p>
     <div class="hint" id="apprWho" style="margin:6px 0"></div>
+    <div id="apFilters" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin:10px 0"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
-      <button class="btn ok" id="apprAll">✓ อนุมัติที่เลือก</button><button class="btn" id="apprSel">เลือกทั้งหมด</button><button class="btn" id="apprRef">↻ โหลดใหม่</button>
+      <button class="btn ok" id="apprAll">✓ อนุมัติที่เลือก</button><button class="btn ok" id="apprShown" style="background:var(--cost);color:#fff">✓ อนุมัติทั้งหมดที่แสดง</button><button class="btn" id="apprSel">เลือกทั้งหมด</button><button class="btn" id="apprRef">↻ โหลดใหม่</button>
     </div>
     <div class="scroll"><table><thead><tr><th></th><th>วันที่</th><th>พนักงาน</th><th>รหัส / ชื่อ</th><th>ประเภท</th><th class="n">ชม.</th><th>ขั้นตอนอนุมัติ</th><th>รายละเอียด</th><th></th></tr></thead><tbody id="apprList"></tbody></table></div>
     <div class="hint" id="apprMsg" style="margin-top:8px"></div>
@@ -916,7 +917,8 @@ const approversFor=(role,t,x)=>(db.scopes||[]).filter(s=>s.role===role&&s.empId!
 const chainOf=(t,x)=>AP_ROLES.map(r=>r[0]).filter(r=>stepOf(r,catOf(x))!==null).sort((a,b)=>stepOf(a,catOf(x))-stepOf(b,catOf(x))||AP_ROLES.findIndex(q=>q[0]===a)-AP_ROLES.findIndex(q=>q[0]===b)).filter(r=>approversFor(r,t,x).length>0);
 const nextRole=(t,x)=>chainOf(t,x).find(r=>!doneOf(x).includes(r));
 const waitMs=(t,x)=>{const h=(x.ap&&x.ap.hist)||[],last=h.length?Date.parse(h[h.length-1].at):subAt(t,x);return last?Date.now()-last:null};
-const flowTxt=(t,x)=>{const ch=chainOf(t,x),nr=nextRole(t,x);return ch.length?ch.map(r=>doneOf(x).includes(r)?`<span style="color:var(--cost)">✓${AP_SHORT[r]}</span>`:r===nr?`<b style="color:var(--sga)" title="รอขั้นนี้มาแล้ว">${AP_SHORT[r]} ⏳ ${fmtDur(waitMs(t,x))}</b>`:`<span class="hint">${AP_SHORT[r]}</span>`).join(' → '):doneOf(x).length?doneOf(x).map(r=>`<span style="color:var(--cost)">✓${AP_SHORT[r]}</span>`).join(' → ')+' → …':'<span class="hint">ไม่มีผู้อนุมัติในขอบเขต — Super Admin อนุมัติ</span>'};
+const stepDurTxt=(t,x,r)=>{const z=stepTimes(t,x).find(q=>q.role===r);return z&&z.dur!=null?`<span class="hint">(${fmtDur(z.dur)})</span>`:''};
+const flowTxt=(t,x)=>{const ch=chainOf(t,x),nr=nextRole(t,x);return ch.length?ch.map(r=>doneOf(x).includes(r)?`<span style="color:var(--cost)">✓ ${AP_SHORT[r]} ${stepDurTxt(t,x,r)}</span>`:r===nr?`<b style="color:var(--sga)" title="รอขั้นนี้มาแล้ว">${AP_SHORT[r]} ⏳ ${fmtDur(waitMs(t,x))}</b>`:`<span class="hint">${AP_SHORT[r]}</span>`).join(' → '):doneOf(x).length?doneOf(x).map(r=>`<span style="color:var(--cost)">✓ ${AP_SHORT[r]} ${stepDurTxt(t,x,r)}</span>`).join(' → ')+' → …':'<span class="hint">ไม่มีผู้อนุมัติในขอบเขต — Super Admin อนุมัติ</span>'};
 const canApprove=()=>isSuperAdmin||myScopes().some(s=>stepOf(s.role,'cost')!==null||stepOf(s.role,'sga')!==null);
 const meName=()=>(me&&me.name)||(user&&user.name)||'';
 function canApproveEntry(t,x){
@@ -972,14 +974,35 @@ function apprReject(t,x){
 }
 const entLbl=x=>x.cat==='Cost'?`${esc(x.code)} ${esc(trunc(entryName(x),30))}`:`${esc(x.sgaId)} ${esc(trunc(find(db.sgaTypes,x.sgaId)?.name||'',16))}${x.code?' <span class="hint">('+esc(x.code)+')</span>':''}`;
 function renderAppr(){renderApprView()}
+let ap_={proj:'',dept:'',emp:'',group:'none'};
 function renderApprView(){
   if(!canApprove()){$('#apprList').innerHTML='<tr><td colspan="9" class="hint">ยังไม่ได้รับสิทธิ์อนุมัติ — ให้ Super Admin กำหนดใน เมนูสมาชิก › Role and permission</td></tr>';$('#apprDone').innerHTML='';$('#apprWho').textContent='';return}
   $('#apprWho').innerHTML=isSuperAdmin?'สิทธิ์ของคุณ: <b>Super Admin</b> (อนุมัติแทนได้ทุกรายการ ข้ามทุกขั้น)':'สิทธิ์ของคุณ: '+myScopes().map(s=>`<b>${esc(AP_TH[s.role])}</b> ${esc(scopeLbl(s))}`).join(' · ')+' · เห็นเฉพาะรายการที่ถึงคิวของ Role คุณ';
-  const rows=pendingRows();
-  $('#apprList').innerHTML=rows.map(({t,x})=>{const e=find(db.employees,t.empId)||{},k=esc(t.id)+'|'+esc(x.id);
-    return `<tr><td><input type="checkbox" data-ak="${k}" style="width:auto;min-height:0"></td><td>${t.date}</td><td>${esc(t.empId)} ${esc(e.name||'')}<div class="hint">${esc(e.dept||'')}</div></td><td>${entLbl(x)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span> ${typeTag(x.code)}</td><td class="n">${x.hours}</td><td style="font-size:12.5px;white-space:nowrap">${flowTxt(t,x)}</td><td class="hint">${esc(trunc(x.note||'',40))}</td>
+  const allRows=pendingRows(),deptOf=t=>(find(db.employees,t.empId)||{}).dept||'-';
+  {const codes=[...new Set(allRows.map(r=>r.x.code||'—'))].sort(),depts=[...new Set(allRows.map(r=>deptOf(r.t)))].sort(),emps=[...new Set(allRows.map(r=>r.t.empId))].sort();
+   if(ap_.proj&&!codes.includes(ap_.proj))ap_.proj='';if(ap_.dept&&!depts.includes(ap_.dept))ap_.dept='';if(ap_.emp&&!emps.includes(ap_.emp))ap_.emp='';
+   const sel=(id,lab,opts,val)=>`<div><label>${lab}</label><select id="${id}" style="min-height:0;padding:8px 10px;min-width:150px"><option value="">ทั้งหมด</option>${opts.map(([v,l])=>`<option value="${esc(v)}" ${v===val?'selected':''}>${esc(l)}</option>`).join('')}</select></div>`;
+   $('#apFilters').innerHTML=sel('apfProj','โครงการ',codes.map(c=>[c,c+' '+(c==='—'?'':(codeInfo(c)?.name||'')).slice(0,28)]),ap_.proj)
+     +sel('apfDept','ฝ่าย',depts.map(d=>[d,d+' '+((find(db.depts,d)||{}).name||'')]),ap_.dept)
+     +sel('apfEmp','พนักงาน',emps.map(e=>[e,e+' '+((find(db.employees,e)||{}).name||'')]),ap_.emp)
+     +`<div><label>จัดกลุ่มตาม</label><select id="apfGroup" style="min-height:0;padding:8px 10px;min-width:130px"><option value="none" ${ap_.group==='none'?'selected':''}>ไม่จัดกลุ่ม</option><option value="proj" ${ap_.group==='proj'?'selected':''}>โครงการ</option><option value="dept" ${ap_.group==='dept'?'selected':''}>ฝ่าย</option><option value="emp" ${ap_.group==='emp'?'selected':''}>พนักงาน</option></select></div>`;
+   $('#apfProj').onchange=e=>{ap_.proj=e.target.value;renderApprView()};$('#apfDept').onchange=e=>{ap_.dept=e.target.value;renderApprView()};
+   $('#apfEmp').onchange=e=>{ap_.emp=e.target.value;renderApprView()};$('#apfGroup').onchange=e=>{ap_.group=e.target.value;renderApprView()}}
+  const rows=allRows.filter(r=>(!ap_.proj||(r.x.code||'—')===ap_.proj)&&(!ap_.dept||deptOf(r.t)===ap_.dept)&&(!ap_.emp||r.t.empId===ap_.emp));
+  $('#apprShown').textContent=`✓ อนุมัติทั้งหมดที่แสดง (${rows.length})`;$('#apprShown').disabled=!rows.length;
+  const gkey=r=>ap_.group==='proj'?(r.x.code||'—'):ap_.group==='dept'?deptOf(r.t):r.t.empId;
+  const glab=k=>ap_.group==='proj'?'โครงการ '+k+' '+(k==='—'?'':(codeInfo(k)?.name||'')):ap_.group==='dept'?'ฝ่าย '+k+' '+((find(db.depts,k)||{}).name||''):'พนักงาน '+k+' '+((find(db.employees,k)||{}).name||'');
+  if(ap_.group!=='none')rows.sort((a,b)=>String(gkey(a)).localeCompare(String(gkey(b)),undefined,{numeric:true})||a.t.date.localeCompare(b.t.date));
+  let lastG=null;
+  $('#apprList').innerHTML=rows.map(({t,x})=>{const e=find(db.employees,t.empId)||{},k=esc(t.id)+'|'+esc(x.id);let hdr='';
+    if(ap_.group!=='none'){const g=gkey({t,x});if(g!==lastG){lastG=g;const gr=rows.filter(r=>gkey(r)===g);
+      hdr=`<tr class="tot"><td colspan="9"><label style="display:inline-flex;gap:8px;align-items:center;margin:0"><input type="checkbox" data-gk="${esc(g)}" style="width:auto;min-height:0"> <b>${esc(glab(g))}</b></label> · ${gr.length} รายการ · ${gr.reduce((a,r)=>a+r.x.hours,0)} ชม. <button class="btn ok" style="padding:4px 12px;margin-left:8px" data-gok="${esc(g)}">อนุมัติทั้งกลุ่ม</button></td></tr>`}}
+    return hdr+`<tr><td><input type="checkbox" data-ak="${k}" data-g="${esc(gkey({t,x}))}" style="width:auto;min-height:0"></td><td>${t.date}</td><td>${esc(t.empId)} ${esc(e.name||'')}<div class="hint">${esc(e.dept||'')}</div></td><td>${entLbl(x)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span> ${typeTag(x.code)}</td><td class="n">${x.hours}</td><td style="font-size:12.5px;white-space:nowrap">${flowTxt(t,x)}</td><td class="hint">${esc(trunc(x.note||'',40))}</td>
       <td style="white-space:nowrap"><button class="btn ok" style="padding:5px 12px" data-aok="${k}">อนุมัติ</button> <button class="btn" style="padding:5px 12px;color:var(--bad)" data-arj="${k}">ส่งกลับ</button></td></tr>`}).join('')||'<tr><td colspan="9" class="hint">ไม่มีรายการที่ถึงคิวของคุณ 🎉</td></tr>';
   $$('#apprList [data-aok]').forEach(b=>b.onclick=()=>apprApprove([pairOf(b.dataset.aok)]));
+  $$('#apprList [data-gk]').forEach(c=>c.onchange=()=>$$('#apprList [data-ak]').forEach(r=>{if(r.dataset.g===c.dataset.gk)r.checked=c.checked}));
+  $$('#apprList [data-gok]').forEach(b=>b.onclick=()=>{const ps=$$('#apprList [data-ak]').filter(r=>r.dataset.g===b.dataset.gok).map(r=>pairOf(r.dataset.ak));
+    if(confirm(`อนุมัติทั้งกลุ่ม ${ps.length} รายการ?`))apprApprove(ps)});
   $$('#apprList [data-arj]').forEach(b=>b.onclick=()=>{const p=pairOf(b.dataset.arj);apprReject(p.t,p.x)});
   const done=[];db.timesheets.forEach(t=>t.entries.forEach(x=>{const h=(x.ap&&x.ap.hist)||[];const mine=h.filter(z=>isSuperAdmin||z.by===meName());
     if(x.ap&&x.ap.s!=='R'&&mine.length)done.push({t,x,at:mine[mine.length-1].at,role:mine[mine.length-1].role})}));
@@ -991,6 +1014,8 @@ function renderApprView(){
 }
 $('#apprAll').onclick=()=>{const ids=$$('#apprList [data-ak]:checked').map(c=>c.dataset.ak);if(!ids.length)return alert('ยังไม่ได้เลือกรายการ');
   if(confirm(`อนุมัติ ${ids.length} รายการที่เลือก?`))apprApprove(ids.map(pairOf))};
+$('#apprShown').onclick=()=>{const ids=$$('#apprList [data-ak]').map(c=>c.dataset.ak);if(!ids.length)return;
+  if(confirm(`อนุมัติทั้งหมดที่แสดง ${ids.length} รายการ?`))apprApprove(ids.map(pairOf))};
 $('#apprSel').onclick=()=>{const cs=$$('#apprList [data-ak]'),all=cs.every(c=>c.checked);cs.forEach(c=>c.checked=!all)};
 $('#apprRef').onclick=()=>renderAppr();
 
