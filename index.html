@@ -2395,6 +2395,10 @@ if(CLOUD){
     me=db.employees.find(e=>e.uid===session.user.id)||null;
     if(!me||me.active===false){try{await sb.auth.signOut()}catch(_){}resetCloud();return loginMsg('บัญชีนี้ยังไม่ผูกกับรหัสพนักงานที่ใช้งานอยู่ กรุณาติดต่อ Admin')}
     if(!me.approved){showPending();return}
+    try{const {error:ce}=await sb.rpc('claim_session',{p_device:deviceId(),p_ua:navigator.userAgent});
+      if(ce&&/SESSION_ACTIVE/.test(ce.message||'')){try{await sb.auth.signOut()}catch(_){}resetCloud();
+        return loginMsg('บัญชีนี้กำลังใช้งานอยู่บนอุปกรณ์อื่น — ไม่อนุญาตให้เข้าสู่ระบบซ้อน กรุณาออกจากระบบที่อุปกรณ์นั้นก่อน หรือรอประมาณ 2–3 นาทีหากอุปกรณ์นั้นไม่ได้ใช้งานแล้ว (หรือให้ Super Admin ปลดล็อก)')}
+      if(ce)console.warn('claim_session:',ce.message)}catch(e){console.warn('claim_session unavailable',e)}
     isAdmin=isAdminRole(me.role);isSuperAdmin=isSuperRole(me.role);user={name:me.name,email:me.email};
     cur={kind:'cloud',cred:{username:sbEmail}};
     finishEnter(me.name+(isAdmin?' (admin)':''),false);
@@ -2439,7 +2443,7 @@ if(CLOUD){
     try{await sb.auth.signOut()}catch(_){}
     resetCloud();showLoginView();loginMsg('ตั้งรหัสผ่านใหม่เรียบร้อย — เข้าสู่ระบบด้วยรหัสผ่านใหม่ได้เลย',true);
   };
-  $('#logout').onclick=async()=>{try{await sb.auth.signOut()}catch(_){}resetCloud();logoutUi()};
+  $('#logout').onclick=async()=>{try{await sb.rpc('release_session',{p_device:deviceId()})}catch(_){}try{await sb.auth.signOut()}catch(_){}resetCloud();logoutUi()};
 
   /* ----- แท็บ บัญชี: เปลี่ยนรหัสผ่านผ่าน Supabase ----- */
   const _acct=renderAcct;
@@ -2478,7 +2482,7 @@ if(CLOUD){
       const selfRow=me&&me.id===e.id;
       const pendBtns=(!selfRow&&e.linked&&!e.approved)?`<button class="btn" style="padding:4px 10px;color:var(--bad)" data-crej="${esc(e.id)}" title="ปฏิเสธและลบคำขอสมัครนี้">ปฏิเสธ</button> <button class="btn" style="padding:4px 10px" data-cid="${esc(e.id)}" title="แก้รหัสพนักงานให้ถูกต้อง">แก้รหัส</button> `:'';
       const apBtn=selfRow?'':(e.approved?`<button class="btn" style="padding:4px 10px" data-capp="${esc(e.id)}" title="ระงับการใช้งาน">ระงับ</button> `:`<button class="btn ok" style="padding:4px 10px" data-capp="${esc(e.id)}">อนุมัติ</button> `);
-      td.innerHTML=apBtn+pendBtns+`<button class="x" style="color:var(--pri)" data-medit="${esc(e.id)}" title="แก้ไขชื่อ/อีเมล/ข้อมูล">✎</button> `+(e.linked?`<button class="btn" style="padding:4px 10px" data-cmail="${esc(e.id)}" title="ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่">✉ รีเซ็ต</button> `:'')+(selfRow?'':`<button class="x" style="color:var(--bad)" data-cdel="${esc(e.id)}" title="ลบสมาชิกถาวร">🗑</button>`);
+      td.innerHTML=apBtn+pendBtns+`<button class="x" style="color:var(--pri)" data-medit="${esc(e.id)}" title="แก้ไขชื่อ/อีเมล/ข้อมูล">✎</button> `+(e.linked?`<button class="btn" style="padding:4px 10px" data-cmail="${esc(e.id)}" title="ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่">✉ รีเซ็ต</button> `:'')+(selfRow?'':`<button class="x" style="color:var(--bad)" data-cdel="${esc(e.id)}" title="ลบสมาชิกถาวร">🗑</button>`)+(e.linked?`<button class="x" style="color:var(--pri)" data-unlock="${esc(e.id)}" title="ปลดล็อกการเข้าสู่ระบบจากอุปกรณ์อื่น (กรณีเครื่องเดิมค้าง/ไม่ได้ออกจากระบบ)">🔓</button>`:'');
       td.querySelectorAll('[data-medit]').forEach(b=>b.onclick=()=>startEditMember(b.dataset.medit));
       td.querySelectorAll('[data-capp]').forEach(b=>b.onclick=()=>{
         if(!e.approved&&e.linked&&!e.lineLinked&&!confirm('ผู้สมัครคนนี้ยังไม่ได้ผูก LINE จึงจะไม่ได้รับข้อความแจ้งอนุมัติทาง LINE\nอนุมัติต่อหรือไม่?'))return;
@@ -2487,6 +2491,9 @@ if(CLOUD){
         if(!confirm(`ปฏิเสธและลบคำขอสมัครของ ${e.name} (${e.email})? ผู้สมัครจะต้องสมัครใหม่`))return;
         const {error}=await sb.rpc('admin_reject',{p_id:e.id});if(error)return alert('ปฏิเสธไม่สำเร็จ: '+error.message);
         db.employees=db.employees.filter(x=>x.id!==e.id);if(snap.employees)delete snap.employees[e.id];renderMem()});
+      td.querySelectorAll('[data-unlock]').forEach(b=>b.onclick=async()=>{
+        if(!confirm(`ปลดล็อก ${e.name}? อุปกรณ์ที่ใช้งานอยู่จะถูกให้ออกจากระบบเมื่อมีอีกเครื่องเข้าใช้`))return;
+        const {error}=await sb.rpc('admin_release_session',{p_emp:e.id});alert(error?'ปลดล็อกไม่สำเร็จ: '+error.message+(/function/.test(error.message)?' (ยังไม่ได้รัน supabase_update_single_session.sql)':''):'ปลดล็อกแล้ว — ให้พนักงานเข้าสู่ระบบจากอุปกรณ์ใหม่ได้')});
       td.querySelectorAll('[data-cdel]').forEach(b=>b.onclick=async()=>{
         if(!isSuperAdmin)return;
         if(!confirm(`ลบสมาชิก ${e.name} (${e.id}) ถาวร?\nจะลบบัญชีเข้าสู่ระบบ ข้อมูลบันทึกงาน และการมอบหมายโครงการของเขาทั้งหมด ย้อนกลับไม่ได้\n(หากเพียงต้องการหยุดใช้งาน ให้กด "ระงับ" แทน)`))return;
@@ -2525,6 +2532,10 @@ let lastAct=Date.now(),lastRefreshAt=0;
 const actNow=()=>{lastAct=Date.now();const w=$('#idleWarn');if(w)w.classList.add('hide')};
 ['mousemove','mousedown','keydown','touchstart','scroll','wheel','click','focusin'].forEach(ev=>window.addEventListener(ev,actNow,{passive:true,capture:true}));
 (function(){const w=document.createElement('div');w.id='idleWarn';w.className='hide';w.setAttribute('role','alert');document.body.appendChild(w)})();
+function deviceId(){let d='';try{d=localStorage.getItem('tsDeviceId')||'';if(!d){d=(crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2)+Date.now());localStorage.setItem('tsDeviceId',d)}}catch(e){d=d||'nodev'}return d}
+async function forceLogout(msg){try{await sb.auth.signOut()}catch(_){}try{window.__cloud.resetCloud()}catch(_){}logoutUi();setTimeout(()=>loginMsg(msg),300)}
+setInterval(async()=>{if(typeof CLOUD==='undefined'||!CLOUD||!sb||!cur)return;
+  try{const {data,error}=await sb.rpc('heartbeat',{p_device:deviceId()});if(!error&&data===false)forceLogout('บัญชีนี้ถูกเข้าสู่ระบบจากอุปกรณ์อื่น ระบบจึงออกจากระบบอุปกรณ์นี้ (1 บัญชีใช้ได้ 1 อุปกรณ์ในเวลาเดียวกัน)')}catch(e){}},30000);
 async function idleLogout(){
   try{if(CLOUD&&sb){clearTimeout(cloudT);await syncUp()}}catch(e){}              // บันทึกที่ค้างให้เสร็จก่อนออก
   $('#logout').click();
