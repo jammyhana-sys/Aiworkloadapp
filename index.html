@@ -262,7 +262,7 @@ header>*{min-width:0}
   </div>
 
   <div class="card" id="formCard">
-    <h2>เพิ่มรายการงาน</h2>
+    <h2 id="addTitle">เพิ่มรายการงาน</h2>
     <div class="seg" style="margin-bottom:12px">
       <button class="cost on" data-cat="Cost">Cost (โปรเจกต์)</button>
       <button class="sga" data-cat="SG&A">SG&amp;A</button>
@@ -276,7 +276,7 @@ header>*{min-width:0}
     <div class="hint" id="sgaDesc" style="margin-top:6px"></div>
     <div style="margin-top:12px"><label>รายละเอียดงาน (ไม่บังคับ)</label><input id="note" placeholder="เช่น ติดตั้งหม้อแปลง"></div>
     <div class="err" id="err"></div>
-    <button class="btn pri" id="add">+ เพิ่มรายการ</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" id="add">+ เพิ่มรายการ</button><button class="btn hide" id="editCancel" type="button">ยกเลิกการแก้ไข</button></div>
   </div>
 
   <div class="card">
@@ -695,7 +695,7 @@ function makeSearch(selId){
     else if(e.key==='Escape'){ul.classList.add('hide');inp.value=label()}});
   ul.addEventListener('mousedown',e=>{const li=e.target.closest('li[data-i]');if(li){e.preventDefault();pick(+li.dataset.i)}});
   inp.addEventListener('blur',()=>setTimeout(()=>{ul.classList.add('hide');if(!shown.length||inp.value.trim()==='')inp.value=label()},120));
-  new MutationObserver(sync).observe(sel,{childList:true});sync();
+  new MutationObserver(sync).observe(sel,{childList:true});sel.addEventListener('change',()=>{inp.value=label()});sync();
 }
 makeSearch('#project');makeSearch('#ref');
 
@@ -829,13 +829,27 @@ function renderLog(){
   $('#remain').textContent=diff>0?`เหลืออีก ${diff} ชม.`:diff<0?`เกิน ${-diff} ชม.`:'ครบ 8 ชม. ✓';
   $('#entries').innerHTML=(t?.entries||[]).map((x,i)=>{
     const lbl=x.cat==='Cost'?`${esc(x.code)} ${esc(entryName(x))}`:`${esc(x.sgaId)}: ${esc(find(db.sgaTypes,x.sgaId)?.name||'')}${x.code?` <span class="hint">(${esc(x.code)} ${esc(entryName(x))})</span>`:''}`;
-    return `<tr><td class="hint">${txNo(t,i)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${typeTag(x.code)}</td><td>${esc(x.note)}</td><td class="n">${x.hours}</td><td>${apBadge(t,x)}</td><td>${(locked||entState(t,x)==='A')?'':`<button class="x" data-del="${x.id}" title="ลบ">✕</button>`}</td></tr>`}).join('')
+    return `<tr><td class="hint">${txNo(t,i)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${typeTag(x.code)}</td><td>${esc(x.note)}</td><td class="n">${x.hours}</td><td>${apBadge(t,x)}</td><td style="white-space:nowrap">${(locked||entState(t,x)==='A')?'':`<button class="x" style="color:var(--pri)" data-edit="${x.id}" title="แก้ไขรายการนี้">✎</button><button class="x" data-del="${x.id}" title="ลบ">✕</button>`}</td></tr>`}).join('')
     ||'<tr><td colspan="8" class="hint">ยังไม่มีรายการ</td></tr>';
-  $$('[data-del]').forEach(b=>b.onclick=()=>{t.entries=t.entries.filter(x=>x.id!==b.dataset.del);if(!t.entries.length)db.timesheets=db.timesheets.filter(x=>x!==t);save();renderLog()});
+  $$('[data-edit]').forEach(b=>b.onclick=()=>startEdit(b.dataset.edit));
+  $$('[data-del]').forEach(b=>b.onclick=()=>{if(editId===b.dataset.del)stopEdit();t.entries=t.entries.filter(x=>x.id!==b.dataset.del);if(!t.entries.length)db.timesheets=db.timesheets.filter(x=>x!==t);save();renderLog()});
   const ok=d.work&&t&&diff===0&&!locked;
   $('#submit').disabled=!ok;
   $('#submitHint').textContent=locked?(st==='Pending'?`ส่งให้ผู้อนุมัติเมื่อ ${new Date(t.submittedAt).toLocaleString('th-TH')} — อนุมัติแล้ว ${t.entries.filter(x=>entState(t,x)==='A').length}/${t.entries.length} รายการ (เป็น Submitted เมื่อครบทุกรายการ)`:`อนุมัติแล้วโดย ${t.approvedBy||'-'}${t.approvedAt?' เมื่อ '+new Date(t.approvedAt).toLocaleString('th-TH'):''}`):ok?'':'กรอกไม่ได้ขาด/เกิน — ต้องครบ 8 ชั่วโมงพอดีจึงจะส่งได้';
 }
+let editId=null;
+function stopEdit(){editId=null;$('#add').textContent='+ เพิ่มรายการ';$('#addTitle').textContent='เพิ่มรายการงาน';$('#editCancel').classList.add('hide');$('#hours').value='';$('#note').value='';$('#err').textContent=''}
+function startEdit(id){
+  const t=curSheet(false),x=t&&t.entries.find(y=>y.id===id);if(!x||t.status!=='Draft'||entState(t,x)==='A')return;
+  editId=id;
+  document.querySelector(`.seg button[data-cat="${x.cat}"]`).click();                 // สลับ Cost / SG&A ให้ตรงรายการ
+  if(x.cat==='Cost'){$('#project').value=x.code||'';$('#project').dispatchEvent(new Event('change'))}
+  else{$('#sga').value=x.sgaId;syncRef();$('#sga').dispatchEvent(new Event('change'));if(x.code){$('#ref').value=x.code;$('#ref').dispatchEvent(new Event('change'))}}
+  $('#hours').value=x.hours;$('#note').value=x.note||'';
+  $('#add').textContent='💾 บันทึกการแก้ไข';$('#addTitle').textContent='แก้ไขรายการ '+txNo(t,t.entries.indexOf(x));$('#editCancel').classList.remove('hide');$('#err').textContent='';
+  $('#formCard').scrollIntoView({behavior:'smooth',block:'center'});$('#hours').focus();
+}
+$('#editCancel').onclick=stopEdit;
 $('#add').onclick=()=>{
   const err=m=>($('#err').textContent=m,false);$('#err').textContent='';
   if(!$('#emp').value)return err('บัญชีนี้ยังไม่ผูกกับรหัสพนักงาน');
@@ -847,6 +861,13 @@ $('#add').onclick=()=>{
     if(refsOf(s).length){x.code=$('#ref').value;if(!x.code)return err(`ประเภท ${s.id} ต้องเลือก ${refsOf(s).map(r=>REF_TH[r]).join(' / ')}`)}}
   const t=curSheet(true);
   if(t.status!=='Draft')return err('ใบนี้ส่งแล้ว');
+  if(editId){   // โหมดแก้ไขรายการเดิม
+    const o=t.entries.find(y=>y.id===editId);if(!o){stopEdit();return renderLog()}
+    if(entState(t,o)==='A')return err('รายการนี้อนุมัติแล้ว แก้ไขไม่ได้');
+    if(totals(t).all-o.hours+hours>TARGET)return err(`ชั่วโมงรวมจะเกิน ${TARGET} ชม. (เหลือ ${TARGET-totals(t).all+o.hours} สำหรับรายการนี้)`);
+    const keep={id:o.id};Object.keys(o).forEach(k=>{if(!['cat','hours','note','code','sgaId','ap'].includes(k))keep[k]=o[k]});
+    const i=t.entries.indexOf(o);t.entries[i]=Object.assign(keep,x,{id:o.id});      // รายการที่ถูกส่งกลับ/รออนุมัติ เริ่มอนุมัติใหม่เมื่อส่งอีกครั้ง
+    rememberCode(x.code);stopEdit();save();renderLog();return}
   if(totals(t).all+hours>TARGET)return err(`ชั่วโมงรวมจะเกิน ${TARGET} ชม. (เหลือ ${TARGET-totals(t).all})`);
   t.entries.push(x);rememberCode(x.code);save();$('#hours').value='';$('#note').value='';renderLog();
 };
