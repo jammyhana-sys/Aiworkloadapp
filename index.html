@@ -133,6 +133,7 @@ table.rp tr.y1 td{font-weight:700;background:var(--pri-soft)}table.rp tr.y2 td{f
 table.rp td.hrs{background:rgba(79,141,245,.14);font-weight:600}table.rp td.tot{background:rgba(128,128,128,.12);font-weight:600}
 table.rp tr.off td{background:rgba(128,128,128,.2);color:var(--mut)}
 @media print{.rpwrap{max-height:none;overflow:visible}}#tab-hist.nosal .sal-col{display:none}
+table tr.tot td{font-weight:700;background:var(--pri-soft);border-top:2px solid var(--ink)}
 .seg2{display:flex;gap:4px;background:var(--pri-soft);padding:4px;border-radius:12px}
 .seg2 button{border:0;background:none;color:var(--mut);padding:7px 14px;border-radius:9px;cursor:pointer;font:inherit;font-weight:500}
 .seg2 button.on{background:var(--card);color:var(--pri);box-shadow:0 1px 4px rgba(34,48,73,.15);font-weight:600}
@@ -284,7 +285,7 @@ header>*{min-width:0}
       <span id="remain" class="hint"></span>
     </div>
     <div class="scroll" style="margin-top:8px">
-      <table><thead><tr><th>Transaction No.</th><th>PL</th><th>รหัส / ชื่อ</th><th>รายละเอียด</th><th class="n">ชม.</th><th></th></tr></thead>
+      <table><thead><tr><th>Transaction No.</th><th>PL</th><th>รหัส / ชื่อ</th><th>ประเภทโครงการ</th><th>รายละเอียด</th><th class="n">ชม.</th><th></th></tr></thead>
       <tbody id="entries"></tbody></table>
     </div>
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
@@ -342,7 +343,7 @@ header>*{min-width:0}
 
   <div class="card">
     <h2>รายการงาน</h2>
-    <div class="scroll"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th>ประเภท</th><th>รหัส / ชื่อ</th><th>รายละเอียด</th><th class="n">ชม.</th><th class="n sal-col">ต้นทุน (บาท)</th></tr></thead><tbody id="hEntries"></tbody></table></div>
+    <div class="scroll"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th>ประเภท</th><th>รหัส / ชื่อ</th><th>ประเภทโครงการ</th><th>รายละเอียด</th><th class="n">ชม.</th><th class="n sal-col">ต้นทุน (บาท)</th></tr></thead><tbody id="hEntries"></tbody></table></div>
     <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button class="btn hide" id="hMore">แสดงเพิ่ม</button><span class="hint" id="hCount"></span></div>
   </div>
 
@@ -770,8 +771,8 @@ function renderLog(){
   $('#remain').textContent=diff>0?`เหลืออีก ${diff} ชม.`:diff<0?`เกิน ${-diff} ชม.`:'ครบ 8 ชม. ✓';
   $('#entries').innerHTML=(t?.entries||[]).map((x,i)=>{
     const lbl=x.cat==='Cost'?`${esc(x.code)} ${esc(entryName(x))}`:`${esc(x.sgaId)}: ${esc(find(db.sgaTypes,x.sgaId)?.name||'')}${x.code?` <span class="hint">(${esc(x.code)} ${esc(entryName(x))})</span>`:''}`;
-    return `<tr><td class="hint">${txNo(t,i)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${esc(x.note)}</td><td class="n">${x.hours}</td><td>${locked?'':`<button class="x" data-del="${x.id}" title="ลบ">✕</button>`}</td></tr>`}).join('')
-    ||'<tr><td colspan="6" class="hint">ยังไม่มีรายการ</td></tr>';
+    return `<tr><td class="hint">${txNo(t,i)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${typeTag(x.code)}</td><td>${esc(x.note)}</td><td class="n">${x.hours}</td><td>${locked?'':`<button class="x" data-del="${x.id}" title="ลบ">✕</button>`}</td></tr>`}).join('')
+    ||'<tr><td colspan="7" class="hint">ยังไม่มีรายการ</td></tr>';
   $$('[data-del]').forEach(b=>b.onclick=()=>{t.entries=t.entries.filter(x=>x.id!==b.dataset.del);if(!t.entries.length)db.timesheets=db.timesheets.filter(x=>x!==t);save();renderLog()});
   const ok=d.work&&t&&diff===0&&!locked;
   $('#submit').disabled=!ok;
@@ -938,7 +939,7 @@ function renderHist(){
     +(!proj&&D.target?`<span>เป้า <b>${D.target}</b> ชม. · ทำได้ ${Math.round(all/D.target*100)}%</span>`:'')
     +(SAL?`<span style="color:#c2410c">ต้นทุนแรงงาน <b>฿${xm(bC+bS)}</b> (${esc(costShort())} ฿${xm(bC)} · SG&amp;A ฿${xm(bS)})</span>${unr?`<span style="color:var(--bad)">⚠ ${xh(unr)} ชม. ยังไม่มีเงินเดือน</span>`:''}`:'');
   $('#hBase').textContent=proj?`เปอร์เซ็นต์เทียบกับชั่วโมงรวมของ ${code} ในช่วงนี้`:`ฐานคำนวณ: วันทำการ × 8 ชม. ต่อคน (${D.active.length} คน) — ไม่นับเสาร์-อาทิตย์/วันหยุด`;
-  $('#hBreak').innerHTML=Object.entries(brk).sort((a,b)=>b[1].h-a[1].h).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${esc(v.name)}</td><td><span class="tag ${v.cat==='Cost'?'cost':'sga'}">${esc(v.cat)}</span></td><td class="n">${v.h}</td><td class="n">${pctTxt(v.h,den||1)}</td><td class="n sal-col">${xm(v.b)}</td></tr>`).join('')||'<tr><td colspan="6" class="hint">ไม่มีข้อมูลในช่วงนี้</td></tr>';
+  $('#hBreak').innerHTML=Object.entries(brk).sort((a,b)=>b[1].h-a[1].h).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${esc(v.name)}</td><td><span class="tag ${v.cat==='Cost'?'cost':'sga'}">${esc(v.cat)}</span></td><td class="n">${v.h}</td><td class="n">${pctTxt(v.h,den||1)}</td><td class="n sal-col">${xm(v.b)}</td></tr>`).join('')+(Object.keys(brk).length?`<tr class="tot"><td colspan="3">รวมทั้งหมด</td><td class="n">${all}</td><td class="n">${pctTxt(all,den||1)}</td><td class="n sal-col">${SAL?xm(bC+bS):''}</td></tr>`:'')||'<tr><td colspan="6" class="hint">ไม่มีข้อมูลในช่วงนี้</td></tr>';
   // ---- สรุปรายคน (ทั้งหมด / รายฝ่าย / Project) ----
   const showPeople=hs.scope==='all'||hs.scope==='dept'||proj;
   $('#hPeopleCard').classList.toggle('hide',!showPeople);
@@ -951,14 +952,16 @@ function renderHist(){
     $('#hPeopleHead').innerHTML=proj?'<tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th class="n">ชม.</th><th class="n">สัดส่วน</th><th class="n sal-col">ต้นทุน (บาท)</th></tr>'
       :'<tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th class="n">Cost</th><th class="n">SG&amp;A</th><th class="n">รวม</th><th class="n">เป้า</th><th class="n">%</th><th class="n sal-col">ต้นทุน (บาท)</th></tr>';
     $('#hPeople').innerHTML=list.map(o=>proj?`<tr><td>${esc(o.e.id)}</td><td>${esc(o.e.name)}</td><td>${esc(o.e.dept||'')}</td><td class="n">${o.t}</td><td class="n">${pctTxt(o.t,all||1)}</td><td class="n sal-col">${xm(o.b)}</td></tr>`
-      :`<tr><td>${esc(o.e.id)}</td><td>${esc(o.e.name)}</td><td>${esc(o.e.dept||'')}</td><td class="n">${o.c}</td><td class="n">${o.s}</td><td class="n">${o.t}</td><td class="n">${o.tg}</td><td class="n" style="color:${o.tg&&o.t>=o.tg?'var(--cost)':o.t?'var(--ink)':'var(--bad)'}">${o.tg?Math.round(o.t/o.tg*100)+'%':'-'}</td><td class="n sal-col">${xm(o.b)}</td></tr>`).join('')
+      :`<tr><td>${esc(o.e.id)}</td><td>${esc(o.e.name)}</td><td>${esc(o.e.dept||'')}</td><td class="n">${o.c}</td><td class="n">${o.s}</td><td class="n">${o.t}</td><td class="n">${o.tg}</td><td class="n" style="color:${o.tg&&o.t>=o.tg?'var(--cost)':o.t?'var(--ink)':'var(--bad)'}">${o.tg?Math.round(o.t/o.tg*100)+'%':'-'}</td><td class="n sal-col">${xm(o.b)}</td></tr>`).join('')+(list.length?(()=>{const S_=k=>list.reduce((a,o)=>a+(o[k]||0),0),sc=S_('c'),ss=S_('s'),st=S_('t'),sg=S_('tg'),sb=S_('b');
+        return proj?`<tr class="tot"><td colspan="3">รวม ${list.length} คน</td><td class="n">${st}</td><td class="n">100%</td><td class="n sal-col">${SAL?xm(sb):''}</td></tr>`
+          :`<tr class="tot"><td colspan="3">รวม ${list.length} คน</td><td class="n">${sc}</td><td class="n">${ss}</td><td class="n">${st}</td><td class="n">${sg}</td><td class="n">${sg?Math.round(st/sg*100)+'%':'-'}</td><td class="n sal-col">${SAL?xm(sb):''}</td></tr>`})():'')
       ||`<tr><td colspan="${proj?6:9}" class="hint">ไม่มีข้อมูล</td></tr>`;
   }
   // ---- รายการงาน (ละเอียด) ----
   const sorted=D.rows.slice().sort((a,b)=>b.t.date.localeCompare(a.t.date)||a.t.empId.localeCompare(b.t.empId)||a.i-b.i);
   $('#hEntries').innerHTML=sorted.slice(0,hs.limit).map(({t,x})=>{const e=find(db.employees,t.empId)||{};
     const lbl=x.cat==='Cost'?`${esc(x.code)} ${esc(entryName(x))}`:`${esc(x.sgaId)}: ${esc(find(db.sgaTypes,x.sgaId)?.name||'')}${x.code?` <span class="hint">(${esc(x.code)} ${esc(entryName(x))})</span>`:''}`;
-    return `<tr><td>${t.date}</td><td>${esc(t.empId)}${e.name?' '+esc(e.name):''}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${esc(x.note||'')}</td><td class="n">${x.hours}</td><td class="n sal-col">${SAL?xm(bahtOf(t,x)):''}</td></tr>`}).join('')||'<tr><td colspan="7" class="hint">ไม่มีรายการในช่วงนี้</td></tr>';
+    return `<tr><td>${t.date}</td><td>${esc(t.empId)}${e.name?' '+esc(e.name):''}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${typeTag(x.code)}</td><td>${esc(x.note||'')}</td><td class="n">${x.hours}</td><td class="n sal-col">${SAL?xm(bahtOf(t,x)):''}</td></tr>`}).join('')+(sorted.length?`<tr class="tot"><td colspan="6">รวมทั้งหมด ${sorted.length} รายการ</td><td class="n">${all}</td><td class="n sal-col">${SAL?xm(bC+bS):''}</td></tr>`:'')||'<tr><td colspan="8" class="hint">ไม่มีรายการในช่วงนี้</td></tr>';
   $('#hMore').classList.toggle('hide',sorted.length<=hs.limit);
   $('#hCount').textContent=sorted.length?`แสดง ${Math.min(hs.limit,sorted.length)} จาก ${sorted.length} รายการ`:'';
   // ---- ใบบันทึกงานรายวัน (ไม่แสดงในมุมมอง Project) ----
@@ -966,7 +969,8 @@ function renderHist(){
   if(!proj){
     const ids=new Set(D.people.map(e=>e.id)),r=D.r;
     const sheets=db.timesheets.filter(t=>t.date>=r.s&&t.date<=r.e&&ids.has(t.empId)&&(isAdmin||t.empId===me?.id)).sort((a,b)=>b.date.localeCompare(a.date)||a.empId.localeCompare(b.empId));
-    $('#hList').innerHTML=sheets.slice(0,hs.limit).map(t=>{const o=totals(t);return `<tr><td>${t.date}</td><td>${esc(t.empId)}</td><td><span class="tag ${stCls(t.status)}">${stTxt(t.status)}</span></td><td class="n">${o.cost}</td><td class="n">${o.sga}</td><td class="n">${o.all}/8</td><td class="n sal-col">${SAL?xm(t.entries.reduce((a,x)=>a+bahtOf(t,x),0)):''}</td><td><button class="btn" data-open="${esc(t.id)}">เปิด</button></td></tr>`}).join('')||'<tr><td colspan="8" class="hint">ไม่มีใบบันทึกงาน</td></tr>';
+    $('#hList').innerHTML=sheets.slice(0,hs.limit).map(t=>{const o=totals(t);return `<tr><td>${t.date}</td><td>${esc(t.empId)}</td><td><span class="tag ${stCls(t.status)}">${stTxt(t.status)}</span></td><td class="n">${o.cost}</td><td class="n">${o.sga}</td><td class="n">${o.all}/8</td><td class="n sal-col">${SAL?xm(t.entries.reduce((a,x)=>a+bahtOf(t,x),0)):''}</td><td><button class="btn" data-open="${esc(t.id)}">เปิด</button></td></tr>`}).join('')+(sheets.length?(()=>{let a=0,b=0,c2=0,d=0;sheets.forEach(t=>{const o=totals(t);a+=o.cost;b+=o.sga;c2+=o.all;if(SAL)d+=t.entries.reduce((q,x)=>q+bahtOf(t,x),0)});
+        return `<tr class="tot"><td colspan="3">รวมทั้งหมด ${sheets.length} ใบ</td><td class="n">${a}</td><td class="n">${b}</td><td class="n">${c2}</td><td class="n sal-col">${SAL?xm(d):''}</td><td></td></tr>`})():'')||'<tr><td colspan="8" class="hint">ไม่มีใบบันทึกงาน</td></tr>';
     $$('[data-open]').forEach(b=>b.onclick=()=>{const t=find(db.timesheets,b.dataset.open);if(!isAdmin&&t.empId!==me?.id)return;$('#emp').value=t.empId;$('#date').value=t.date;$('nav button[data-tab=log]').click();syncForm();renderLog()});
   }
   $$('#hView button').forEach(b=>b.classList.toggle('on',b.dataset.v===hv));$('#hExec').classList.toggle('hide',hv!=='exec');$('#hDetail').classList.toggle('hide',hv!=='detail');$('#hPerson').classList.toggle('hide',hv!=='person');$('#hScopeRow').classList.toggle('hide',hv==='person');
@@ -1285,7 +1289,7 @@ const _rsetup=renderSetup;renderSetup=function(){_rsetup();renderSalary()};
 function histExportRows(){
   return histCompute().rows.sort((a,b)=>a.t.date.localeCompare(b.t.date)||a.t.empId.localeCompare(b.t.empId)||a.i-b.i).map(({t,x,i})=>{const e=find(db.employees,t.empId)||{};
     return{'Transaction No.':txNo(t,i),Date:t.date,'Emp.No':t.empId,Name:e.name||'',Nickname:e.nick||'',Dept:e.dept||'',Level:e.level||'',Position:e.position||'',
-      'PL Type':x.cat,'SG&A Type':x.cat==='Cost'?'-':`${x.sgaId}:${find(db.sgaTypes,x.sgaId)?.name||''}`,Hours:x.hours,'Project Code':x.code||'-','Project Name':x.code?entryName(x):'-',Text:x.note||'',Status:t.status,...(hasSal()?{'Labor Cost (THB)':Math.round(bahtOf(t,x)*100)/100}:{})}});
+      'PL Type':x.cat,'SG&A Type':x.cat==='Cost'?'-':`${x.sgaId}:${find(db.sgaTypes,x.sgaId)?.name||''}`,Hours:x.hours,'Project Code':x.code||'-','Project Name':x.code?entryName(x):'-','Project Type':codeType(x.code),Text:x.note||'',Status:t.status,...(hasSal()?{'Labor Cost (THB)':Math.round(bahtOf(t,x)*100)/100}:{})}});
 }
 const histFileTag=()=>`${hs.scope}${hs.scope==='dept'?'_'+hs.dept:hs.scope==='emp'?'_'+hs.emp:hs.scope==='project'||hs.scope==='contract'?'_'+hsCode():''}_${hs.mode}_${hs.anchor}`.replace(/[^\w.-]+/g,'_');
 $('#xlsxLog').onclick=()=>{
@@ -1309,6 +1313,8 @@ const MASTERS=[
   {key:'contracts',title:'Sales Contract (DP / Demco)',f:[['company','บริษัท','company']],stamp:true},
   {key:'holidays',title:'วันหยุด (ไม่นับเป็นวันทำการ)',f:[],date:true},
 ];
+const codeType=code=>{if(!code)return '-';const p=find(db.projects,code);if(p)return KIND_TH(p.kind);const c=find(db.contracts,code);return c?'Sales Contract ('+coOf(c)+')':'-'};
+const typeTag=code=>{const s=codeType(code);return s==='-'?'<span class="hint">-</span>':`<span class="tag st" style="background:${/Sales/.test(s)?'#7030a0':/Backlog/.test(s)?'#c2410c':/MT/.test(s)?'#0e7490':'var(--cost)'}">${esc(s)}</span>`};
 const KIND_TH=k=>({cost:'Cost',mt:'MT Code (Demco)',backlog:'Backlog No. (DP)'}[k]||k);
 const fv=(r,f)=>f[2]==='bool'?(r[f[0]]?'✓':'—'):f[2]==='company'?coOf(r):f[2]==='kind'?(r.kind?esc(KIND_TH(r.kind)):'Sales Contract ('+coOf(r)+')'):esc(r[f[0]]);
 /* ตารางรหัสโครงการรวม: db.projects + db.contracts (Sales Contract) แสดงเป็นตารางเดียว เรียงตามลำดับนำเข้า/อัปเดต */
@@ -1384,7 +1390,7 @@ function sheetsFromDb(){
     Assignments:db.assign.map(a=>({'Emp.No':a.empId,Code:a.code})),
     Holidays:db.holidays.map(h=>({Date:h.id,Name:h.name})),
     WorkLog:db.timesheets.flatMap(t=>t.entries.map((x,i)=>{const e=emp(t.empId);return{'Transaction No.':txNo(t,i),Date:t.date,'Emp.No':t.empId,Name:e.name||'',Nickname:e.nick||'',Dept:e.dept||'',Level:e.level||'',Position:e.position||'',
-      'PL Type':x.cat,'SG&A Type':x.cat==='Cost'?'-':`${x.sgaId}:${find(db.sgaTypes,x.sgaId)?.name||''}`,Hours:x.hours,'Project Code':x.code||'-','Project Name':x.code?entryName(x):'-',Text:x.note||'',Status:t.status}}))
+      'PL Type':x.cat,'SG&A Type':x.cat==='Cost'?'-':`${x.sgaId}:${find(db.sgaTypes,x.sgaId)?.name||''}`,Hours:x.hours,'Project Code':x.code||'-','Project Name':x.code?entryName(x):'-','Project Type':codeType(x.code),Text:x.note||'',Status:t.status}}))
   };
 }
 function writeXlsx(sheets,name){
@@ -1968,6 +1974,10 @@ function setSync(st,msg){
   const el=$('#syncState');if(!el)return;el.classList.remove('hide');
   el.textContent=st==='saving'?'☁ กำลังบันทึก…':st==='ok'?'☁ บันทึกแล้ว':'⚠ บันทึกไม่สำเร็จ';
   el.title=msg||'';el.style.color=st==='err'?'#ffd0d0':'';
+  if(st==='err'&&msg&&msg!==setSync.last){setSync.last=msg;   // แจ้งสาเหตุให้ชัด (ส่วนมากคือยังไม่ได้รัน SQL อัปเดตฐานข้อมูล)
+    const sql=/updated_by|updated_at/.test(msg)?'supabase_update_import_log.sql':/company/.test(msg)?'supabase_update_company.sql':/approved_by|approved_at|reject_note|timesheets_status_check|Pending/.test(msg)?'supabase_update_approval_flow.sql':/salary_rates/.test(msg)?'supabase_update_salary.sql':/employees_role_check|role/.test(msg)?'supabase_update_roles.sql':'';
+    setTimeout(()=>alert('บันทึกขึ้นระบบกลางไม่สำเร็จ\n\n'+(sql?'น่าจะยังไม่ได้รัน SQL อัปเดตฐานข้อมูล: '+sql+'\n(Supabase > SQL Editor > วางไฟล์ > Run) แล้วรีเฟรชแอป\n\n':'')+'รายละเอียด: '+msg+'\n\nข้อมูลที่เพิ่งเพิ่มยังอยู่ในหน้าจอนี้ แต่จะหายเมื่อรีเฟรช จนกว่าจะแก้สาเหตุข้างต้น'),50)}
+  if(st==='ok')setSync.last='';
 }
 async function fetchAll(t,pk,filter){
   let out=[],from=0;const size=1000;
