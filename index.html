@@ -381,8 +381,8 @@ header>*{min-width:0}
     <div class="scroll" style="margin-top:12px"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>พนักงานที่ได้รับ assign</th></tr></thead><tbody id="asgList"></tbody></table></div>
   </div>
   <div id="salaryCard"></div>
-  <div class="card"><h2>นำเข้าโครงการ / Sales Contract จาก Excel (อัปเดตอัตโนมัติ)</h2>
-    <p class="hint">เลือกไฟล์ .xlsx ที่มีคอลัมน์ <b>Project Code, Project Name</b> (ชีต Projects หรือชีตแรก; มีคอลัมน์ <b>Kind</b> = cost / mt / backlog ได้ ถ้าไม่มีระบบจัดให้เอง: รหัสลงท้าย -MT = mt ที่เหลือ = cost) และ/หรือชีต SalesContracts (คอลัมน์ <b>Sales Contract No., Sales Contract Name</b>) — ระบบ<b>เพิ่มรหัสใหม่ + อัปเดตชื่อ/ประเภทของรหัสเดิม</b> ไม่ลบรหัสอื่นที่มีอยู่ และตัดรหัสซ้ำในไฟล์ให้เอง</p>
+  <div class="card"><h2>นำเข้ารหัสโครงการ (Cost / MT / Backlog / Sales Contract) + Assign จาก Excel</h2>
+    <p class="hint">เลือกไฟล์ .xlsx ที่มีคอลัมน์ <b>Project Code, Project Name</b> (ชีต Projects หรือชีตแรก; มีคอลัมน์ <b>Kind</b> = cost / mt / backlog / <b>sc_demco</b> / <b>sc_dp</b> (Sales Contract ของ Demco / DP) ได้ ถ้าไม่มีระบบจัดให้เอง: รหัสลงท้าย -MT = mt ที่เหลือ = cost) รวมอยู่ตารางเดียวกันทั้งหมด · ชีต <b>Assignments</b> (Emp.No, Code) เพิ่มการ assign แบบไม่ลบของเดิม (นำเข้าสมาชิกก่อน) · ใช้ชีต SalesContracts แยกได้เหมือนเดิม และ/หรือชีต SalesContracts (คอลัมน์ <b>Sales Contract No., Sales Contract Name, Company</b> = DP / Demco; ไม่ใส่ = Demco) — ระบบ<b>เพิ่มรหัสใหม่ + อัปเดตชื่อ/ประเภทของรหัสเดิม</b> ไม่ลบรหัสอื่นที่มีอยู่ และตัดรหัสซ้ำในไฟล์ให้เอง</p>
     <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="pjOff" style="width:auto;min-height:0"> ปิดการใช้งานรหัสโครงการที่ไม่อยู่ในไฟล์ (ไม่ลบ ย้อนกลับได้)</label>
     <label class="btn pri" style="display:inline-block;cursor:pointer">⬆ เลือกไฟล์ Excel โครงการ<input type="file" id="pjImp" accept=".xlsx,.xls" class="hide"></label>
     <div class="hint" id="pjMsg" style="margin-top:8px"></div>
@@ -554,15 +554,15 @@ const seed=()=>({
     {id:'CSG2301-MT',name:'งานซ่อมบำรุง SIPCO',kind:'mt',active:true},
     {id:'DP2601',name:'Backlog Project (DP) ตัวอย่าง',kind:'backlog',active:true}],
   contracts:[
-    {id:'M260001',name:'งานใหม่1',active:true},{id:'M260002',name:'งานใหม่2',active:true},{id:'M260003',name:'งานใหม่3',active:true}],
+    {id:'M260001',name:'งานใหม่1',company:'Demco',active:true},{id:'M260002',name:'งานใหม่2',company:'Demco',active:true},{id:'M260003',name:'งานใหม่3',company:'DP',active:true}],
   sgaTypes:[
     {id:'N1',name:'Site Survey',desc:'ลงพื้นที่ / สำรวจหน้างาน รวมเวลาเดินทาง',ref:'contract',active:true},
-    {id:'N2',name:'Est.Cost',desc:'จัดทำข้อมูลเพื่อเสนอราคา/ถอดแบบ (BOQ)/ประเมินค่าวัสดุ ค่าแรง/จัดทำต้นทุนประมาณการ/หาน้ำหนักงานประมูล',ref:'contract',active:true},
-    {id:'N3',name:'Design',desc:'ออกแบบให้ Demco ก่อนเปิด Project / ออกแบบ / หาน้ำหนักผลิตให้ DP (ฝ่ายโครงเหล็กเลือก Backlog Project Code ได้)',ref:'contract+backlog',active:true},
-    {id:'N4',name:'Admin',desc:'จัดทำเอกสาร/รายงาน ประสานงาน ธุรการ เบิกจ่าย วางแผนงาน บริหารงานในฝ่าย',ref:'none',active:true},
-    {id:'N5',name:'Meeting',desc:'ประชุม (ที่ไม่เกี่ยวกับงานโครงการที่เข้า Cost) / อบรม / กิจกรรมบริษัท รวมเวลาเดินทาง',ref:'none',active:true},
-    {id:'N6',name:'Maintanance',desc:'ซ่อมบำรุงที่เข้า SG&A / โครงการ MT ที่ปิดแล้วแต่ยังอยู่ในระยะรับประกัน (ไม่รวมโครงการขายไฟ Solar)',ref:'mt',active:true},
-    {id:'N7',name:'Freetime',desc:'ศึกษาหาข้อมูล เตรียมความพร้อมรองรับงานในอนาคต',ref:'none',active:true},
+    {id:'N2',name:'Est.Cost',desc:'จัดทำข้อมูลเพื่อเสนอราคา/ถอดแบบ (BOQ)/ ประเมินค่าวัสดุ ค่าแรง/ จัดทำต้นทุนประมาณการ/หาน้ำหนักงานประมูล',ref:'contract',active:true},
+    {id:'N3',name:'Design',desc:'ออกแบบ ให้ Demco ก่อนเปิด Project/ ออกแบบให้ DP (ฝ่ายโครงเหล็กเลือก Backlog No. ได้)',ref:'contract+backlog',active:true},
+    {id:'N4',name:'Admin',desc:'จัดทำเอกสาร/รายงาน เบิกจ่าย ประสานงาน ธุรการ วางแผนงาน',ref:'none',active:true},
+    {id:'N5',name:'Meeting',desc:'ประชุม/อบรม กับบุคคลภายในและภายนอก เข้าร่วมกิจกรรมบริษัท รวมเวลาเดินทาง',ref:'none',active:true},
+    {id:'N6',name:'Maintanance',desc:'ซ่อมบำรุงรักษาโครงการ MT ปิดแล้ว แต่ยังอยู่ในระยะรับประกัน',ref:'mt',active:true},
+    {id:'N7',name:'Freetime',desc:'ศึกษาหาข้อมูล เตรียมความพร้อมรองรับงาน',ref:'none',active:true},
     {id:'N8',name:'Leave',desc:'ลาป่วย ลากิจ ลาพักร้อน ลาอื่นๆ',ref:'none',active:true}],
   backlogDepts:['31003'],
   holidays:[],            // {id:date,name}
@@ -607,15 +607,23 @@ function fillEmp(){
   $('#emp').innerHTML=opt(pool,e=>`${e.id} — ${e.name}${e.nick?` (${e.nick})`:''}`);
   $('#emp').value=me?me.id:'';$('#meBox').textContent=me?(me.id+' — '+me.name+(me.nick?' ('+me.nick+')':'')):'บัญชีนี้ยังไม่ผูกกับรหัสพนักงาน';
 }
+/* รหัสอ้างอิง SG&A มี 4 ประเภท: Backlog No. (DP) · Sale Contract No. (DP) · Sale Contract No. (Demco) · MT Code (Demco) */
+const REF_TH={scDemco:'Sale Contract No. (Demco)',scDP:'Sale Contract No. (DP)',backlog:'Backlog No. (DP)',mt:'MT Code (Demco)'};
+const SGA_REFS={N1:['scDemco'],N2:['scDP','scDemco'],N3:['backlog','scDP','scDemco'],N6:['mt']};
+const refsOf=s=>(s&&SGA_REFS[s.id])||[];
+const coOf=c=>c&&c.company==='DP'?'DP':'Demco';
+const refTag=x=>x.kind==='backlog'?'Backlog DP':x.kind==='mt'?'MT':'Sale Contract '+coOf(x);
 function costList(){const id=$('#emp').value;return db.projects.filter(p=>p.kind==='cost'&&p.active!==false&&assigned(id,p.id)).sort(byId)}
 function refList(sga){return _refList(sga).slice().sort(byId)}
 function _refList(sga){
   const e=emp(),id=$('#emp').value;if(!sga||!e)return[];
   const ok=x=>x.active!==false&&assigned(id,x.id);
-  if(sga.ref==='contract')return db.contracts.filter(ok);
-  if(sga.ref==='mt')return db.projects.filter(p=>p.kind==='mt'&&ok(p));
-  if(sga.ref==='contract+backlog')return[...db.contracts.filter(ok),...(db.backlogDepts.includes(e.dept)?db.projects.filter(p=>p.kind==='backlog'&&ok(p)):[])];
-  return[];
+  const refs=refsOf(sga),out=[];
+  if(refs.includes('scDemco'))out.push(...db.contracts.filter(c=>coOf(c)==='Demco'&&ok(c)));
+  if(refs.includes('scDP'))out.push(...db.contracts.filter(c=>coOf(c)==='DP'&&ok(c)));
+  if(refs.includes('mt'))out.push(...db.projects.filter(p=>p.kind==='mt'&&ok(p)));
+  if(refs.includes('backlog')&&db.backlogDepts.includes(e.dept))out.push(...db.projects.filter(p=>p.kind==='backlog'&&ok(p)));
+  return out;
 }
 function syncForm(){
   const cl=costList();
@@ -628,9 +636,9 @@ function syncForm(){
 function syncRef(){
   const sga=find(db.sgaTypes,$('#sga').value);
   $('#sgaDesc').textContent=cat==='SG&A'&&sga?sga.desc:'';
-  const need=cat==='SG&A'&&sga&&sga.ref!=='none', rl=need?refList(sga):[];
-  $('#refLabel').textContent=sga?.ref==='mt'?'MT Project Code *':sga?.ref==='contract+backlog'?'Sales Contract No. / Backlog Project Code *':'Sales Contract No. *';
-  $('#ref').innerHTML=opt(rl,x=>`${x.id} — ${x.name}`,rl.length?'— เลือก —':'— ยังไม่มีรายการที่ได้รับ assign —');
+  const need=cat==='SG&A'&&sga&&refsOf(sga).length>0, rl=need?refList(sga):[];
+  $('#refLabel').textContent=need?refsOf(sga).map(r=>REF_TH[r]).join(' / ')+' *':'';
+  $('#ref').innerHTML=opt(rl,x=>`${x.id} — ${x.name}  [${refTag(x)}]`,rl.length?'— เลือก —':'— ยังไม่มีรายการที่ได้รับ assign —');
   $('#fRef').classList.toggle('hide',!need);
 }
 $$('.seg button').forEach(b=>b.onclick=()=>{cat=b.dataset.cat;$$('.seg button').forEach(x=>x.classList.toggle('on',x===b));syncForm();$('#err').textContent=''});
@@ -777,7 +785,7 @@ $('#add').onclick=()=>{
   const x={id:'E'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),cat,hours,note:$('#note').value.trim()};
   if(cat==='Cost'){x.code=$('#project').value;if(!x.code)return err('กรุณาเลือกโครงการ')}
   else{x.sgaId=$('#sga').value;const s=find(db.sgaTypes,x.sgaId);if(!s)return err('กรุณาเลือกประเภท SG&A');
-    if(s.ref!=='none'){x.code=$('#ref').value;if(!x.code)return err(`ประเภท ${s.id} ต้องเลือก ${s.ref==='mt'?'MT Project Code':'Sales Contract No.'}`)}}
+    if(refsOf(s).length){x.code=$('#ref').value;if(!x.code)return err(`ประเภท ${s.id} ต้องเลือก ${refsOf(s).map(r=>REF_TH[r]).join(' / ')}`)}}
   const t=curSheet(true);
   if(t.status!=='Draft')return err('ใบนี้ส่งแล้ว');
   if(totals(t).all+hours>TARGET)return err(`ชั่วโมงรวมจะเกิน ${TARGET} ชม. (เหลือ ${TARGET-totals(t).all})`);
@@ -871,7 +879,7 @@ function pShift(mode,anchor,dir){
 let hs={mode:'month',anchor:todayStr(),scope:'',dept:'',emp:'',proj:'',con:'',limit:100};
 const SCOPE_TH={me:'ของฉัน',all:'ทั้งหมด',dept:'รายฝ่าย',emp:'รายคน',project:'ราย Project',contract:'ราย Sales Contract'};
 const hsScopes=()=>isAdmin?['all','dept','emp','project','contract']:['me','project','contract'];
-const projLabel=c=>`${c}${codeInfo(c)?.name?' — '+codeInfo(c).name:''}`;
+const projLabel=c=>{const sc=find(db.contracts,c);return `${c}${codeInfo(c)?.name?' — '+codeInfo(c).name:''}${sc?' ['+coOf(sc)+']':''}`};
 
 function hsFillSelects(){
   const dm=new Map(db.depts.map(d=>[d.id,d.name]));db.employees.forEach(e=>{if(e.dept&&!dm.has(e.dept))dm.set(e.dept,'')});
@@ -1297,15 +1305,21 @@ function dl(name,text,type){const a=document.createElement('a');a.href=URL.creat
 const MASTERS=[
   {key:'depts',title:'ฝ่าย',f:[]},
   {key:'employees',title:'พนักงาน (รหัส = Emp.No)',f:[['email','อีเมลบริษัท *'],['role','สิทธิ์','role'],['nick','ชื่อเล่น'],['dept','ฝ่าย','dept'],['level','Level'],['position','ตำแหน่ง'],['workSat','ทำงานวันเสาร์ (Site)','bool']]},
-  {key:'projects',title:'รหัสโครงการ (Cost / MT / Backlog)',f:[['kind','ประเภท','kind']],stamp:true},
-  {key:'contracts',title:'Sales Contract',f:[],stamp:true},
+  {key:'projects',title:'รหัสโครงการ (Cost / MT Code / Backlog No. / Sales Contract)',f:[['kind','ประเภท','kind']],stamp:true},
+  {key:'contracts',title:'Sales Contract (DP / Demco)',f:[['company','บริษัท','company']],stamp:true},
   {key:'holidays',title:'วันหยุด (ไม่นับเป็นวันทำการ)',f:[],date:true},
 ];
-const fv=(r,f)=>f[2]==='bool'?(r[f[0]]?'✓':'—'):esc(r[f[0]]);
+const KIND_TH=k=>({cost:'Cost',mt:'MT Code (Demco)',backlog:'Backlog No. (DP)'}[k]||k);
+const fv=(r,f)=>f[2]==='bool'?(r[f[0]]?'✓':'—'):f[2]==='company'?coOf(r):f[2]==='kind'?(r.kind?esc(KIND_TH(r.kind)):'Sales Contract ('+coOf(r)+')'):esc(r[f[0]]);
+/* ตารางรหัสโครงการรวม: db.projects + db.contracts (Sales Contract) แสดงเป็นตารางเดียว เรียงตามลำดับนำเข้า/อัปเดต */
+const masterRows=m=>m.key==='projects'
+  ?[...db.projects.map((r,i)=>({r,i,k:'projects'})),...db.contracts.map((r,i)=>({r,i,k:'contracts'}))].sort((a,b)=>byUpd(a.r,b.r))
+  :db[m.key].map((r,i)=>({r,i,k:m.key}));
 function fInput(f){
   if(f[0]==='email')return `<input name="email" type="email" required autocapitalize="none">`;
   if(f[2]==='dept')return `<select name="dept">${opt(db.depts,d=>`${d.id} ${d.name}`)}</select>`;
-  if(f[2]==='kind')return `<select name="kind"><option value="cost">cost</option><option value="mt">mt (MT Project Code)</option><option value="backlog">backlog (DP)</option></select>`;
+  if(f[2]==='kind')return `<select name="kind"><option value="cost">cost</option><option value="mt">mt (MT Code · Demco)</option><option value="backlog">backlog (Backlog No. · DP)</option><option value="sc_demco">Sales Contract (Demco)</option><option value="sc_dp">Sales Contract (DP)</option></select>`;
+  if(f[2]==='company')return `<select name="company"><option value="Demco">Demco</option><option value="DP">DP</option></select>`;
   if(f[2]==='role')return `<select name="role"><option value="user">user (เห็นเฉพาะของตนเอง)</option><option value="admin">admin</option></select>`;
   if(f[2]==='bool')return `<label style="margin-top:24px"><input type="checkbox" name="${f[0]}" style="width:auto"> ${f[1]}</label>`;
   return `<input name="${f[0]}">`;
@@ -1316,10 +1330,10 @@ const fmtTs=s=>{if(!s)return '—';const d=new Date(s);return isNaN(d)?'—':d.t
 const byUpd=(a,b)=>String(a.updatedAt||'').localeCompare(String(b.updatedAt||''))||byId(a,b);   // เรียงตามลำดับการนำเข้า/อัปเดต (เก่า→ใหม่)
 function renderSetup(){
   ['employees','depts','holidays'].forEach(k=>{if(db[k])db[k].sort(byId)});['projects','contracts'].forEach(k=>{if(db[k])db[k].sort(byUpd)});
-  $('#masters').innerHTML=MASTERS.map(m=>`<div class="card"><h2>${m.title}</h2><div class="scroll"><table>
+  $('#masters').innerHTML=MASTERS.filter(m=>m.key!=='contracts').map(m=>`<div class="card"><h2>${m.title}</h2><div class="scroll"><table>
     <thead><tr><th>No.</th><th>${m.date?'วันที่':'รหัส'}</th><th>ชื่อ</th>${m.f.map(f=>`<th>${f[1]}</th>`).join('')}${m.stamp?'<th>ผู้นำเข้า/แก้ไข</th><th>อัปเดตล่าสุด</th>':''}<th>ใช้งาน</th><th></th></tr></thead><tbody>
-    ${db[m.key].map((r,i)=>`<tr><td class="hint">${i+1}</td><td>${esc(r.id)}</td><td>${esc(r.name)}</td>${m.f.map(f=>`<td>${fv(r,f)}</td>`).join('')}${m.stamp?`<td>${esc(r.updatedBy||'—')}</td><td class="hint">${fmtTs(r.updatedAt)}</td>`:''}
-    <td>${m.date?'':`<input type="checkbox" ${r.active!==false?'checked':''} data-act="${m.key}:${i}" style="width:auto">`}</td><td><button class="x" data-rm="${m.key}:${i}">✕</button></td></tr>`).join('')}
+    ${masterRows(m).map(({r,i,k},n)=>`<tr><td class="hint">${n+1}</td><td>${esc(r.id)}</td><td>${esc(r.name)}</td>${m.f.map(f=>`<td>${fv(r,f)}</td>`).join('')}${m.stamp?`<td>${esc(r.updatedBy||'—')}</td><td class="hint">${fmtTs(r.updatedAt)}</td>`:''}
+    <td>${m.date?'':`<input type="checkbox" ${r.active!==false?'checked':''} data-act="${k}:${i}" style="width:auto">`}</td><td><button class="x" data-rm="${k}:${i}">✕</button></td></tr>`).join('')}
     </tbody></table></div>
     <form data-add="${m.key}" class="row" style="margin-top:12px;align-items:end">
       <div><label>${m.date?'วันที่':'รหัส'}</label><input name="id" ${m.date?'type="date"':''} required></div><div><label>ชื่อ</label><input name="name" required></div>
@@ -1327,16 +1341,18 @@ function renderSetup(){
       <div><button class="btn pri">+ เพิ่ม</button></div></form></div>`).join('')
    +`<div class="card"><h2>ประเภท SG&amp;A (N1–N8)</h2><div class="scroll"><table><thead><tr><th>รหัส</th><th>ชื่อที่แสดง</th><th>สี</th><th>ต้องอ้างอิง</th><th>ใช้งาน</th></tr></thead><tbody>
     <tr><td>Cost</td><td><input data-cname value="${esc(costSty().label)}" style="min-height:0;padding:6px 8px"></td><td><input type="color" data-ccolor value="${costSty().color}" style="width:46px;height:34px;padding:2px"></td><td>รหัสโครงการ (assign)</td><td></td></tr>
-    ${db.sgaTypes.map((t,i)=>`<tr><td>${t.id}</td><td><input data-tname="${i}" value="${esc(t.name)}" style="min-height:0;padding:6px 8px"><div class="hint">${esc(t.desc)}</div></td><td><input type="color" data-tcolor="${i}" value="${sgaColor(t)}" style="width:46px;height:34px;padding:2px"></td><td>${{none:'—','contract':'Sales Contract No.','contract+backlog':'Sales Contract / Backlog (ฝ่ายโครงเหล็ก)',mt:'MT Project Code'}[t.ref]}</td><td><input type="checkbox" ${t.active!==false?'checked':''} data-act="sgaTypes:${i}" style="width:auto"></td></tr>`).join('')}
-    </tbody></table></div><div class="hint" style="margin-top:8px"><button class="btn" id="uiReset" style="padding:4px 10px;margin-right:8px">คืนค่าชื่อ/สีเริ่มต้น</button>ชื่อและสีที่แก้ไขมีผลกับวงกลมสรุป รายการเลือกประเภท และไฟล์ส่งออก (รหัส N1–N8 ยังเหมือนเดิม)</div><div class="hint" style="margin-top:8px">ฝ่ายที่เลือก Backlog Project Code ได้ใน N3: ${esc(db.backlogDepts.join(', ')||'-')}</div></div>`;
+    ${db.sgaTypes.map((t,i)=>`<tr><td>${t.id}</td><td><input data-tname="${i}" value="${esc(t.name)}" style="min-height:0;padding:6px 8px"><div class="hint">${esc(t.desc)}</div></td><td><input type="color" data-tcolor="${i}" value="${sgaColor(t)}" style="width:46px;height:34px;padding:2px"></td><td>${refsOf(t).map(r=>esc(REF_TH[r])).join('<br>')||'—'}</td><td><input type="checkbox" ${t.active!==false?'checked':''} data-act="sgaTypes:${i}" style="width:auto"></td></tr>`).join('')}
+    </tbody></table></div><div class="hint" style="margin-top:8px"><button class="btn" id="uiReset" style="padding:4px 10px;margin-right:8px">คืนค่าชื่อ/สีเริ่มต้น</button>ชื่อและสีที่แก้ไขมีผลกับวงกลมสรุป รายการเลือกประเภท และไฟล์ส่งออก (รหัส N1–N8 ยังเหมือนเดิม)</div><div class="hint" style="margin-top:8px">ฝ่ายที่เลือก Backlog No. (DP) ได้ใน N3: ${esc(db.backlogDepts.join(', ')||'-')}</div></div>`;
   $$('[data-act]').forEach(c=>c.onchange=()=>{const[k,i]=c.dataset.act.split(':');db[k][i].active=c.checked;save();fillEmp();syncForm();renderLog()});
   $$('[data-rm]').forEach(b=>b.onclick=()=>{const[k,i]=b.dataset.rm.split(':');
     if(confirm('ลบรายการนี้? (ถ้าเคยถูกใช้แล้ว แนะนำให้ปิดการใช้งานแทน)')){const id=db[k][i].id;db[k].splice(i,1);
       if(k==='employees'||k==='projects'||k==='contracts')db.assign=db.assign.filter(a=>a.empId!==id&&a.code!==id);
       save();fillEmp();syncForm();renderSetup();renderLog()}});
-  $$('form[data-add]').forEach(f=>f.onsubmit=ev=>{ev.preventDefault();const k=f.dataset.add,d=Object.fromEntries(new FormData(f));
+  $$('form[data-add]').forEach(f=>f.onsubmit=ev=>{ev.preventDefault();let k=f.dataset.add;const d=Object.fromEntries(new FormData(f));
     const m=MASTERS.find(x=>x.key===k);const r={id:d.id.trim(),name:d.name.trim(),active:true};
     m.f.forEach(x=>r[x[0]]=x[2]==='bool'?!!d[x[0]]:(d[x[0]]||'').trim());
+    if(k==='projects'){if(find(db.projects,r.id)||find(db.contracts,r.id))return alert('รหัสนี้มีอยู่แล้ว');
+      if(/^sc_/.test(r.kind)){r.company=r.kind==='sc_dp'?'DP':'Demco';delete r.kind;k='contracts'}}
     if(find(db[k],r.id))return alert('รหัสนี้มีอยู่แล้ว');
     if(k==='employees'&&db.employees.some(x=>x.email&&lc(x.email)===lc(r.email)))return alert('อีเมลนี้ถูกใช้โดยพนักงานคนอื่นแล้ว');
     if(m.stamp)stamp(r);db[k].push(r);save();fillEmp();syncForm();renderSetup();renderLog()});
@@ -1364,7 +1380,7 @@ function sheetsFromDb(){
     Employees:db.employees.map(e=>({'Emp.No':e.id,Name:e.name,Nickname:e.nick||'',Dept:e.dept||'',Level:e.level||'',Position:e.position||'',Email:e.email||'',Username:e.username||'',Role:e.role||'user',WorkSat:e.workSat?1:0,Active:e.active===false?0:1})),
     Departments:db.depts.map(d=>({'Dept.No':d.id,'Dept.Name':d.name})),
     Projects:db.projects.map(p=>({'Project Code':p.id,'Project Name':p.name,Kind:p.kind,Active:p.active===false?0:1,'Updated By':p.updatedBy||'','Updated At':p.updatedAt||''})),
-    SalesContracts:db.contracts.map(c=>({'Sales Contract No.':c.id,'Sales Contract Name':c.name,Active:c.active===false?0:1,'Updated By':c.updatedBy||'','Updated At':c.updatedAt||''})),
+    SalesContracts:db.contracts.map(c=>({'Sales Contract No.':c.id,'Sales Contract Name':c.name,Company:coOf(c),Active:c.active===false?0:1,'Updated By':c.updatedBy||'','Updated At':c.updatedAt||''})),
     Assignments:db.assign.map(a=>({'Emp.No':a.empId,Code:a.code})),
     Holidays:db.holidays.map(h=>({Date:h.id,Name:h.name})),
     WorkLog:db.timesheets.flatMap(t=>t.entries.map((x,i)=>{const e=emp(t.empId);return{'Transaction No.':txNo(t,i),Date:t.date,'Emp.No':t.empId,Name:e.name||'',Nickname:e.nick||'',Dept:e.dept||'',Level:e.level||'',Position:e.position||'',
@@ -1395,22 +1411,46 @@ $('#pjImp').onchange=async ev=>{
     const sh=n=>wb.SheetNames.includes(n)?XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:''}):null;
     let pr=sh('Projects');
     if(!pr){const f=wb.SheetNames.map(n=>XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:''})).find(r=>r.length&&('Project Code' in r[0]));pr=f||null}
-    const cr=sh('SalesContracts');
-    if(!pr&&!cr)return msg.textContent='ไม่พบคอลัมน์ "Project Code" หรือชีต SalesContracts ในไฟล์';
+    const cr=sh('SalesContracts'),ar=sh('Assignments');
+    if(!pr&&!cr&&!ar)return msg.textContent='ไม่พบคอลัมน์ "Project Code" หรือชีต SalesContracts / Assignments ในไฟล์';
     const nd=JSON.parse(JSON.stringify(db)),sum=[],KS=['cost','mt','backlog'];
-    const run=(list,rows,codeK,nameK,kindK,label)=>{
+    const run=(list,rows,codeK,nameK,kindK,label,hasCo)=>{
       const seen=new Map();rows.forEach(x=>{const c=S(x[codeK]);if(c)seen.set(c,x)});   // ซ้ำ = ใช้แถวหลังสุด
       let add=0,upd=0,same=0,off=0;
       seen.forEach((x,c)=>{
         const name=S(x[nameK]).replace(/\s+/g,' '),o=list.find(y=>y.id===c);
         let kind;if(kindK){const k=S(x.Kind).toLowerCase();kind=KS.includes(k)?k:(o?o.kind:(/-MT$/i.test(c)?'mt':'cost'))}
-        if(!o){const n=kindK?{id:c,name,kind,active:true}:{id:c,name,active:true};stamp(n);list.push(n);add++}
-        else{const ch=(name&&name!==o.name)||(kindK&&kind!==o.kind)||o.active===false;
-          if(ch){if(name)o.name=name;if(kindK)o.kind=kind;o.active=true;stamp(o);upd++}else same++}});
+        const coRaw=hasCo?S(x.Company):'',co=coRaw?(/^dp$/i.test(coRaw)?'DP':'Demco'):null;
+        if(!o){const n=kindK?{id:c,name,kind,active:true}:{id:c,name,company:co||'Demco',active:true};stamp(n);list.push(n);add++}
+        else{const ch=(name&&name!==o.name)||(kindK&&kind!==o.kind)||(co&&co!==coOf(o))||o.active===false;
+          if(ch){if(name)o.name=name;if(kindK)o.kind=kind;if(co)o.company=co;o.active=true;stamp(o);upd++}else same++}});
       if($('#pjOff').checked)list.forEach(o=>{if(!seen.has(o.id)&&o.active!==false){o.active=false;stamp(o);off++}});
       sum.push(`${label}: ใหม่ ${add} · อัปเดต ${upd} · เหมือนเดิม ${same}${off?` · ปิดใช้งาน ${off}`:''} (ในไฟล์ ${seen.size} รหัสไม่ซ้ำ)`)};
-    if(pr)run(nd.projects,pr,'Project Code','Project Name',true,'Project');
-    if(cr)run(nd.contracts,cr,'Sales Contract No.','Sales Contract Name',false,'Sales Contract');
+    if(pr){   // ตารางเดียว: Kind = cost / mt / backlog / sc_demco / sc_dp (Sales Contract)
+      const nk=(raw,code)=>{const s=String(raw||'').toLowerCase();
+        if(/^mt/.test(s))return 'mt';if(/backlog|^bl/.test(s))return 'backlog';if(s==='cost')return 'cost';
+        if(/(sc|sale|contract|สัญญา)/.test(s))return /dp/.test(s)?'sc_dp':'sc_demco';
+        return /-MT$/i.test(code)?'mt':'cost'};
+      const seen=new Map();pr.forEach(x=>{const c=S(x['Project Code']);if(c)seen.set(c,x)});
+      let add=0,upd=0,same=0,moved=0,off=0;const cnt={};
+      seen.forEach((x,c)=>{
+        const name=S(x['Project Name']).replace(/\s+/g,' '),raw=S(x.Kind),op=nd.projects.find(y=>y.id===c),oc=nd.contracts.find(y=>y.id===c),o=op||oc;
+        let kind=raw?nk(raw,c):(o?(op?op.kind:('sc_'+(coOf(oc)==='DP'?'dp':'demco'))):nk('',c));
+        cnt[kind]=(cnt[kind]||0)+1;const isSc=/^sc_/.test(kind),co=kind==='sc_dp'?'DP':'Demco',arr=isSc?nd.contracts:nd.projects;
+        if(!o){const n=isSc?{id:c,name,company:co,active:true}:{id:c,name,kind,active:true};stamp(n);arr.push(n);add++;return}
+        if((op&&isSc)||(oc&&!isSc)){   // เปลี่ยนประเภท (ย้ายระหว่างโครงการ/สัญญา)
+          (op?nd.projects:nd.contracts).splice((op?nd.projects:nd.contracts).indexOf(o),1);
+          const n=isSc?{id:c,name:name||o.name,company:co,active:true}:{id:c,name:name||o.name,kind,active:true};stamp(n);arr.push(n);moved++;return}
+        const ch=(name&&name!==o.name)||(!isSc&&kind!==o.kind)||(isSc&&co!==coOf(o))||o.active===false;
+        if(ch){if(name)o.name=name;if(isSc)o.company=co;else o.kind=kind;o.active=true;stamp(o);upd++}else same++});
+      if($('#pjOff').checked)[...nd.projects,...nd.contracts].forEach(o=>{if(!seen.has(o.id)&&o.active!==false){o.active=false;stamp(o);off++}});
+      sum.push(`รหัสโครงการ: ใหม่ ${add} · อัปเดต ${upd}${moved?` · เปลี่ยนประเภท ${moved}`:''} · เหมือนเดิม ${same}${off?` · ปิดใช้งาน ${off}`:''} (ในไฟล์ ${seen.size} รหัส: ${Object.entries(cnt).map(([k,v])=>(k==='sc_demco'?'SC Demco':k==='sc_dp'?'SC DP':k)+' '+v).join(', ')})`)}
+    if(cr)run(nd.contracts,cr,'Sales Contract No.','Sales Contract Name',false,'Sales Contract',true);
+    if(ar){let a=0,dp=0,bad=0;
+      ar.forEach(x=>{const e0=x['Emp.No'],e=typeof e0==='number'?String(e0).padStart(5,'0'):S(e0),c=S(x.Code);if(!e||!c)return;
+        if(!find(nd.employees,e)||!(find(nd.projects,c)||find(nd.contracts,c))){bad++;return}
+        if(nd.assign.some(y=>y.empId===e&&y.code===c)){dp++;return}nd.assign.push({empId:e,code:c});a++});
+      sum.push(`Assign พนักงาน: เพิ่ม ${a} · ซ้ำ ${dp} · ข้าม ${bad} (ไม่พบพนักงานหรือรหัสในระบบ)`)}
     if(!confirm('สรุปการนำเข้า\n'+sum.join('\n')+'\n\nดำเนินการต่อ?'))return msg.textContent='ยกเลิกแล้ว';
     db=nd;save();rebind();init();renderSetup();msg.textContent='นำเข้าสำเร็จ — '+sum.join(' | ');
   }catch(e){msg.textContent='นำเข้าไม่สำเร็จ: '+e.message}
@@ -1425,7 +1465,7 @@ $('#xImp').onchange=async ev=>{
     if(r=rows('Departments')){nd.depts=r.filter(x=>S(x['Dept.No'])).map(x=>({id:S(x['Dept.No']),name:S(x['Dept.Name']),active:true}));done.push('Departments '+nd.depts.length)}
     if(r=rows('Employees')){nd.employees=r.filter(x=>S(x['Emp.No'])).map(x=>({id:S(x['Emp.No']),name:S(x.Name),nick:S(x.Nickname),dept:S(x.Dept||x['Dept.No']),level:S(x.Level),position:S(x.Position),email:S(x.Email),username:S(x.Username),role:S(x.Role).toLowerCase()==='admin'?'admin':'user',workSat:B(x.WorkSat)&&S(x.WorkSat)!=='',active:x.Active===''?true:B(x.Active)}));nd.employees.forEach(e=>{const o=find(db.employees,e.id);if(o){e.salt=o.salt;e.hash=o.hash;e.linked=o.linked;e.uid=o.uid;e.approved=o.approved;e.mustChange=o.mustChange;if(!e.username)e.username=o.username}});const noMail=nd.employees.filter(e=>!e.email).length;if(noMail)warn.push('พนักงาน '+noMail+' คนไม่มีอีเมล (ต้องมีอีเมลก่อนจึงตั้งบัญชีสมาชิกได้)');done.push('Employees '+nd.employees.length)}
     if(r=rows('Projects')){nd.projects=r.filter(x=>S(x['Project Code'])).map(x=>({id:S(x['Project Code']),name:S(x['Project Name']),kind:['mt','backlog'].includes(S(x.Kind).toLowerCase())?S(x.Kind).toLowerCase():'cost',active:x.Active===''?true:B(x.Active),updatedBy:S(x['Updated By']),updatedAt:S(x['Updated At'])}));done.push('Projects '+nd.projects.length)}
-    if(r=rows('SalesContracts')){nd.contracts=r.filter(x=>S(x['Sales Contract No.'])).map(x=>({id:S(x['Sales Contract No.']),name:S(x['Sales Contract Name']),active:x.Active===''?true:B(x.Active),updatedBy:S(x['Updated By']),updatedAt:S(x['Updated At'])}));done.push('SalesContracts '+nd.contracts.length)}
+    if(r=rows('SalesContracts')){nd.contracts=r.filter(x=>S(x['Sales Contract No.'])).map(x=>({id:S(x['Sales Contract No.']),name:S(x['Sales Contract Name']),company:/^dp$/i.test(S(x.Company))?'DP':'Demco',active:x.Active===''?true:B(x.Active),updatedBy:S(x['Updated By']),updatedAt:S(x['Updated At'])}));done.push('SalesContracts '+nd.contracts.length)}
     if(r=rows('Holidays')){nd.holidays=r.filter(x=>S(x.Date)).map(x=>({id:xDate(x.Date),name:S(x.Name)}));done.push('Holidays '+nd.holidays.length)}
     if(r=rows('Assignments')){nd.assign=r.filter(x=>S(x['Emp.No'])&&S(x.Code)).map(x=>({empId:S(x['Emp.No']),code:S(x.Code)}));done.push('Assignments '+nd.assign.length)}
     if(r=rows('WorkLog')){
@@ -1908,7 +1948,7 @@ const TBL={
   projects:{t:'projects',pk:'id',admin:true,key:r=>r.id,
     to:p=>({id:p.id,name:p.name||'',kind:['mt','backlog'].includes(p.kind)?p.kind:'cost',active:p.active!==false,updated_by:p.updatedBy||'',...(p.updatedAt?{updated_at:p.updatedAt}:{})}),from:r=>({id:r.id,name:r.name,kind:r.kind,active:r.active!==false,updatedBy:r.updated_by||'',updatedAt:r.updated_at||''})},
   contracts:{t:'contracts',pk:'id',admin:true,key:r=>r.id,
-    to:c=>({id:c.id,name:c.name||'',active:c.active!==false,updated_by:c.updatedBy||'',...(c.updatedAt?{updated_at:c.updatedAt}:{})}),from:r=>({id:r.id,name:r.name,active:r.active!==false,updatedBy:r.updated_by||'',updatedAt:r.updated_at||''})},
+    to:c=>({id:c.id,name:c.name||'',company:coOf(c),active:c.active!==false,updated_by:c.updatedBy||'',...(c.updatedAt?{updated_at:c.updatedAt}:{})}),from:r=>({id:r.id,name:r.name,company:r.company==='DP'?'DP':'Demco',active:r.active!==false,updatedBy:r.updated_by||'',updatedAt:r.updated_at||''})},
   assign:{t:'assignments',pk:'emp_id',admin:true,key:r=>r.emp_id+'|'+r.code,conf:'emp_id,code',
     to:a=>({emp_id:a.empId,code:a.code}),from:r=>({empId:r.emp_id,code:r.code})},
   holidays:{t:'holidays',pk:'day',admin:true,key:r=>r.day,conf:'day',
