@@ -871,7 +871,11 @@ const catOf=x=>x.cat==='Cost'?'cost':'sga';
 const entState=(t,x)=>x.ap?x.ap.s:(t.status==='Submitted'?'A':(t.status==='Pending'?'P':null));
 const doneOf=x=>(x.ap&&x.ap.done)||[];
 const myScopes=()=>me?(db.scopes||[]).filter(s=>s.empId===me.id):[];
-const scopeMatch=(s,t,x)=>{if(s.role==='coo'||s.role==='ceo')return true;if(s.role==='pm')return x.cat==='Cost'&&x.code===s.key;const e=find(db.employees,t.empId);return !!e&&e.dept===s.key};
+const scTypeOf=s=>s.type||(s.role==='pm'?'project':(s.role==='coo'||s.role==='ceo')?'all':'dept');
+const SC_TH={project:'รายโครงการ',dept:'รายฝ่าย',emp:'รายบุคคล',all:'ทั้งบริษัท'};
+/* ขอบเขตการอนุมัติ: รายโครงการ (รหัส Cost / Sales Contract / MT / Backlog ของรายการ) · รายฝ่าย (ฝ่ายของพนักงานเจ้าของรายการ) · รายบุคคล (พนักงานคนนั้น) · ทั้งบริษัท */
+const scopeMatch=(s,t,x)=>{const ty=scTypeOf(s);if(ty==='all')return true;if(ty==='project')return !!x.code&&x.code===s.key;if(ty==='emp')return t.empId===s.key;const e=find(db.employees,t.empId);return !!e&&e.dept===s.key};
+const scopeLbl=s=>{const ty=scTypeOf(s);return ty==='all'?'ทั้งบริษัท':ty==='project'?'โครงการ '+s.key:ty==='emp'?'พนักงาน '+s.key:'ฝ่าย '+s.key};
 const approversFor=(role,t,x)=>(db.scopes||[]).filter(s=>s.role===role&&s.empId!==t.empId&&scopeMatch(s,t,x));
 const chainOf=(t,x)=>AP_ROLES.map(r=>r[0]).filter(r=>stepOf(r,catOf(x))!==null).sort((a,b)=>stepOf(a,catOf(x))-stepOf(b,catOf(x))||AP_ROLES.findIndex(q=>q[0]===a)-AP_ROLES.findIndex(q=>q[0]===b)).filter(r=>approversFor(r,t,x).length>0);
 const nextRole=(t,x)=>chainOf(t,x).find(r=>!doneOf(x).includes(r));
@@ -931,7 +935,7 @@ const entLbl=x=>x.cat==='Cost'?`${esc(x.code)} ${esc(trunc(entryName(x),30))}`:`
 function renderAppr(){renderApprView()}
 function renderApprView(){
   if(!canApprove()){$('#apprList').innerHTML='<tr><td colspan="9" class="hint">ยังไม่ได้รับสิทธิ์อนุมัติ — ให้ Super Admin กำหนดใน เมนูสมาชิก › Role and permission</td></tr>';$('#apprDone').innerHTML='';$('#apprWho').textContent='';return}
-  $('#apprWho').innerHTML=isSuperAdmin?'สิทธิ์ของคุณ: <b>Super Admin</b> (อนุมัติแทนได้ทุกรายการ ข้ามทุกขั้น)':'สิทธิ์ของคุณ: '+myScopes().map(s=>`<b>${esc(AP_TH[s.role])}</b> ${s.role==='pm'?'โครงการ '+esc(s.key):(s.role==='coo'||s.role==='ceo')?'ทั้งบริษัท':'ฝ่าย '+esc(s.key)}`).join(' · ')+' · เห็นเฉพาะรายการที่ถึงคิวของ Role คุณ';
+  $('#apprWho').innerHTML=isSuperAdmin?'สิทธิ์ของคุณ: <b>Super Admin</b> (อนุมัติแทนได้ทุกรายการ ข้ามทุกขั้น)':'สิทธิ์ของคุณ: '+myScopes().map(s=>`<b>${esc(AP_TH[s.role])}</b> ${esc(scopeLbl(s))}`).join(' · ')+' · เห็นเฉพาะรายการที่ถึงคิวของ Role คุณ';
   const rows=pendingRows();
   $('#apprList').innerHTML=rows.map(({t,x})=>{const e=find(db.employees,t.empId)||{},k=esc(t.id)+'|'+esc(x.id);
     return `<tr><td><input type="checkbox" data-ak="${k}" style="width:auto;min-height:0"></td><td>${t.date}</td><td>${esc(t.empId)} ${esc(e.name||'')}<div class="hint">${esc(e.dept||'')}</div></td><td>${entLbl(x)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span> ${typeTag(x.code)}</td><td class="n">${x.hours}</td><td style="font-size:12.5px;white-space:nowrap">${flowTxt(t,x)}</td><td class="hint">${esc(trunc(x.note||'',40))}</td>
@@ -962,32 +966,35 @@ function renderApPerm(){
     <tr><td><span class="tag sga">SG&amp;A</span></td>${AP_ROLES.map(([k])=>`<td style="text-align:center">${psel(k,'sga')}</td>`).join('')}</tr></tbody></table></div>
     <div style="margin-top:10px;line-height:1.9"><span class="tag cost">COST</span> เส้นทางอนุมัติ: ${flow('cost')}<br><span class="tag sga">SG&amp;A</span> เส้นทางอนุมัติ: ${flow('sga')}</div>`;
   const dn=id=>(find(db.depts,id)?.name)||'';
-  const scopeTxt=s=>s.role==='pm'?'โครงการ '+esc(s.key)+' '+esc(codeInfo(s.key)?.name||''):(s.role==='coo'||s.role==='ceo')?'ทั้งบริษัท':'ฝ่าย '+esc(s.key)+' '+esc(dn(s.key));
+  const scopeTxt=s=>{const ty=scTypeOf(s);return ty==='all'?'ทั้งบริษัท':ty==='project'?'<span class="tag st">โครงการ</span> '+esc(s.key)+' '+esc(codeInfo(s.key)?.name||''):ty==='emp'?'<span class="tag st">รายบุคคล</span> '+esc(s.key)+' '+esc(find(db.employees,s.key)?.name||''):'<span class="tag st">ฝ่าย</span> '+esc(s.key)+' '+esc(dn(s.key))};
   const list=db.scopes.slice().sort((a,b)=>a.role.localeCompare(b.role)||String(a.empId).localeCompare(String(b.empId))).map(s=>{const e=find(db.employees,s.empId)||{};
     return `<tr><td>${esc(s.empId)} ${esc(e.name||'')}</td><td><span class="tag st">${esc(AP_TH[s.role]||s.role)}</span></td><td>${scopeTxt(s)}</td><td><button class="x" data-sdel="${esc(s.id)}" title="ลบ">✕</button></td></tr>`}).join('')||'<tr><td colspan="4" class="hint">ยังไม่มีผู้อนุมัติ — มีเพียง Super Admin ที่อนุมัติแทนได้</td></tr>';
   host.innerHTML=`<div class="card"><h2>Role and permission — Workflow อนุมัติตามลำดับ</h2>
-    <p class="hint">กำหนด <b>ลำดับขั้น</b> ของแต่ละ Role ต่อประเภทรายการ <b>COST</b> / <b>SG&amp;A</b> (ขั้นที่ 1 อนุมัติก่อน แล้วส่งต่อขั้นถัดไปตามลำดับ) · แต่ละรายการงานต้องผ่านครบทุกขั้น ใบบันทึกงานจึงเป็น Submitted · ขั้นที่ไม่มีผู้อนุมัติในขอบเขตของรายการนั้นถูกข้ามอัตโนมัติ · ขอบเขต: PM = โครงการ (Cost) · Mgr / ผู้บริหารฝ่าย = ฝ่ายของพนักงาน · COO/CEO = ทั้งบริษัท · อนุมัติรายการของตัวเองไม่ได้ · ส่งกลับที่ขั้นใดก็ได้ ใบกลับไปให้พนักงานแก้แล้วเริ่มขั้นแรกใหม่</p>
+    <p class="hint">กำหนด <b>ลำดับขั้น</b> ของแต่ละ Role ต่อประเภทรายการ <b>COST</b> / <b>SG&amp;A</b> (ขั้นที่ 1 อนุมัติก่อน แล้วส่งต่อขั้นถัดไปตามลำดับ) · แต่ละรายการงานต้องผ่านครบทุกขั้น ใบบันทึกงานจึงเป็น Submitted · ขั้นที่ไม่มีผู้อนุมัติในขอบเขตของรายการนั้นถูกข้ามอัตโนมัติ · ขอบเขตของผู้อนุมัติแต่ละคนเลือกได้ <b>รายโครงการ / รายฝ่าย / รายบุคคล / ทั้งบริษัท</b> (เพิ่มได้หลายแถวต่อคน) · อนุมัติรายการของตัวเองไม่ได้ · ส่งกลับที่ขั้นใดก็ได้ ใบกลับไปให้พนักงานแก้แล้วเริ่มขั้นแรกใหม่</p>
     ${matrix}
     <h3 style="margin:18px 0 8px;font-size:16px">ผู้อนุมัติและขอบเขต</h3>
     <div class="scroll"><table><thead><tr><th>พนักงาน</th><th>Role</th><th>ขอบเขต</th><th></th></tr></thead><tbody>${list}</tbody></table></div>
     <form id="apAddForm" class="row" style="margin-top:12px;align-items:end">
       <div style="grid-column:span 2"><label>พนักงาน (พิมพ์ค้นหารหัส/ชื่อ)</label><select id="apEmp">${db.employees.slice().sort(byId).map(e=>`<option value="${esc(e.id)}">${esc(e.id+' — '+e.name)}</option>`).join('')}</select></div>
       <div><label>Role</label><select id="apRole">${AP_ROLES.map(([k,l])=>`<option value="${k}">${esc(l)}</option>`).join('')}</select></div>
+      <div><label>ขอบเขตการอนุมัติ</label><select id="apType"><option value="project">รายโครงการ</option><option value="dept">รายฝ่าย</option><option value="emp">รายบุคคล</option><option value="all">ทั้งบริษัท</option></select></div>
       <div id="apScopeBox"></div>
       <div><button class="btn pri">+ เพิ่มผู้อนุมัติ</button></div></form>
     <div class="err" id="apMsg" style="margin-top:6px"></div></div>`;
-  const fillScope=()=>{const r=$('#apRole').value,b=$('#apScopeBox');
-    if(r==='pm')b.innerHTML=`<label>รหัสโครงการ (Cost)</label><select id="apKey">${db.projects.filter(p=>p.kind==='cost').sort(byId).map(p=>`<option value="${esc(p.id)}">${esc(p.id+' — '+p.name)}</option>`).join('')}</select>`;
-    else if(r==='mgr'||r==='dir')b.innerHTML=`<label>ฝ่าย</label><select id="apKey">${db.depts.slice().sort(byId).map(d=>`<option value="${esc(d.id)}">${esc(d.id+' '+d.name)}</option>`).join('')}</select>`;
+  const fillScope=()=>{const ty=$('#apType').value,b=$('#apScopeBox');
+    if(ty==='project')b.innerHTML=`<label>รหัสโครงการ / สัญญา (ค้นหาได้)</label><select id="apKey">${[...db.projects,...db.contracts].sort(byId).map(p=>`<option value="${esc(p.id)}">${esc(p.id+' — '+p.name)}</option>`).join('')}</select>`;
+    else if(ty==='dept')b.innerHTML=`<label>ฝ่าย</label><select id="apKey">${db.depts.slice().sort(byId).map(d=>`<option value="${esc(d.id)}">${esc(d.id+' '+d.name)}</option>`).join('')}</select>`;
+    else if(ty==='emp')b.innerHTML=`<label>พนักงานที่อนุมัติให้ (ค้นหาได้)</label><select id="apKey">${db.employees.slice().sort(byId).map(e=>`<option value="${esc(e.id)}">${esc(e.id+' — '+e.name)}</option>`).join('')}</select>`;
     else b.innerHTML='<label>ขอบเขต</label><div class="hint" style="padding:10px 0">ทั้งบริษัท</div>';
-    const k=$('#apKey');if(k&&k.options.length>8)makeSearch('#apKey')};
-  makeSearch('#apEmp');fillScope();$('#apRole').onchange=fillScope;
+    const k=$('#apKey');if(k)makeSearch('#apKey')};
+  const roleDefault=()=>{const r=$('#apRole').value;$('#apType').value=r==='pm'?'project':(r==='coo'||r==='ceo')?'all':'dept';fillScope()};
+  makeSearch('#apEmp');roleDefault();$('#apRole').onchange=roleDefault;$('#apType').onchange=fillScope;
   $$('[data-pp]').forEach(s=>s.onchange=()=>{const [role,cat]=s.dataset.pp.split('|');let r=db.perms.find(x=>x.role===role&&x.cat===cat);if(r)r.perm=s.value;else db.perms.push({role,cat,perm:s.value});save();renderApPerm()});
   $$('[data-sdel]').forEach(b=>b.onclick=()=>{if(!confirm('ลบผู้อนุมัตินี้?'))return;db.scopes=db.scopes.filter(s=>s.id!==b.dataset.sdel);save();renderApPerm()});
-  $('#apAddForm').onsubmit=ev=>{ev.preventDefault();const m=$('#apMsg'),emp=$('#apEmp').value,role=$('#apRole').value,k=$('#apKey'),key=(role==='coo'||role==='ceo')?'*':(k?k.value:'');
-    if(!emp)return m.textContent='เลือกพนักงานก่อน';if(!key)return m.textContent='เลือกขอบเขต (โครงการ/ฝ่าย)';
-    const id=`${emp}|${role}|${key}`;if(db.scopes.some(s=>s.id===id))return m.textContent='มีรายการนี้อยู่แล้ว';
-    db.scopes.push({id,empId:emp,role,key,type:role==='pm'?'project':(role==='coo'||role==='ceo')?'all':'dept'});save();renderApPerm()};
+  $('#apAddForm').onsubmit=ev=>{ev.preventDefault();const m=$('#apMsg'),emp=$('#apEmp').value,role=$('#apRole').value,type=$('#apType').value,k=$('#apKey'),key=type==='all'?'*':(k?k.value:'');
+    if(!emp)return m.textContent='เลือกพนักงานก่อน';if(!key)return m.textContent='เลือกขอบเขต (โครงการ / ฝ่าย / พนักงาน)';
+    const id=`${emp}|${role}|${type}|${key}`;if(db.scopes.some(s=>s.id===id))return m.textContent='มีรายการนี้อยู่แล้ว';
+    db.scopes.push({id,empId:emp,role,key,type});save();renderApPerm()};
 }
 const _rmem=renderMem;renderMem=function(){_rmem();renderApPerm()};
 

@@ -1,4 +1,4 @@
--- รวมทุกไฟล์อัปเดตฐานข้อมูล (v31–v50) รันซ้ำได้ ไม่เสียหาย — วางทั้งไฟล์ใน Supabase > SQL Editor แล้วกด Run
+-- รวมทุกไฟล์อัปเดตฐานข้อมูล (v31–v53) รันซ้ำได้ ไม่เสียหาย — วางทั้งไฟล์ใน Supabase > SQL Editor แล้วกด Run
 
 -- ===== supabase_update_roles.sql =====
 -- อัปเดตสิทธิ์ 4 ระดับ + ลบสมาชิก — รันใน Supabase > SQL Editor หนึ่งครั้ง (ก่อนอัปโหลดแอปเวอร์ชันใหม่)
@@ -212,6 +212,10 @@ create table if not exists public.approver_scopes (
   scope_type text not null default 'dept' check (scope_type in ('project','dept','all')),
   scope_key  text not null default '*'
 );
+
+-- ขอบเขตรายบุคคล: อนุญาต scope_type = 'emp' เพิ่ม (project=รหัสโครงการ/สัญญา · dept=ฝ่าย · emp=พนักงาน · all=ทั้งบริษัท)
+alter table public.approver_scopes drop constraint if exists approver_scopes_scope_type_check;
+alter table public.approver_scopes add constraint approver_scopes_scope_type_check check (scope_type in ('project','dept','emp','all'));
 
 alter table public.approval_perms  enable row level security;
 alter table public.approver_scopes enable row level security;

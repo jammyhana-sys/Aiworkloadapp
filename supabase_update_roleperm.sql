@@ -28,6 +28,10 @@ create table if not exists public.approver_scopes (
   scope_key  text not null default '*'
 );
 
+-- ขอบเขตรายบุคคล: อนุญาต scope_type = 'emp' เพิ่ม (project=รหัสโครงการ/สัญญา · dept=ฝ่าย · emp=พนักงาน · all=ทั้งบริษัท)
+alter table public.approver_scopes drop constraint if exists approver_scopes_scope_type_check;
+alter table public.approver_scopes add constraint approver_scopes_scope_type_check check (scope_type in ('project','dept','emp','all'));
+
 alter table public.approval_perms  enable row level security;
 alter table public.approver_scopes enable row level security;
 revoke all on public.approval_perms, public.approver_scopes from anon;
