@@ -221,6 +221,7 @@ header>*{min-width:0}
     <button data-tab="log" class="on">บันทึกงาน</button>
     <button data-tab="hist">ประวัติ/สรุป</button>
     <button data-tab="appr" id="navAppr" class="hide">อนุมัติ</button>
+    <button data-tab="astat" id="navAstat">สถานะอนุมัติ</button>
     <button data-tab="setup" id="navSetup">ตั้งค่าข้อมูล</button>
     <button data-tab="mem" id="navMem">สมาชิก</button>
     <button data-tab="adm" id="navAdm">ผู้ดูแล</button>
@@ -372,6 +373,20 @@ header>*{min-width:0}
   <div class="card"><h2>อนุมัติแล้วล่าสุด (30 รายการ)</h2>
     <div class="scroll"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th>รหัส / ชื่อ</th><th class="n">ชม.</th><th>ขั้นที่ฉันอนุมัติ</th><th>เมื่อ</th><th></th></tr></thead><tbody id="apprDone"></tbody></table></div>
   </div>
+</section>
+
+<!-- ===== APPROVAL STATUS ===== -->
+<section id="tab-astat" class="hide">
+  <div class="card"><h2>สถานะการขออนุมัติ</h2>
+    <p class="hint">ติดตามรายการที่ส่งขออนุมัติ แยกตามสถานะ พร้อมระยะเวลาที่ใช้ในแต่ละขั้น (นับจากเวลาส่ง/ขั้นก่อนหน้า ถึงเวลาที่ขั้นนั้นอนุมัติ) และเวลารวมทั้งกระบวนการ · แสดงเฉพาะรายการที่คุณมีสิทธิ์ดู</p>
+    <div class="dashhead" style="margin:10px 0 0"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
+      <div><label>ตั้งแต่วันที่</label><input type="date" id="asFrom"></div><div><label>ถึงวันที่</label><input type="date" id="asTo"></div>
+      <div id="asEmpBox" class="hide"><label>พนักงาน</label><select id="asEmp"></select></div></div>
+      <button class="btn" id="asRef">↻ โหลดใหม่</button></div>
+    <div id="asChips" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"></div>
+  </div>
+  <div class="card"><h2>ระยะเวลาอนุมัติเฉลี่ยต่อขั้น</h2><div id="asAvg"></div></div>
+  <div id="astatBody"></div>
 </section>
 
 <!-- ===== SETUP ===== --><section id="tab-setup" class="hide">
@@ -602,8 +617,8 @@ function dayInfo(e,ds){
 $$('nav button').forEach(b=>b.onclick=()=>{
   if(forceChange&&b.dataset.tab!=='acct')return;   // ต้องเปลี่ยนรหัสผ่านชั่วคราวก่อน
   $$('nav button').forEach(x=>x.classList.toggle('on',x===b));
-  ['log','hist','appr','setup','mem','adm','acct'].forEach(t=>$('#tab-'+t).classList.toggle('hide',t!==b.dataset.tab));
-  if(b.dataset.tab==='hist')renderHist(); if(b.dataset.tab==='appr')renderAppr(); if(b.dataset.tab==='setup')renderSetup(); if(b.dataset.tab==='acct')renderAcct(); if(b.dataset.tab==='mem')renderMem(); if(b.dataset.tab==='adm')renderAdm();
+  ['log','hist','appr','astat','setup','mem','adm','acct'].forEach(t=>$('#tab-'+t).classList.toggle('hide',t!==b.dataset.tab));
+  if(b.dataset.tab==='hist')renderHist(); if(b.dataset.tab==='appr')renderAppr(); if(b.dataset.tab==='astat')renderAStat(); if(b.dataset.tab==='setup')renderSetup(); if(b.dataset.tab==='acct')renderAcct(); if(b.dataset.tab==='mem')renderMem(); if(b.dataset.tab==='adm')renderAdm();
 });
 
 /* ---- log ---- */
@@ -809,7 +824,7 @@ function renderRing(){
 }
 const apBadge=(t,x)=>{const s=entState(t,x);
   return s==='A'?`<span class="tag cost">✓ อนุมัติ</span>${x.ap&&x.ap.by?`<div class="hint">${esc(x.ap.by)}</div>`:''}`
-    :s==='P'?`<span class="tag sga">รออนุมัติ</span><div class="hint" style="font-size:11.5px;white-space:nowrap">${flowTxt(t,x)}</div>`
+    :s==='P'?`<span class="tag sga">รออนุมัติ</span><div class="hint" style="font-size:11.5px">${flowTxt(t,x)}</div>`
     :s==='R'?`<span class="tag" style="background:var(--bad)">ส่งกลับ</span><div class="hint" style="color:var(--bad)">${esc(x.ap.note||'')}</div>`:''};
 function renderLog(){
   const e=emp(), t=curSheet(false), tot=totals(t), d=dayInfo(e,$('#date').value);
@@ -900,7 +915,8 @@ const scopeLbl=s=>{const ty=scTypeOf(s);return ty==='all'?'ทั้งบริ
 const approversFor=(role,t,x)=>(db.scopes||[]).filter(s=>s.role===role&&s.empId!==t.empId&&scopeMatch(s,t,x));
 const chainOf=(t,x)=>AP_ROLES.map(r=>r[0]).filter(r=>stepOf(r,catOf(x))!==null).sort((a,b)=>stepOf(a,catOf(x))-stepOf(b,catOf(x))||AP_ROLES.findIndex(q=>q[0]===a)-AP_ROLES.findIndex(q=>q[0]===b)).filter(r=>approversFor(r,t,x).length>0);
 const nextRole=(t,x)=>chainOf(t,x).find(r=>!doneOf(x).includes(r));
-const flowTxt=(t,x)=>{const ch=chainOf(t,x),nr=nextRole(t,x);return ch.length?ch.map(r=>doneOf(x).includes(r)?`<span style="color:var(--cost)">✓${AP_SHORT[r]}</span>`:r===nr?`<b style="color:var(--sga)">${AP_SHORT[r]}⏳</b>`:`<span class="hint">${AP_SHORT[r]}</span>`).join(' → '):doneOf(x).length?doneOf(x).map(r=>`<span style="color:var(--cost)">✓${AP_SHORT[r]}</span>`).join(' → ')+' → …':'<span class="hint">ไม่มีผู้อนุมัติในขอบเขต — Super Admin อนุมัติ</span>'};
+const waitMs=(t,x)=>{const h=(x.ap&&x.ap.hist)||[],last=h.length?Date.parse(h[h.length-1].at):subAt(t,x);return last?Date.now()-last:null};
+const flowTxt=(t,x)=>{const ch=chainOf(t,x),nr=nextRole(t,x);return ch.length?ch.map(r=>doneOf(x).includes(r)?`<span style="color:var(--cost)">✓${AP_SHORT[r]}</span>`:r===nr?`<b style="color:var(--sga)" title="รอขั้นนี้มาแล้ว">${AP_SHORT[r]} ⏳ ${fmtDur(waitMs(t,x))}</b>`:`<span class="hint">${AP_SHORT[r]}</span>`).join(' → '):doneOf(x).length?doneOf(x).map(r=>`<span style="color:var(--cost)">✓${AP_SHORT[r]}</span>`).join(' → ')+' → …':'<span class="hint">ไม่มีผู้อนุมัติในขอบเขต — Super Admin อนุมัติ</span>'};
 const canApprove=()=>isSuperAdmin||myScopes().some(s=>stepOf(s.role,'cost')!==null||stepOf(s.role,'sga')!==null);
 const meName=()=>(me&&me.name)||(user&&user.name)||'';
 function canApproveEntry(t,x){
@@ -921,13 +937,15 @@ function updApprBadge(){const b=$('#navAppr');if(!b)return;const n=canApprove()?
 const _rl=renderLog;renderLog=function(){_rl();updApprBadge()};
 function doApprove(t,x){          // อนุมัติ 1 ขั้นของรายการ (Super Admin = อนุมัติจบทุกขั้น)
   const now=new Date().toISOString(),by=meName(),hist=(x.ap&&x.ap.hist)||[];
-  if(isSuperAdmin){x.ap={s:'A',by,at:now,done:doneOf(x),hist:[...hist,{role:'super',by,at:now}]};}
-  else{const nr=nextRole(t,x);x.ap={s:'P',done:[...doneOf(x),nr],hist:[...hist,{role:nr,by,at:now}],by,at:now};if(!nextRole(t,x))x.ap.s='A'}
+  const sub=x.ap&&x.ap.sub;
+  if(isSuperAdmin){x.ap={s:'A',by,at:now,done:doneOf(x),hist:[...hist,{role:'super',by,at:now}],sub};}
+  else{const nr=nextRole(t,x);x.ap={s:'P',done:[...doneOf(x),nr],hist:[...hist,{role:nr,by,at:now}],by,at:now,sub};if(!nextRole(t,x))x.ap.s='A'}
   t.approvedBy=by;t.approvedAt=now;finalizeSheet(t);
 }
 $('#submit').onclick=()=>{const t=curSheet(false);if(!t)return;
-  t.entries.forEach(x=>{if(entState(t,x)!=='A')x.ap={s:'P',done:[],hist:[]}});       // รายการที่อนุมัติแล้วคงเดิม ที่เหลือเริ่มขั้นแรกใหม่
-  t.submittedAt=new Date().toISOString();t.rejectNote='';
+  const nowIso=new Date().toISOString();
+  t.entries.forEach(x=>{if(entState(t,x)!=='A')x.ap={s:'P',done:[],hist:[],sub:nowIso}});       // รายการที่อนุมัติแล้วคงเดิม ที่เหลือเริ่มขั้นแรกใหม่
+  t.submittedAt=nowIso;t.rejectNote='';
   t.entries.forEach(x=>{if(x.ap&&x.ap.s==='P'&&chainOf(t,x).length&&!nextRole(t,x))x.ap.s='A'});
   finalizeSheet(t);save();renderLog()};
 $('#reopen').onclick=()=>{const t=curSheet(false);if(!t||t.status!=='Pending'||!confirm('ยกเลิกการส่งเพื่อแก้ไข? (ขั้นที่อนุมัติไปแล้วของรายการที่ยังไม่ครบจะเริ่มใหม่)'))return;
@@ -949,7 +967,7 @@ function apprReject(t,x){
   if(!t||!x)return;
   const note=(prompt(`เหตุผลที่ส่งกลับ (${t.empId} ${t.date} · ${x.cat==='Cost'?x.code:x.sgaId} ${x.hours} ชม.) — พนักงานจะเห็นข้อความนี้ และใบจะกลับเป็น Draft`)||'').trim();if(!note)return;
   const nr=nextRole(t,x)||((x.ap&&x.ap.hist||[]).slice(-1)[0]||{}).role;
-  x.ap={s:'R',by:meName(),at:new Date().toISOString(),note,role:nr&&nr!=='super'?nr:'',done:doneOf(x),hist:(x.ap&&x.ap.hist)||[]};finalizeSheet(t);
+  x.ap={s:'R',by:meName(),at:new Date().toISOString(),note,role:nr&&nr!=='super'?nr:'',done:doneOf(x),hist:(x.ap&&x.ap.hist)||[],sub:x.ap&&x.ap.sub};finalizeSheet(t);
   save();renderApprView();updApprBadge();$('#apprMsg').textContent='ส่งกลับให้พนักงานแก้ไขแล้ว';
 }
 const entLbl=x=>x.cat==='Cost'?`${esc(x.code)} ${esc(trunc(entryName(x),30))}`:`${esc(x.sgaId)} ${esc(trunc(find(db.sgaTypes,x.sgaId)?.name||'',16))}${x.code?' <span class="hint">('+esc(x.code)+')</span>':''}`;
@@ -1018,6 +1036,67 @@ function renderApPerm(){
     db.scopes.push({id,empId:emp,role,key,type});save();renderApPerm()};
 }
 const _rmem=renderMem;renderMem=function(){_rmem();renderApPerm()};
+/* ===== หน้า "สถานะอนุมัติ": ติดตามรายการแยกตามสถานะ + ระยะเวลาที่ใช้ในแต่ละขั้น ===== */
+let as_={st:'all',from:'',to:'',emp:''};
+const fmtDur=ms=>{if(ms==null||isNaN(ms))return '—';ms=Math.max(0,ms);const m=Math.floor(ms/60000),h=Math.floor(m/60),d=Math.floor(h/24);
+  return d>0?`${d} วัน ${h%24} ชม.`:h>0?`${h} ชม. ${m%60} นาที`:m<1?'<1 นาที':`${m} นาที`};
+const subAt=(t,x)=>Date.parse((x.ap&&x.ap.sub)||t.submittedAt||'')||null;
+function stepTimes(t,x){const hist=(x.ap&&x.ap.hist)||[];let prev=subAt(t,x);
+  return hist.map(h=>{const at=Date.parse(h.at),d=prev&&at?at-prev:null;prev=at||prev;return{role:h.role,by:h.by,at:h.at,dur:d}})}
+const seeEntry=(t,x)=>isAdmin||isSuperAdmin||(!!me&&t.empId===me.id)||myScopes().some(s=>scopeMatch(s,t,x));
+function statOf(t,x){const s=entState(t,x);return s==='A'?'A':s==='P'?'P':s==='R'?'R':'D'}
+const AS_TH={P:'รออนุมัติ',A:'อนุมัติแล้ว',R:'ส่งกลับ',D:'ยังไม่ได้ส่ง (Draft)'};
+function flowDetail(t,x,st){
+  const times=stepTimes(t,x),chain=chainOf(t,x),done=doneOf(x),now=Date.now();
+  const roleName=r=>r==='super'?'Super Admin':AP_SHORT[r]||r;
+  let out=times.map(z=>`<span style="color:var(--cost)">✓ ${esc(roleName(z.role))}</span> <span class="hint">${esc(z.by||'')} · ใช้เวลา <b>${fmtDur(z.dur)}</b></span>`);
+  if(st==='P'){const nr=nextRole(t,x),last=times.length?Date.parse(times[times.length-1].at):subAt(t,x),wait=last?now-last:null;
+    out.push(`<b style="color:var(--sga)">⏳ ${nr?esc(AP_SHORT[nr]):'Super Admin'}</b> <span class="hint">รอมาแล้ว <b>${fmtDur(wait)}</b></span>`);
+    chain.filter(r=>!done.includes(r)&&r!==nr).forEach(r=>out.push(`<span class="hint">${esc(AP_SHORT[r])}</span>`))}
+  if(st==='R'){const prev=times.length?Date.parse(times[times.length-1].at):subAt(t,x),rd=Date.parse(x.ap.at||''),dur=prev&&rd?rd-prev:null;
+    out.push(`<span style="color:var(--bad)">✗ ส่งกลับ${x.ap.role?' โดย '+esc(AP_SHORT[x.ap.role]||x.ap.role):''}</span> <span class="hint">${esc(x.ap.by||'')} · หลังรอ <b>${fmtDur(dur)}</b> — ${esc(x.ap.note||'')}</span>`)}
+  return out.length?out.map(s=>`<div style="white-space:nowrap">${s}</div>`).join(''):'<span class="hint">—</span>';
+}
+function totalDur(t,x,st){const sub=subAt(t,x);if(!sub)return '—';
+  if(st==='A'){const h=(x.ap&&x.ap.hist)||[];const end=h.length?Date.parse(h[h.length-1].at):Date.parse((x.ap&&x.ap.at)||'');return end?fmtDur(end-sub):'—'}
+  if(st==='P')return fmtDur(Date.now()-sub)+' (กำลังรอ)';
+  if(st==='R'){const rd=Date.parse((x.ap&&x.ap.at)||'');return rd?fmtDur(rd-sub):'—'}return '—'}
+function renderAStat(){
+  const host=$('#astatBody');if(!host)return;
+  const today=todayStr();if(!as_.from){const d=new Date();d.setDate(d.getDate()-30);as_.from=DF(d)}if(!as_.to)as_.to=today;
+  $('#asFrom').value=as_.from;$('#asTo').value=as_.to;
+  const wide=isAdmin||isSuperAdmin||canApprove();
+  $('#asEmpBox').classList.toggle('hide',!wide);
+  if(wide){const keep=as_.emp;const ids=[...new Set(db.timesheets.map(t=>t.empId))].sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true}));
+    $('#asEmp').innerHTML='<option value="">ทุกคน</option>'+ids.map(id=>`<option value="${esc(id)}">${esc(id+' — '+(find(db.employees,id)?.name||''))}</option>`).join('');$('#asEmp').value=keep}
+  const all=[];db.timesheets.forEach(t=>{if(t.date<as_.from||t.date>as_.to)return;if(as_.emp&&t.empId!==as_.emp)return;
+    t.entries.forEach(x=>{if(seeEntry(t,x))all.push({t,x,st:statOf(t,x)})})});
+  const cnt={P:0,A:0,R:0,D:0};all.forEach(r=>cnt[r.st]++);
+  $('#asChips').innerHTML=[['all','ทั้งหมด',all.length,'var(--pri)'],['P',AS_TH.P,cnt.P,'var(--sga)'],['A',AS_TH.A,cnt.A,'var(--cost)'],['R',AS_TH.R,cnt.R,'var(--bad)'],['D','ยังไม่ได้ส่ง',cnt.D,'var(--mut)']]
+    .map(([k,l,n,c])=>`<button class="btn" data-as="${k}" style="${as_.st===k?`border-color:${c};background:var(--pri-soft);font-weight:700`:''}"><span style="color:${c}">●</span> ${l} <b>${n}</b></button>`).join(' ');
+  $$('#asChips [data-as]').forEach(b=>b.onclick=()=>{as_.st=b.dataset.as;renderAStat()});
+  // เวลาเฉลี่ยต่อขั้น
+  const agg={};let totSum=0,totN=0;
+  all.forEach(({t,x,st})=>{stepTimes(t,x).forEach(z=>{if(z.dur!=null){const a=agg[z.role]=agg[z.role]||{s:0,n:0,max:0};a.s+=z.dur;a.n++;a.max=Math.max(a.max,z.dur)}});
+    if(st==='A'){const sub=subAt(t,x),h=(x.ap&&x.ap.hist)||[];if(sub&&h.length){totSum+=Date.parse(h[h.length-1].at)-sub;totN++}}});
+  const roleOrder=['pm','mgr','dir','coo','ceo','super'];
+  $('#asAvg').innerHTML=Object.keys(agg).length?`<div class="scroll"><table><thead><tr><th>ขั้นอนุมัติ</th><th class="n">จำนวนรายการ</th><th class="n">เวลาเฉลี่ย</th><th class="n">นานที่สุด</th></tr></thead><tbody>${roleOrder.filter(r=>agg[r]).map(r=>`<tr><td><b>${esc(r==='super'?'Super Admin':AP_SHORT[r])}</b></td><td class="n">${agg[r].n}</td><td class="n">${fmtDur(agg[r].s/agg[r].n)}</td><td class="n">${fmtDur(agg[r].max)}</td></tr>`).join('')}
+    <tr class="tot"><td>รวมทั้งกระบวนการ (ส่ง → อนุมัติครบ)</td><td class="n">${totN}</td><td class="n">${totN?fmtDur(totSum/totN):'—'}</td><td></td></tr></tbody></table></div>`:'<div class="hint">ยังไม่มีข้อมูลการอนุมัติในช่วงนี้</div>';
+  // แยกตามสถานะ
+  const order=['P','R','A','D'],show=as_.st==='all'?order:[as_.st];
+  host.innerHTML=show.map(k=>{const rows=all.filter(r=>r.st===k).sort((a,b)=>b.t.date.localeCompare(a.t.date)||a.t.empId.localeCompare(b.t.empId));
+    const hrs=rows.reduce((a,r)=>a+r.x.hours,0);
+    return `<div class="card"><h2>${AS_TH[k]} <span class="tag ${k==='A'?'cost':k==='R'?'':'sga'}" style="${k==='R'?'background:var(--bad)':k==='D'?'background:var(--mut)':''}">${rows.length} รายการ · ${hrs} ชม.</span></h2>
+      <div class="scroll"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th>รายการ</th><th>ประเภท</th><th class="n">ชม.</th><th>เส้นทางอนุมัติ / ระยะเวลาแต่ละขั้น</th><th>เวลารวม</th></tr></thead><tbody>
+      ${rows.slice(0,200).map(({t,x,st})=>{const e=find(db.employees,t.empId)||{};
+        return `<tr><td>${t.date}</td><td>${esc(t.empId)} ${esc(e.name||'')}</td><td>${entLbl(x)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span> ${typeTag(x.code)}</td><td class="n">${x.hours}</td><td style="font-size:12.5px">${st==='D'?'<span class="hint">ยังไม่ได้ส่งขออนุมัติ</span>':flowDetail(t,x,st)}</td><td style="white-space:nowrap">${totalDur(t,x,st)}</td></tr>`}).join('')||'<tr><td colspan="7" class="hint">ไม่มีรายการ</td></tr>'}
+      </tbody></table></div>${rows.length>200?`<div class="hint">แสดง 200 จาก ${rows.length} รายการ — ใช้ตัวกรองวันที่/พนักงานเพื่อดูเพิ่ม</div>`:''}</div>`}).join('');
+}
+$('#asFrom').onchange=()=>{as_.from=$('#asFrom').value;renderAStat()};
+$('#asTo').onchange=()=>{as_.to=$('#asTo').value;renderAStat()};
+$('#asEmp').onchange=()=>{as_.emp=$('#asEmp').value;renderAStat()};
+
+$('#asRef').onclick=async()=>{if(typeof refreshLite==='function')await refreshLite(true);renderAStat()};
 
 /* ---- ประวัติ/สรุป: รายวัน สัปดาห์ เดือน ไตรมาส ปี · ราย คน / ฝ่าย / Project / ทั้งหมด ---- */
 function pRange(mode,anchor){
@@ -2454,12 +2533,14 @@ async function refreshLite(force){
     if(scopes){const n=scopes.map(TBL.scopes.from);if(JSON.stringify(n)!==JSON.stringify(db.scopes||[])){db.scopes=n;changed=true}snap.scopes=Object.fromEntries(n.map(x=>{const r=TBL.scopes.to(x);return[TBL.scopes.key(r),JSON.stringify(r)]}))}
     lastRefreshAt=Date.now();
     if(changed){const tab=document.querySelector('nav button.on')?.dataset.tab;
-      if(tab==='appr')renderApprView();else if(tab==='hist')renderHist();else if(tab==='log')renderLog();
+      if(tab==='appr')renderApprView();else if(tab==='astat')renderAStat();else if(tab==='hist')renderHist();else if(tab==='log')renderLog();
       updApprBadge()}
     return changed;
   }catch(e){console.warn('refresh failed',e)}
 }
 setInterval(()=>{if(!document.hidden&&Date.now()-lastAct<IDLE.ms)refreshLite()},IDLE.refresh);
+setInterval(()=>{if(!cur||document.hidden)return;const ae=document.activeElement;if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))return;   // อัปเดตตัวเลขเวลาที่รอ
+  const tab=document.querySelector('nav button.on')?.dataset.tab;if(tab==='log'&&!editId)renderLog();else if(tab==='appr'&&!document.querySelector('#apprList [data-ak]:checked'))renderApprView();else if(tab==='astat')renderAStat()},60000);
 document.addEventListener('visibilitychange',async()=>{
   if(document.hidden||!cur)return;
   if(Date.now()-lastAct>=IDLE.ms){idleLogout();return}                                 // กลับมาหลังพักเกินเวลา
