@@ -288,11 +288,11 @@ header>*{min-width:0}
       <span id="remain" class="hint"></span>
     </div>
     <div class="scroll" style="margin-top:8px">
-      <table><thead><tr><th>Transaction No.</th><th>PL</th><th>รหัส / ชื่อ</th><th>ประเภทโครงการ</th><th>รายละเอียด</th><th class="n">ชม.</th><th></th></tr></thead>
+      <table><thead><tr><th>Transaction No.</th><th>PL</th><th>รหัส / ชื่อ</th><th>ประเภทโครงการ</th><th>รายละเอียด</th><th class="n">ชม.</th><th>อนุมัติ</th><th></th></tr></thead>
       <tbody id="entries"></tbody></table>
     </div>
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn ok" id="submit">ส่งให้ Project Admin อนุมัติ</button>
+      <button class="btn ok" id="submit">ส่งให้ผู้อนุมัติ</button>
       <button class="btn hide" id="reopen">ยกเลิกการส่ง (แก้ไข)</button>
     </div>
     <div class="notice hide" id="rejNote" style="border-left-color:var(--bad)"></div>
@@ -360,15 +360,16 @@ header>*{min-width:0}
 <!-- ===== APPROVE ===== -->
 <section id="tab-appr" class="hide">
   <div class="card"><h2>รายการรออนุมัติ</h2>
-    <p class="hint">ใบบันทึกงานที่พนักงานส่งมา จะเป็นสถานะ <b>Submitted</b> ก็ต่อเมื่อ Project Admin อนุมัติแล้วเท่านั้น — ส่งกลับให้แก้ไขได้พร้อมระบุเหตุผล (พนักงานจะเห็นข้อความนี้ในหน้าบันทึกงาน)</p>
+    <p class="hint">อนุมัติทีละ<b>รายการ</b>ตามสิทธิ์ (Role and permission) และขอบเขตของคุณ — ใบบันทึกงานเป็น <b>Submitted</b> เมื่ออนุมัติครบทุกรายการ · ส่งกลับรายการใดรายการหนึ่งพร้อมเหตุผล ใบจะกลับเป็น Draft ให้พนักงานแก้</p>
+    <div class="hint" id="apprWho" style="margin:6px 0"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
       <button class="btn ok" id="apprAll">✓ อนุมัติที่เลือก</button><button class="btn" id="apprSel">เลือกทั้งหมด</button><button class="btn" id="apprRef">↻ โหลดใหม่</button>
     </div>
-    <div class="scroll"><table><thead><tr><th></th><th>วันที่</th><th>พนักงาน</th><th class="n">Cost</th><th class="n">SG&amp;A</th><th class="n">รวม</th><th>รายการ</th><th></th></tr></thead><tbody id="apprList"></tbody></table></div>
+    <div class="scroll"><table><thead><tr><th></th><th>วันที่</th><th>พนักงาน</th><th>รหัส / ชื่อ</th><th>ประเภท</th><th class="n">ชม.</th><th>รายละเอียด</th><th></th></tr></thead><tbody id="apprList"></tbody></table></div>
     <div class="hint" id="apprMsg" style="margin-top:8px"></div>
   </div>
   <div class="card"><h2>อนุมัติแล้วล่าสุด (30 รายการ)</h2>
-    <div class="scroll"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th class="n">รวม</th><th>อนุมัติโดย</th><th>เมื่อ</th><th></th></tr></thead><tbody id="apprDone"></tbody></table></div>
+    <div class="scroll"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th>รหัส / ชื่อ</th><th class="n">ชม.</th><th>อนุมัติโดย</th><th>เมื่อ</th><th></th></tr></thead><tbody id="apprDone"></tbody></table></div>
   </div>
 </section>
 
@@ -461,6 +462,7 @@ header>*{min-width:0}
   <div class="card"><h2>คำขอสมัครที่รออนุมัติ <span id="regCount" class="tag sga" style="margin-left:4px"></span></h2>
     <div class="scroll"><table><thead><tr><th>Emp.No</th><th>ชื่อ</th><th>อีเมลที่สมัคร</th><th>ชื่อผู้ใช้</th><th>เมื่อ</th><th></th></tr></thead><tbody id="regList"></tbody></table></div>
   </div>
+  <div id="apPermCard"></div>
   <div class="card"><h2>สมาชิกทั้งหมด</h2>
     <div class="scroll"><table><thead><tr><th>Emp.No</th><th>ชื่อ</th><th>ฝ่าย</th><th>อีเมล</th><th>ชื่อผู้ใช้</th><th>บัญชี</th><th>สิทธิ์</th><th>ใช้งาน</th><th></th></tr></thead><tbody id="memList"></tbody></table></div>
   </div>
@@ -804,6 +806,10 @@ function renderRing(){
     +(left&&target?`<div class="lg"><i style="background:var(--line)"></i><span>คงเหลือ</span><b>${left} ชม.</b><span class="p">${pctTxt(left,denom)}</span></div>`:'')
     +(dash.mode==='day'?'':`<div class="hint" style="margin-top:8px">วันทำการ ${workdays} วัน (เป้า ${target} ชม.) · บันทึกครบ 8 ชม. แล้ว ${complete} วัน</div>`);
 }
+const apBadge=(t,x)=>{const s=entState(t,x);
+  return s==='A'?`<span class="tag cost">✓ อนุมัติ</span>${x.ap&&x.ap.by?`<div class="hint">${esc(x.ap.by)}</div>`:''}`
+    :s==='P'?'<span class="tag sga">รออนุมัติ</span>'
+    :s==='R'?`<span class="tag" style="background:var(--bad)">ส่งกลับ</span><div class="hint" style="color:var(--bad)">${esc(x.ap.note||'')}</div>`:''};
 function renderLog(){
   const e=emp(), t=curSheet(false), tot=totals(t), d=dayInfo(e,$('#date').value);
   const st=t?t.status:'Draft',locked=!!t&&st!=='Draft';
@@ -822,12 +828,12 @@ function renderLog(){
   $('#remain').textContent=diff>0?`เหลืออีก ${diff} ชม.`:diff<0?`เกิน ${-diff} ชม.`:'ครบ 8 ชม. ✓';
   $('#entries').innerHTML=(t?.entries||[]).map((x,i)=>{
     const lbl=x.cat==='Cost'?`${esc(x.code)} ${esc(entryName(x))}`:`${esc(x.sgaId)}: ${esc(find(db.sgaTypes,x.sgaId)?.name||'')}${x.code?` <span class="hint">(${esc(x.code)} ${esc(entryName(x))})</span>`:''}`;
-    return `<tr><td class="hint">${txNo(t,i)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${typeTag(x.code)}</td><td>${esc(x.note)}</td><td class="n">${x.hours}</td><td>${locked?'':`<button class="x" data-del="${x.id}" title="ลบ">✕</button>`}</td></tr>`}).join('')
-    ||'<tr><td colspan="7" class="hint">ยังไม่มีรายการ</td></tr>';
+    return `<tr><td class="hint">${txNo(t,i)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${typeTag(x.code)}</td><td>${esc(x.note)}</td><td class="n">${x.hours}</td><td>${apBadge(t,x)}</td><td>${(locked||entState(t,x)==='A')?'':`<button class="x" data-del="${x.id}" title="ลบ">✕</button>`}</td></tr>`}).join('')
+    ||'<tr><td colspan="8" class="hint">ยังไม่มีรายการ</td></tr>';
   $$('[data-del]').forEach(b=>b.onclick=()=>{t.entries=t.entries.filter(x=>x.id!==b.dataset.del);if(!t.entries.length)db.timesheets=db.timesheets.filter(x=>x!==t);save();renderLog()});
   const ok=d.work&&t&&diff===0&&!locked;
   $('#submit').disabled=!ok;
-  $('#submitHint').textContent=locked?(st==='Pending'?`ส่งให้ Project Admin เมื่อ ${new Date(t.submittedAt).toLocaleString('th-TH')} — รออนุมัติ (ยังไม่เป็น Submitted)`:`อนุมัติแล้วโดย ${t.approvedBy||'-'}${t.approvedAt?' เมื่อ '+new Date(t.approvedAt).toLocaleString('th-TH'):''}`):ok?'':'กรอกไม่ได้ขาด/เกิน — ต้องครบ 8 ชั่วโมงพอดีจึงจะส่งได้';
+  $('#submitHint').textContent=locked?(st==='Pending'?`ส่งให้ผู้อนุมัติเมื่อ ${new Date(t.submittedAt).toLocaleString('th-TH')} — อนุมัติแล้ว ${t.entries.filter(x=>entState(t,x)==='A').length}/${t.entries.length} รายการ (เป็น Submitted เมื่อครบทุกรายการ)`:`อนุมัติแล้วโดย ${t.approvedBy||'-'}${t.approvedAt?' เมื่อ '+new Date(t.approvedAt).toLocaleString('th-TH'):''}`):ok?'':'กรอกไม่ได้ขาด/เกิน — ต้องครบ 8 ชั่วโมงพอดีจึงจะส่งได้';
 }
 $('#add').onclick=()=>{
   const err=m=>($('#err').textContent=m,false);$('#err').textContent='';
@@ -843,58 +849,124 @@ $('#add').onclick=()=>{
   if(totals(t).all+hours>TARGET)return err(`ชั่วโมงรวมจะเกิน ${TARGET} ชม. (เหลือ ${TARGET-totals(t).all})`);
   t.entries.push(x);rememberCode(x.code);save();$('#hours').value='';$('#note').value='';renderLog();
 };
-$('#submit').onclick=()=>{const t=curSheet(false);if(!t)return;t.status='Pending';t.submittedAt=new Date().toISOString();t.rejectNote='';t.approvedBy='';t.approvedAt=null;save();renderLog()};
-$('#reopen').onclick=()=>{const t=curSheet(false);if(!t||t.status!=='Pending'||!confirm('ยกเลิกการส่งเพื่อแก้ไข?'))return;t.status='Draft';t.submittedAt=null;save();renderLog()};
 $('#emp').onchange=()=>{syncForm();renderLog()};$('#date').onchange=renderLog;
 
-/* ===== ขั้นตอนอนุมัติ: พนักงานส่ง → Pending → Project Admin อนุมัติ → Submitted (หรือส่งกลับ → Draft) ===== */
+/* ===== Role and permission + อนุมัติรายรายการ =====
+   พนักงานส่ง → ทุกรายการเป็น "รออนุมัติ" → ผู้อนุมัติที่มีสิทธิ์ตามตาราง Role/Permission และขอบเขต (PM=โครงการ, Mgr/ผู้บริหารฝ่าย=ฝ่าย, COO/CEO=ทั้งบริษัท)
+   อนุมัติแต่ละรายการ → ใบเป็น Submitted เมื่อ "ทุกรายการ" อนุมัติครบ · ส่งกลับรายการใดรายการหนึ่ง → ใบกลับเป็น Draft ให้พนักงานแก้ */
 const stTxt=s=>({Draft:'Draft',Pending:'รออนุมัติ',Submitted:'Submitted'}[s]||s);
 const stCls=s=>s==='Submitted'?'sub':s==='Pending'?'sga':'st';
 const stNorm=s=>({Submitted:'Submitted',Pending:'Pending'}[S(s)]||'Draft');
-const canApprove=()=>isSuperAdmin||(!!me&&normRole(me.role)==='project_admin');
-const pendingList=()=>db.timesheets.filter(t=>t.status==='Pending');
-function updApprBadge(){const b=$('#navAppr');if(!b)return;const n=canApprove()?pendingList().length:0;b.textContent=n?'อนุมัติ ('+n+')':'อนุมัติ'}
-const _rl=renderLog;renderLog=function(){_rl();updApprBadge()};
-const selfSheet=t=>!isSuperAdmin&&!!me&&t.empId===me.id;     // อนุมัติใบของตัวเองไม่ได้ (ยกเว้น Super Admin)
-const dayLines=t=>t.entries.map(x=>{const lbl=x.cat==='Cost'?`${esc(x.code)} ${esc(trunc(entryName(x),22))}`:`${esc(x.sgaId)} ${esc(trunc(find(db.sgaTypes,x.sgaId)?.name||'',16))}${x.code?' ('+esc(x.code)+')':''}`;
-  return `<div style="white-space:nowrap">${lbl} <b>${x.hours}</b>${x.note?` <span class="hint">· ${esc(trunc(x.note,24))}</span>`:''}</div>`}).join('');
-async function stillStatus(t){if(typeof CLOUD==='undefined'||!CLOUD)return t.status;
-  try{const {data,error}=await sb.from('timesheets').select('status').eq('id',t.id).maybeSingle();if(error)throw error;return data?data.status:null}catch(e){return t.status}}
-async function apprApprove(list){
-  let ok=0,skip=0;
-  for(const t of list){
-    if(t.status!=='Pending'||selfSheet(t)||totals(t).all!==TARGET){skip++;continue}
-    if(await stillStatus(t)!=='Pending'){skip++;continue}   // พนักงานอาจเพิ่งเรียกกลับไปแก้
-    t.status='Submitted';t.approvedBy=(me&&me.name)||(user&&user.name)||'';t.approvedAt=new Date().toISOString();t.rejectNote='';ok++}
-  save();renderApprView();updApprBadge();
-  $('#apprMsg').textContent=`อนุมัติแล้ว ${ok} ใบ`+(skip?` · ข้าม ${skip} ใบ (ใบของตัวเอง / สถานะเปลี่ยนแล้ว / ชั่วโมงไม่ครบ 8)`:'');
+const AP_ROLES=[['pm','PM'],['mgr','Mgr (ผู้จัดการ)'],['dir','ผู้บริหารฝ่าย / ผอ.'],['coo','COO'],['ceo','CEO']];
+const AP_TH=Object.fromEntries(AP_ROLES);
+const PERM_DEFAULT={'pm|cost':'yes','mgr|cost':'yes','dir|cost':'yes','coo|cost':'yes','ceo|cost':'yes','pm|sga':'no','mgr|sga':'yes','dir|sga':'yes','coo|sga':'na','ceo|sga':'na'};
+const permOf=(role,cat)=>{const r=(db.perms||[]).find(x=>x.role===role&&x.cat===cat);return (r?r.perm:PERM_DEFAULT[role+'|'+cat])||'no'};
+const catOf=x=>x.cat==='Cost'?'cost':'sga';
+const entState=(t,x)=>x.ap?x.ap.s:(t.status==='Submitted'?'A':(t.status==='Pending'?'P':null));   // ใบเก่าที่ไม่มีข้อมูลรายรายการ: ตามสถานะใบ
+const myScopes=()=>me?(db.scopes||[]).filter(s=>s.empId===me.id):[];
+const canApprove=()=>isSuperAdmin||myScopes().some(s=>permOf(s.role,'cost')==='yes'||permOf(s.role,'sga')==='yes');
+const meName=()=>(me&&me.name)||(user&&user.name)||'';
+function canApproveEntry(t,x){
+  if(entState(t,x)!=='P')return false;
+  if(isSuperAdmin)return true;                                        // Super Admin อนุมัติแทนได้ทุกรายการ
+  if(!me||t.empId===me.id)return false;                               // อนุมัติรายการของตัวเองไม่ได้
+  const e=find(db.employees,t.empId);
+  return myScopes().some(s=>permOf(s.role,catOf(x))==='yes'&&(s.role==='coo'||s.role==='ceo'||(s.role==='pm'?(x.cat==='Cost'&&x.code===s.key):(!!e&&e.dept===s.key))));
 }
-async function apprReject(t){
-  if(selfSheet(t)&&t.status==='Pending')return alert('ส่งกลับใบของตัวเองไม่ได้ — ใช้ปุ่ม "ยกเลิกการส่ง" ในหน้าบันทึกงาน');
-  const note=(prompt(`เหตุผลที่ส่งกลับให้แก้ไข (${t.empId} ${t.date}) — พนักงานจะเห็นข้อความนี้`)||'').trim();if(!note)return;
-  const by=(me&&me.name)||(user&&user.name)||'';
-  t.status='Draft';t.rejectNote=`${note} (โดย ${by})`;t.submittedAt=null;t.approvedBy='';t.approvedAt=null;
+function finalizeSheet(t){
+  const st=t.entries.map(x=>entState(t,x));
+  if(st.length&&st.every(s=>s==='A')){t.status='Submitted';t.rejectNote=''}
+  else if(st.includes('R')){t.status='Draft';t.submittedAt=null;t.rejectNote=t.entries.filter(x=>entState(t,x)==='R').map(x=>`${x.cat==='Cost'?x.code:x.sgaId}: ${x.ap.note} (โดย ${x.ap.by})`).join(' ; ')}
+  else t.status='Pending';
+}
+const pendingRows=()=>{const o=[];db.timesheets.filter(t=>t.status==='Pending').forEach(t=>t.entries.forEach(x=>{if(canApproveEntry(t,x))o.push({t,x})}));return o.sort((a,b)=>a.t.date.localeCompare(b.t.date)||a.t.empId.localeCompare(b.t.empId))};
+function updApprBadge(){const b=$('#navAppr');if(!b)return;const n=canApprove()?pendingRows().length:0;b.textContent=n?'อนุมัติ ('+n+')':'อนุมัติ'}
+const _rl=renderLog;renderLog=function(){_rl();updApprBadge()};
+$('#submit').onclick=()=>{const t=curSheet(false);if(!t)return;
+  t.entries.forEach(x=>{if(entState(t,x)!=='A')x.ap={s:'P'}});            // รายการที่อนุมัติแล้วคงเดิม ที่เหลือส่งขออนุมัติใหม่
+  t.submittedAt=new Date().toISOString();t.rejectNote='';finalizeSheet(t);save();renderLog()};
+$('#reopen').onclick=()=>{const t=curSheet(false);if(!t||t.status!=='Pending'||!confirm('ยกเลิกการส่งเพื่อแก้ไข?'))return;
+  t.entries.forEach(x=>{if(x.ap&&x.ap.s==='P')delete x.ap});t.status='Draft';t.submittedAt=null;save();renderLog()};
+async function entryServerState(t,x){if(typeof CLOUD==='undefined'||!CLOUD)return 'P';
+  try{const {data,error}=await sb.from('timesheets').select('entries,status').eq('id',t.id).maybeSingle();if(error)throw error;if(!data)return null;
+    const y=(data.entries||[]).find(z=>z.id===x.id);if(!y)return null;return y.ap?y.ap.s:(data.status==='Pending'?'P':data.status==='Submitted'?'A':null)}catch(e){return 'P'}}
+const pairOf=k=>{const [tid,xid]=String(k).split('|'),t=find(db.timesheets,tid);return{t,x:t&&t.entries.find(y=>y.id===xid)}};
+async function apprApprove(pairs){
+  let ok=0,skip=0;
+  for(const {t,x} of pairs){
+    if(!t||!x||!canApproveEntry(t,x)){skip++;continue}
+    if(await entryServerState(t,x)!=='P'){skip++;continue}               // พนักงานอาจเพิ่งเรียกกลับไปแก้
+    x.ap={s:'A',by:meName(),at:new Date().toISOString()};t.approvedBy=meName();t.approvedAt=x.ap.at;finalizeSheet(t);ok++}
+  save();renderApprView();updApprBadge();
+  $('#apprMsg').textContent=`อนุมัติแล้ว ${ok} รายการ`+(skip?` · ข้าม ${skip} รายการ (ไม่มีสิทธิ์ / สถานะเปลี่ยนแล้ว)`:'');
+}
+function apprReject(t,x){
+  if(!t||!x)return;
+  const note=(prompt(`เหตุผลที่ส่งกลับ (${t.empId} ${t.date} · ${x.cat==='Cost'?x.code:x.sgaId} ${x.hours} ชม.) — พนักงานจะเห็นข้อความนี้ และใบจะกลับเป็น Draft`)||'').trim();if(!note)return;
+  x.ap={s:'R',by:meName(),at:new Date().toISOString(),note};finalizeSheet(t);
   save();renderApprView();updApprBadge();$('#apprMsg').textContent='ส่งกลับให้พนักงานแก้ไขแล้ว';
 }
+const entLbl=x=>x.cat==='Cost'?`${esc(x.code)} ${esc(trunc(entryName(x),30))}`:`${esc(x.sgaId)} ${esc(trunc(find(db.sgaTypes,x.sgaId)?.name||'',16))}${x.code?' <span class="hint">('+esc(x.code)+')</span>':''}`;
 function renderAppr(){renderApprView()}
 function renderApprView(){
-  if(!canApprove()){$('#apprList').innerHTML='<tr><td colspan="8" class="hint">เฉพาะ Project Admin / Super Admin</td></tr>';return}
-  const pend=pendingList().sort((a,b)=>a.date.localeCompare(b.date)||a.empId.localeCompare(b.empId));
-  $('#apprList').innerHTML=pend.map(t=>{const o=totals(t),e=find(db.employees,t.empId)||{},self=selfSheet(t),bad=o.all!==TARGET;
-    return `<tr><td><input type="checkbox" data-ak="${esc(t.id)}" ${self||bad?'disabled':''} style="width:auto;min-height:0"></td><td>${t.date}</td><td>${esc(t.empId)} ${esc(e.name||'')}<div class="hint">${esc(e.dept||'')}</div></td><td class="n">${o.cost}</td><td class="n">${o.sga}</td><td class="n" style="${bad?'color:var(--bad)':''}">${o.all}</td><td style="font-size:13px">${dayLines(t)}</td>
-      <td style="white-space:nowrap">${self?'<span class="hint">รอผู้อื่นอนุมัติ</span>':`<button class="btn ok" style="padding:5px 12px" data-aok="${esc(t.id)}" ${bad?'disabled':''}>อนุมัติ</button> <button class="btn" style="padding:5px 12px;color:var(--bad)" data-arj="${esc(t.id)}">ส่งกลับ</button>`}</td></tr>`}).join('')||'<tr><td colspan="8" class="hint">ไม่มีรายการรออนุมัติ 🎉</td></tr>';
-  $$('[data-aok]').forEach(b=>b.onclick=()=>apprApprove([find(db.timesheets,b.dataset.aok)]));
-  $$('[data-arj]').forEach(b=>b.onclick=()=>apprReject(find(db.timesheets,b.dataset.arj)));
-  const done=db.timesheets.filter(t=>t.status==='Submitted').sort((a,b)=>String(b.approvedAt||b.date).localeCompare(String(a.approvedAt||a.date))).slice(0,30);
-  $('#apprDone').innerHTML=done.map(t=>{const e=find(db.employees,t.empId)||{};
-    return `<tr><td>${t.date}</td><td>${esc(t.empId)} ${esc(e.name||'')}</td><td class="n">${totals(t).all}</td><td>${esc(t.approvedBy||'—')}</td><td class="hint">${t.approvedAt?new Date(t.approvedAt).toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'}):'—'}</td><td><button class="btn" style="padding:4px 10px" data-arj="${esc(t.id)}" title="ส่งกลับให้พนักงานแก้ไข">ส่งกลับ</button></td></tr>`}).join('')||'<tr><td colspan="6" class="hint">ยังไม่มีรายการ</td></tr>';
-  $$('#apprDone [data-arj]').forEach(b=>b.onclick=()=>apprReject(find(db.timesheets,b.dataset.arj)));
+  if(!canApprove()){$('#apprList').innerHTML='<tr><td colspan="8" class="hint">ยังไม่ได้รับสิทธิ์อนุมัติ — ให้ Super Admin กำหนดใน เมนูสมาชิก › Role and permission</td></tr>';$('#apprDone').innerHTML='';$('#apprWho').textContent='';return}
+  $('#apprWho').innerHTML=isSuperAdmin?'สิทธิ์ของคุณ: <b>Super Admin</b> (อนุมัติแทนได้ทุกรายการ)':'สิทธิ์ของคุณ: '+myScopes().map(s=>`<b>${esc(AP_TH[s.role])}</b> ${s.role==='pm'?'โครงการ '+esc(s.key):(s.role==='coo'||s.role==='ceo')?'ทั้งบริษัท':'ฝ่าย '+esc(s.key)}`).join(' · ');
+  const rows=pendingRows();
+  $('#apprList').innerHTML=rows.map(({t,x})=>{const e=find(db.employees,t.empId)||{},k=esc(t.id)+'|'+esc(x.id);
+    return `<tr><td><input type="checkbox" data-ak="${k}" style="width:auto;min-height:0"></td><td>${t.date}</td><td>${esc(t.empId)} ${esc(e.name||'')}<div class="hint">${esc(e.dept||'')}</div></td><td>${entLbl(x)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span> ${typeTag(x.code)}</td><td class="n">${x.hours}</td><td class="hint">${esc(trunc(x.note||'',40))}</td>
+      <td style="white-space:nowrap"><button class="btn ok" style="padding:5px 12px" data-aok="${k}">อนุมัติ</button> <button class="btn" style="padding:5px 12px;color:var(--bad)" data-arj="${k}">ส่งกลับ</button></td></tr>`}).join('')||'<tr><td colspan="8" class="hint">ไม่มีรายการรออนุมัติ 🎉</td></tr>';
+  $$('#apprList [data-aok]').forEach(b=>b.onclick=()=>apprApprove([pairOf(b.dataset.aok)]));
+  $$('#apprList [data-arj]').forEach(b=>b.onclick=()=>{const p=pairOf(b.dataset.arj);apprReject(p.t,p.x)});
+  const done=[];db.timesheets.forEach(t=>t.entries.forEach(x=>{if(x.ap&&x.ap.s==='A'&&(isSuperAdmin||x.ap.by===meName()))done.push({t,x})}));
+  done.sort((a,b)=>String(b.x.ap.at).localeCompare(String(a.x.ap.at)));
+  $('#apprDone').innerHTML=done.slice(0,30).map(({t,x})=>{const e=find(db.employees,t.empId)||{},k=esc(t.id)+'|'+esc(x.id);
+    return `<tr><td>${t.date}</td><td>${esc(t.empId)} ${esc(e.name||'')}</td><td>${entLbl(x)}</td><td class="n">${x.hours}</td><td>${esc(x.ap.by||'—')}</td><td class="hint">${x.ap.at?new Date(x.ap.at).toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'}):'—'}</td><td><button class="btn" style="padding:4px 10px" data-arj="${k}" title="ส่งกลับให้พนักงานแก้ไข">ส่งกลับ</button></td></tr>`}).join('')||'<tr><td colspan="7" class="hint">ยังไม่มีรายการ</td></tr>';
+  $$('#apprDone [data-arj]').forEach(b=>b.onclick=()=>{const p=pairOf(b.dataset.arj);apprReject(p.t,p.x)});
   updApprBadge();
 }
 $('#apprAll').onclick=()=>{const ids=$$('#apprList [data-ak]:checked').map(c=>c.dataset.ak);if(!ids.length)return alert('ยังไม่ได้เลือกรายการ');
-  if(confirm(`อนุมัติ ${ids.length} ใบที่เลือก?`))apprApprove(ids.map(i=>find(db.timesheets,i)))};
-$('#apprSel').onclick=()=>{const cs=$$('#apprList [data-ak]:not(:disabled)'),all=cs.every(c=>c.checked);cs.forEach(c=>c.checked=!all)};
+  if(confirm(`อนุมัติ ${ids.length} รายการที่เลือก?`))apprApprove(ids.map(pairOf))};
+$('#apprSel').onclick=()=>{const cs=$$('#apprList [data-ak]'),all=cs.every(c=>c.checked);cs.forEach(c=>c.checked=!all)};
 $('#apprRef').onclick=()=>renderAppr();
+
+/* ----- ตาราง Role and permission + ผู้อนุมัติและขอบเขต (เมนูสมาชิก · Super Admin) ----- */
+function renderApPerm(){
+  const host=$('#apPermCard');if(!host)return;if(!isSuperAdmin){host.innerHTML='';return}
+  db.perms=db.perms||[];db.scopes=db.scopes||[];
+  const psel=(role,cat)=>{const v=permOf(role,cat);return `<select data-pp="${role}|${cat}" style="min-height:0;padding:5px 8px;min-width:120px"><option value="yes" ${v==='yes'?'selected':''}>✓ อนุมัติได้</option><option value="no" ${v==='no'?'selected':''}>— ไม่ได้</option><option value="na" ${v==='na'?'selected':''}>N/A</option></select>`};
+  const matrix=`<div class="scroll"><table><thead><tr><th>รายการ</th>${AP_ROLES.map(([k,l])=>`<th style="text-align:center">${esc(l)}</th>`).join('')}</tr></thead><tbody>
+    <tr><td><span class="tag cost">COST</span></td>${AP_ROLES.map(([k])=>`<td style="text-align:center">${psel(k,'cost')}</td>`).join('')}</tr>
+    <tr><td><span class="tag sga">SG&amp;A</span></td>${AP_ROLES.map(([k])=>`<td style="text-align:center">${psel(k,'sga')}</td>`).join('')}</tr></tbody></table></div>`;
+  const dn=id=>(find(db.depts,id)?.name)||'';
+  const scopeTxt=s=>s.role==='pm'?'โครงการ '+esc(s.key)+' '+esc(codeInfo(s.key)?.name||''):(s.role==='coo'||s.role==='ceo')?'ทั้งบริษัท':'ฝ่าย '+esc(s.key)+' '+esc(dn(s.key));
+  const list=db.scopes.slice().sort((a,b)=>a.role.localeCompare(b.role)||String(a.empId).localeCompare(String(b.empId))).map(s=>{const e=find(db.employees,s.empId)||{};
+    return `<tr><td>${esc(s.empId)} ${esc(e.name||'')}</td><td><span class="tag st">${esc(AP_TH[s.role]||s.role)}</span></td><td>${scopeTxt(s)}</td><td><button class="x" data-sdel="${esc(s.id)}" title="ลบ">✕</button></td></tr>`}).join('')||'<tr><td colspan="4" class="hint">ยังไม่มีผู้อนุมัติ — มีเพียง Super Admin ที่อนุมัติแทนได้</td></tr>';
+  host.innerHTML=`<div class="card"><h2>Role and permission — สิทธิ์การอนุมัติรายการบันทึกงาน</h2>
+    <p class="hint">กำหนดว่า Role ใดอนุมัติรายการ <b>COST</b> / <b>SG&amp;A</b> ได้ · ผู้อนุมัติอนุมัติแต่ละ<b>รายการ</b> ใบบันทึกงานจะเป็น Submitted เมื่ออนุมัติครบทุกรายการ · ขอบเขต: PM = โครงการของตน (Cost) · Mgr และผู้บริหารฝ่าย/ผอ. = พนักงานในฝ่ายที่กำหนด · COO/CEO = ทั้งบริษัท · อนุมัติรายการของตัวเองไม่ได้</p>
+    ${matrix}
+    <h3 style="margin:18px 0 8px;font-size:16px">ผู้อนุมัติและขอบเขต</h3>
+    <div class="scroll"><table><thead><tr><th>พนักงาน</th><th>Role</th><th>ขอบเขต</th><th></th></tr></thead><tbody>${list}</tbody></table></div>
+    <form id="apAddForm" class="row" style="margin-top:12px;align-items:end">
+      <div style="grid-column:span 2"><label>พนักงาน (พิมพ์ค้นหารหัส/ชื่อ)</label><select id="apEmp">${db.employees.slice().sort(byId).map(e=>`<option value="${esc(e.id)}">${esc(e.id+' — '+e.name)}</option>`).join('')}</select></div>
+      <div><label>Role</label><select id="apRole">${AP_ROLES.map(([k,l])=>`<option value="${k}">${esc(l)}</option>`).join('')}</select></div>
+      <div id="apScopeBox"></div>
+      <div><button class="btn pri">+ เพิ่มผู้อนุมัติ</button></div></form>
+    <div class="err" id="apMsg" style="margin-top:6px"></div></div>`;
+  const fillScope=()=>{const r=$('#apRole').value,b=$('#apScopeBox');
+    if(r==='pm')b.innerHTML=`<label>รหัสโครงการ (Cost)</label><select id="apKey">${db.projects.filter(p=>p.kind==='cost').sort(byId).map(p=>`<option value="${esc(p.id)}">${esc(p.id+' — '+p.name)}</option>`).join('')}</select>`;
+    else if(r==='mgr'||r==='dir')b.innerHTML=`<label>ฝ่าย</label><select id="apKey">${db.depts.slice().sort(byId).map(d=>`<option value="${esc(d.id)}">${esc(d.id+' '+d.name)}</option>`).join('')}</select>`;
+    else b.innerHTML='<label>ขอบเขต</label><div class="hint" style="padding:10px 0">ทั้งบริษัท</div>';
+    const k=$('#apKey');if(k&&k.options.length>8)makeSearch('#apKey')};
+  makeSearch('#apEmp');fillScope();$('#apRole').onchange=fillScope;
+  $$('[data-pp]').forEach(s=>s.onchange=()=>{const [role,cat]=s.dataset.pp.split('|');let r=db.perms.find(x=>x.role===role&&x.cat===cat);if(r)r.perm=s.value;else db.perms.push({role,cat,perm:s.value});save();renderApPerm()});
+  $$('[data-sdel]').forEach(b=>b.onclick=()=>{if(!confirm('ลบผู้อนุมัตินี้?'))return;db.scopes=db.scopes.filter(s=>s.id!==b.dataset.sdel);save();renderApPerm()});
+  $('#apAddForm').onsubmit=ev=>{ev.preventDefault();const m=$('#apMsg'),emp=$('#apEmp').value,role=$('#apRole').value,k=$('#apKey'),key=(role==='coo'||role==='ceo')?'*':(k?k.value:'');
+    if(!emp)return m.textContent='เลือกพนักงานก่อน';if(!key)return m.textContent='เลือกขอบเขต (โครงการ/ฝ่าย)';
+    const id=`${emp}|${role}|${key}`;if(db.scopes.some(s=>s.id===id))return m.textContent='มีรายการนี้อยู่แล้ว';
+    db.scopes.push({id,empId:emp,role,key,type:role==='pm'?'project':(role==='coo'||role==='ceo')?'all':'dept'});save();renderApPerm()};
+}
+const _rmem=renderMem;renderMem=function(){_rmem();renderApPerm()};
+
 /* ---- ประวัติ/สรุป: รายวัน สัปดาห์ เดือน ไตรมาส ปี · ราย คน / ฝ่าย / Project / ทั้งหมด ---- */
 function pRange(mode,anchor){
   const a=DD(anchor),y=a.getFullYear(),m=a.getMonth();let s,e;
@@ -1611,7 +1683,7 @@ const lc=s=>String(s||'').trim().toLowerCase();
 const loginMsg=(m,ok)=>{const el=$('#loginMsg');el.textContent=m||'';el.style.color=ok?'var(--cost)':''};
 function normDb(){db.regs=db.regs||[];db.settings=Object.assign({regOpen:true,autoApprove:false},db.settings||{});
   if(!db.admins){db.admins=db.admin?[Object.assign({id:'A1',name:'ผู้ดูแลระบบ',active:true,at:new Date().toISOString()},db.admin)]:[];delete db.admin}}
-db.salary=db.salary||[];
+db.salary=db.salary||[];db.perms=db.perms||[];db.scopes=db.scopes||[];
 normDb();
 const usernameTaken=(un,exceptEmpId)=>db.admins.some(a=>lc(a.username)===lc(un))||db.employees.some(e=>e.id!==exceptEmpId&&e.username&&lc(e.username)===lc(un));
 function findAcct(un){
@@ -2014,11 +2086,15 @@ const TBL={
     to:t=>({id:t.id,emp_id:t.empId,day:t.date,status:['Pending','Submitted'].includes(t.status)?t.status:'Draft',submitted_at:t.submittedAt||null,approved_by:t.approvedBy||'',approved_at:t.approvedAt||null,reject_note:t.rejectNote||'',entries:t.entries||[]}),
     from:r=>({id:r.id,empId:r.emp_id,date:r.day,status:r.status,submittedAt:r.submitted_at,approvedBy:r.approved_by||'',approvedAt:r.approved_at||null,rejectNote:r.reject_note||'',entries:r.entries||[]})}
 };
+TBL.perms={t:'approval_perms',pk:'role',conf:'role,cat',admin:true,sup:true,key:r=>r.role+'|'+r.cat,
+  to:r=>({role:r.role,cat:r.cat,perm:r.perm}),from:r=>({role:r.role,cat:r.cat,perm:r.perm})};
+TBL.scopes={t:'approver_scopes',pk:'id',admin:true,sup:true,key:r=>r.id,
+  to:r=>({id:r.id,emp_id:r.empId,role:r.role,scope_type:r.type||'dept',scope_key:r.key}),from:r=>({id:r.id,empId:r.emp_id,role:r.role,type:r.scope_type,key:r.scope_key})};
 TBL.salary={t:'salary_rates',pk:'id',admin:true,sup:true,key:r=>r.id,
   to:r=>({id:r.id,scope:r.scope,key:r.key,amount:Number(r.amount),updated_by:r.updatedBy||'',...(r.updatedAt?{updated_at:r.updatedAt}:{})}),
   from:r=>({id:r.id,scope:r.scope,key:r.key,amount:Number(r.amount),updatedBy:r.updated_by||'',updatedAt:r.updated_at||''})};
 TBL.ui={t:'app_settings',pk:'key',admin:true,key:r=>r.key,to:o=>({key:'ui',value:o.value}),from:r=>({id:r.key,value:r.value})};
-function emptyCloudDb(){const s=seed();return{...s,employees:[],depts:[],projects:[],contracts:[],assign:[],holidays:[],timesheets:[],salary:[],regs:[],admins:[],ui:[],settings:{regOpen:true,autoApprove:false}}}
+function emptyCloudDb(){const s=seed();return{...s,employees:[],depts:[],projects:[],contracts:[],assign:[],holidays:[],timesheets:[],salary:[],perms:[],scopes:[],regs:[],admins:[],ui:[],settings:{regOpen:true,autoApprove:false}}}
 function rowsOf(k){const s=TBL[k];return new Map(db[k].map(x=>s.to(x)).filter(r=>k!=='employees'||r.email).map(r=>[s.key(r),r]))}
 function takeSnap(){snap={};Object.keys(TBL).forEach(k=>{snap[k]=Object.fromEntries([...rowsOf(k)].map(([key,r])=>[key,JSON.stringify(r)]))})}
 function setSync(st,msg){
@@ -2040,7 +2116,7 @@ async function fetchAll(t,pk,filter){
 async function loadCloud(){
   const cut=new Date();cut.setMonth(cut.getMonth()-18);const cutS=cut.toISOString().slice(0,10);   // โหลดบันทึกงานย้อนหลัง 18 เดือน
   const keys=Object.keys(TBL);
-  const res=await Promise.all(keys.map(k=>fetchAll(TBL[k].t,TBL[k].pk,k==='timesheets'?q=>q.gte('day',cutS):null).catch(er=>{if(k==='ui'||k==='salary')return [];throw er})));
+  const res=await Promise.all(keys.map(k=>fetchAll(TBL[k].t,TBL[k].pk,k==='timesheets'?q=>q.gte('day',cutS):null).catch(er=>{if(k==='ui'||k==='salary'||k==='perms'||k==='scopes')return [];throw er})));
   db=emptyCloudDb();keys.forEach((k,i)=>{db[k]=res[i].map(TBL[k].from)});applyUi();takeSnap();
 }
 function cloudSave(){if(!sb||!cur)return;clearTimeout(cloudT);setSync('saving');cloudT=setTimeout(syncUp,300)}
