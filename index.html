@@ -2269,6 +2269,7 @@ if(CLOUD){
     setSync('ok');
   }
   function resetCloud(){db=emptyCloudDb();snap={};user=me=cur=null;isAdmin=isSuperAdmin=false;forceChange=false;const el=$('#syncState');if(el)el.classList.add('hide')}
+  window.__cloud={onSignedIn,resetCloud};   // ให้ cloudInit (นอกบล็อกนี้) เรียกใช้ได้
 
   $('#pwBox').onsubmit=async ev=>{ev.preventDefault();
     const email=$('#lgUser').value.trim(),pw=$('#lgPass').value;
@@ -2440,11 +2441,11 @@ document.addEventListener('visibilitychange',async()=>{
 async function cloudInit(){
   if(!window.supabase||!sb){loginMsg('โหลดตัวเชื่อมต่อ Supabase ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต หรือค่า supabaseUrl/supabaseKey)');return}
   sb.auth.onAuthStateChange((ev)=>{
-    if(ev==='PASSWORD_RECOVERY'){recovery=true;setTimeout(()=>{if(cur)resetCloud();showLoginView()},0)}
-    else if(ev==='SIGNED_OUT'&&cur){setTimeout(()=>{resetCloud();logoutUi()},0)}
+    if(ev==='PASSWORD_RECOVERY'){recovery=true;setTimeout(()=>{if(cur)window.__cloud.resetCloud();showLoginView()},0)}
+    else if(ev==='SIGNED_OUT'&&cur){setTimeout(()=>{window.__cloud.resetCloud();logoutUi()},0)}
   });
   const {data}=await sb.auth.getSession();
-  if(data&&data.session&&!recovery)await onSignedIn(data.session);
+  if(data&&data.session&&!recovery)await window.__cloud.onSignedIn(data.session);
 }
 
 async function boot(){
