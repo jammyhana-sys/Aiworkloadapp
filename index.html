@@ -134,7 +134,10 @@ table.rp td.hrs{background:rgba(79,141,245,.14);font-weight:600}table.rp td.tot{
 table.rp tr.off td{background:rgba(128,128,128,.2);color:var(--mut)}
 @media print{.rpwrap{max-height:none;overflow:visible}}#tab-hist.nosal .sal-col{display:none}
 table tr.tot td{font-weight:700;background:var(--pri-soft);border-top:2px solid var(--ink)}
-.seg2{display:flex;gap:4px;background:var(--pri-soft);padding:4px;border-radius:12px}
+.sbox{position:relative}.sinput{width:100%}
+.sres{position:absolute;left:0;right:0;top:100%;z-index:30;max-height:300px;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(34,48,73,.18);margin:4px 0 0;padding:4px;list-style:none}
+.sres li{padding:9px 11px;border-radius:8px;cursor:pointer;font-size:14px;line-height:1.35}.sres li.on,.sres li:hover{background:var(--pri-soft)}
+.sres mark{background:#ffe08a;color:inherit;border-radius:3px;padding:0 1px}.seg2{display:flex;gap:4px;background:var(--pri-soft);padding:4px;border-radius:12px}
 .seg2 button{border:0;background:none;color:var(--mut);padding:7px 14px;border-radius:9px;cursor:pointer;font:inherit;font-weight:500}
 .seg2 button.on{background:var(--card);color:var(--pri);box-shadow:0 1px 4px rgba(34,48,73,.15);font-weight:600}
 .sumline{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-weight:600;font-size:13.5px}
@@ -644,6 +647,54 @@ function syncRef(){
 }
 $$('.seg button').forEach(b=>b.onclick=()=>{cat=b.dataset.cat;$$('.seg button').forEach(x=>x.classList.toggle('on',x===b));syncForm();$('#err').textContent=''});
 $('#sga').onchange=syncRef;
+/* ===== ค้นหาด่วน (fast search) รหัสโครงการ/สัญญา: พิมพ์รหัสหรือชื่อบางส่วน จัดอันดับความเกี่ยวข้อง + รหัสที่ใช้ล่าสุด ===== */
+const RC_KEY='tsRecentCodes';
+const recentCodes=()=>{try{return JSON.parse(localStorage.getItem(RC_KEY)||'[]')}catch(e){return[]}};
+const rememberCode=c=>{if(!c)return;try{const a=recentCodes().filter(x=>x!==c);a.unshift(c);localStorage.setItem(RC_KEY,JSON.stringify(a.slice(0,30)))}catch(e){}};
+const nrm=s=>String(s||'').toLowerCase().replace(/[\s_\-–—./()]+/g,' ').trim();
+function subseq(q,s){let i=0;for(const ch of s){if(ch===q[i])i++;if(i===q.length)return true}return q.length===0}
+function scoreItem(it,qs,recent){
+  const code=nrm(it.v),name=nrm(it.t),all=code+' '+name;let sc=0;
+  if(!qs.length)sc=1;
+  for(const q of qs){
+    if(code===q)sc+=200;else if(code.startsWith(q))sc+=120;else if(code.includes(q))sc+=70;
+    else if(name.startsWith(q))sc+=50;else if(all.includes(q))sc+=25;
+    else if(q.length>=3&&subseq(q.replace(/ /g,''),all.replace(/ /g,'')))sc+=8;   // พิมพ์ย่อ/ตัวอักษรไม่ติดกัน
+    else return -1;
+  }
+  const ri=recent.indexOf(it.v);if(ri>=0)sc+=30-Math.min(ri,25);                  // ที่ใช้ล่าสุดขึ้นก่อน
+  return sc;
+}
+const hlText=(txt,qs)=>{let h=esc(txt);qs.filter(q=>q.length>0).forEach(q=>{const re=new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','ig');h=h.replace(re,'<mark>$1</mark>')});return h};
+function makeSearch(selId){
+  const sel=$(selId);if(!sel||sel.dataset.fs)return;sel.dataset.fs='1';
+  const box=document.createElement('div');box.className='sbox';
+  box.innerHTML='<input type="search" class="sinput" autocomplete="off" placeholder="🔎 ค้นหา: พิมพ์รหัสหรือชื่อบางส่วน เช่น 2601 / บ้านบึง / tesla"><ul class="sres hide" role="listbox"></ul>';
+  sel.parentNode.insertBefore(box,sel);sel.style.display='none';
+  const inp=box.querySelector('input'),ul=box.querySelector('ul');let items=[],cur=-1,shown=[];
+  const readItems=()=>{items=[...sel.options].filter(o=>o.value!=='').map(o=>({v:o.value,t:o.textContent.replace(/^[^—]*—\s*/,'').trim(),full:o.textContent.trim()}))};
+  const label=()=>{const o=sel.selectedOptions[0];return o&&o.value?o.textContent.trim():''};
+  const sync=()=>{readItems();inp.value=label();inp.placeholder=items.length?'🔎 ค้นหา: พิมพ์รหัสหรือชื่อบางส่วน เช่น 2601 / บ้านบึง / tesla':'— ยังไม่มีรายการที่ได้รับ assign —';inp.disabled=!items.length};
+  const render=()=>{
+    const qs=nrm(inp.value===label()?'':inp.value).split(' ').filter(Boolean),rc=recentCodes();
+    shown=items.map(it=>({it,s:scoreItem(it,qs,rc)})).filter(x=>x.s>=0).sort((a,b)=>b.s-a.s||a.it.v.localeCompare(b.it.v)).slice(0,8);
+    cur=shown.length?0:-1;
+    ul.innerHTML=shown.length?shown.map((x,i)=>`<li data-i="${i}" role="option" class="${i===cur?'on':''}">${hlText(x.it.full,qs)}</li>`).join('')
+      :'<li class="hint" style="cursor:default">ไม่พบ — ลองพิมพ์รหัสบางส่วน หรือคำสั้นๆ จากชื่อ</li>';
+    ul.classList.remove('hide');
+  };
+  const pick=i=>{const x=shown[i];if(!x)return;sel.value=x.it.v;sel.dispatchEvent(new Event('change',{bubbles:true}));inp.value=x.it.full;ul.classList.add('hide');inp.blur()};
+  inp.addEventListener('focus',()=>{inp.select();render()});
+  inp.addEventListener('input',render);
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(ul.classList.contains('hide'))render();if(!shown.length)return;cur=(cur+(e.key==='ArrowDown'?1:-1)+shown.length)%shown.length;[...ul.children].forEach((li,i)=>li.classList.toggle('on',i===cur));ul.children[cur]?.scrollIntoView({block:'nearest'})}
+    else if(e.key==='Enter'){e.preventDefault();if(!ul.classList.contains('hide'))pick(cur)}
+    else if(e.key==='Escape'){ul.classList.add('hide');inp.value=label()}});
+  ul.addEventListener('mousedown',e=>{const li=e.target.closest('li[data-i]');if(li){e.preventDefault();pick(+li.dataset.i)}});
+  inp.addEventListener('blur',()=>setTimeout(()=>{ul.classList.add('hide');if(!shown.length||inp.value.trim()==='')inp.value=label()},120));
+  new MutationObserver(sync).observe(sel,{childList:true});sync();
+}
+makeSearch('#project');makeSearch('#ref');
 
 function curSheet(create){
   const empId=$('#emp').value,date=$('#date').value;if(!empId||!date)return null;
@@ -790,7 +841,7 @@ $('#add').onclick=()=>{
   const t=curSheet(true);
   if(t.status!=='Draft')return err('ใบนี้ส่งแล้ว');
   if(totals(t).all+hours>TARGET)return err(`ชั่วโมงรวมจะเกิน ${TARGET} ชม. (เหลือ ${TARGET-totals(t).all})`);
-  t.entries.push(x);save();$('#hours').value='';$('#note').value='';renderLog();
+  t.entries.push(x);rememberCode(x.code);save();$('#hours').value='';$('#note').value='';renderLog();
 };
 $('#submit').onclick=()=>{const t=curSheet(false);if(!t)return;t.status='Pending';t.submittedAt=new Date().toISOString();t.rejectNote='';t.approvedBy='';t.approvedAt=null;save();renderLog()};
 $('#reopen').onclick=()=>{const t=curSheet(false);if(!t||t.status!=='Pending'||!confirm('ยกเลิกการส่งเพื่อแก้ไข?'))return;t.status='Draft';t.submittedAt=null;save();renderLog()};
