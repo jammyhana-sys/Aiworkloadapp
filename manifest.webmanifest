@@ -1,6 +1,6 @@
 {
-  "name": "Demco Workload Timesheet V 1.0",
-  "short_name": "Demco Timesheet",
+  "name": "Dynamic Work Sync Platform V.1.0.1",
+  "short_name": "Work Sync",
   "description": "บันทึกชั่วโมงการทำงานรายวัน Cost / SG&A",
   "lang": "th",
   "start_url": "./",

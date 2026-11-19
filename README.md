@@ -1,4 +1,4 @@
-# Demco Workload Timesheet V 1.0 (PWA)
+# Dynamic Work Sync Platform V.1.0.1 (PWA)
 
 โฟลเดอร์นี้คือแอปที่ติดตั้งบนมือถือได้ (Progressive Web App) — ไฟล์หลักคือ index.html
 

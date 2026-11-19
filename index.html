@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#4f6df5">
 <meta name="description" content="โปรแกรมบันทึกเวลาการทำงาน Demco">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="Demco Workload Timesheet V 1.0">
-<meta property="og:title" content="Demco Workload Timesheet V 1.0">
+<meta property="og:site_name" content="Dynamic Work Sync Platform V.1.0.1">
+<meta property="og:title" content="Dynamic Work Sync Platform V.1.0.1">
 <meta property="og:description" content="โปรแกรมบันทึกเวลาการทำงาน Demco">
 <meta property="og:url" content="https://jammyhana-sys.github.io/Aiworkloadapp/">
 <meta property="og:image" content="https://jammyhana-sys.github.io/Aiworkloadapp/icon-512.png">
@@ -20,7 +20,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<title>Demco Workload Timesheet V 1.0</title>
+<title>Dynamic Work Sync Platform V.1.0.1</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -164,7 +164,7 @@ header>*{min-width:0}
 </head>
 <body>
 <div id="login"><div class="box">
-  <h2>⏱ Demco Workload Timesheet V 1.0</h2>
+  <h2>⏱ Dynamic Work Sync Platform V.1.0.1</h2>
   <p class="hint">เข้าสู่ระบบเพื่อบันทึกงาน</p>
   <div id="loginMsg" class="err" style="margin:10px 0"></div>
   <form id="pwBox" class="pwbox hide">
@@ -216,7 +216,7 @@ header>*{min-width:0}
   </div>
 </div></div>
 <header>
-  <h1>⏱ Demco Workload Timesheet V 1.0</h1>
+  <h1>⏱ Dynamic Work Sync Platform V.1.0.1</h1>
   <nav>
     <button data-tab="log" class="on">บันทึกงาน</button>
     <button data-tab="hist">ประวัติ/สรุป</button>
@@ -2187,8 +2187,8 @@ async function requestReset(e){
   const tok=b64u(crypto.getRandomValues(new Uint8Array(32)));
   db.resets[e.id]={hash:await sha256(tok),exp:Date.now()+RESET_TTL,at:Date.now(),tries:0};save();
   const link=location.origin+location.pathname+'#reset='+encodeURIComponent(e.id)+'.'+tok;
-  const body=`เรียน ${e.name}\n\nมีการขอรีเซ็ตรหัสผ่านของระบบ Demco Workload Timesheet V 1.0 กรุณากดลิงก์ด้านล่างเพื่อตั้งรหัสผ่านใหม่ (ลิงก์ใช้ได้ 30 นาที ใช้ได้ครั้งเดียว และต้องเปิดบนอุปกรณ์เครื่องเดียวกับที่สร้างบัญชี)\n\n${link}\n\nหากคุณไม่ได้เป็นผู้ขอ ให้ละเว้นอีเมลนี้ รหัสผ่านเดิมจะยังใช้งานได้ตามปกติ`;
-  try{await sendMail(e.email,'รีเซ็ตรหัสผ่าน Demco Workload Timesheet V 1.0',body,link)}catch(er){delete db.resets[e.id];save();throw er}
+  const body=`เรียน ${e.name}\n\nมีการขอรีเซ็ตรหัสผ่านของระบบ Dynamic Work Sync Platform V.1.0.1 กรุณากดลิงก์ด้านล่างเพื่อตั้งรหัสผ่านใหม่ (ลิงก์ใช้ได้ 30 นาที ใช้ได้ครั้งเดียว และต้องเปิดบนอุปกรณ์เครื่องเดียวกับที่สร้างบัญชี)\n\n${link}\n\nหากคุณไม่ได้เป็นผู้ขอ ให้ละเว้นอีเมลนี้ รหัสผ่านเดิมจะยังใช้งานได้ตามปกติ`;
+  try{await sendMail(e.email,'รีเซ็ตรหัสผ่าน Dynamic Work Sync Platform V.1.0.1',body,link)}catch(er){delete db.resets[e.id];save();throw er}
   return 'sent';
 }
 $('#fgBox').onsubmit=async ev=>{ev.preventDefault();normDb();
