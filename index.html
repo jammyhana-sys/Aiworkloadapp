@@ -1065,12 +1065,30 @@ function renderApPerm(){
       <div><button class="btn pri">+ เพิ่มสิทธิ์</button></div></form>
     <div class="err" id="dgMsg" style="margin-top:6px"></div></div>
     <div class="card"><h2>สิทธิ์การเข้าถึงข้อมูลค่าใช้จ่ายโครงการ (Budget vs Actual)</h2>
-    <p class="hint">กำหนดระดับการเห็นข้อมูลในส่วน "บริหารค่าใช้จ่ายเทียบ Budget" ของหน้าภาพรวมผู้บริหาร — <b>ไม่เห็น</b> / <b>เห็นชั่วโมง</b> / <b>เห็นชั่วโมง + บาท</b> (บาท = ต้นทุนแรงงานรวมระดับโครงการ ไม่เปิดเผยเงินเดือนรายคน) · Role ของระบบ ใช้กับทุกโครงการ · Role อนุมัติ ใช้เฉพาะโครงการที่อยู่ในขอบเขต "รายโครงการ" หรือ "ทั้งบริษัท" ของผู้อนุมัติคนนั้น · ถ้ามีหลายสิทธิ์ ใช้ระดับที่สูงที่สุด · Super Admin เห็นทั้งหมดเสมอ</p>
-    <div class="scroll"><table><thead><tr><th>Role</th><th>ใช้กับ</th><th>ระดับการเห็นข้อมูล</th></tr></thead><tbody>
-      <tr><td>Super Admin</td><td class="hint">ทุกโครงการ</td><td><b>${CA_TH.cost}</b> <span class="hint">(คงที่)</span></td></tr>
-      ${CA_SUBJ.map(([k,l,w])=>`<tr><td>${esc(l)}</td><td class="hint">${w}</td><td><select data-ca="${k}" style="min-height:0;padding:5px 8px;min-width:170px">${Object.entries(CA_TH).map(([v,tx])=>`<option value="${v}" ${caOf(k)===v?'selected':''}>${tx}</option>`).join('')}</select></td></tr>`).join('')}
-    </tbody></table></div></div>`;
-  $$('[data-ca]').forEach(s=>s.onchange=()=>{db.costacc=db.costacc||[];const k=s.dataset.ca,r=db.costacc.find(x=>x.subject===k);if(r)r.level=s.value;else db.costacc.push({subject:k,level:s.value});save();costRep.at=0});
+    <p class="hint">กำหนดเป็น <b>กฎ</b> — เพิ่ม/ลบได้เอง ให้กับ <b>Role ระบบ</b>, <b>Role อนุมัติ</b> (PM/Mgr/ผอ./COO/CEO) หรือ <b>รายบุคคล</b> · ระดับ: ไม่เห็น / เห็นชั่วโมง / เห็นชั่วโมง + บาท (บาท = ต้นทุนแรงงานรวมระดับโครงการ ไม่เปิดเผยเงินเดือนรายคน) · ขอบเขต: <b>ทุกโครงการ</b> หรือ <b>ตามขอบเขตผู้อนุมัติ</b> (เฉพาะโครงการ/ทั้งบริษัทที่ผู้นั้นเป็นผู้อนุมัติ) · <b>ลบกฎ = เลิกสิทธิ์/ขอบเขตนั้น</b> · ถ้ามีหลายกฎ ใช้ระดับสูงสุด · ครบทุก Role ทั้ง 9 (Super Admin, Controller Admin, Project Admin, User, PM, Mgr, ผอ., COO, CEO) แก้ได้ทุกรายการ · ถ้าลบกฎของ Super Admin ระบบให้ Super Admin เห็นทั้งหมด (กันล็อกตัวเอง)</p>
+    <div class="scroll"><table><thead><tr><th>ผู้ถูกกำหนด</th><th>ขอบเขต</th><th>ระดับการเห็นข้อมูล</th><th></th></tr></thead><tbody>
+      ${caRules().map(r=>`<tr><td>${caLabel(r.subject)}</td><td><select data-cas="${esc(r.subject)}" style="min-height:0;padding:5px 8px;min-width:170px">${Object.entries(CA_SC).map(([v,tx])=>`<option value="${v}" ${r.scope===v?'selected':''}>${tx}</option>`).join('')}</select></td><td><select data-cal="${esc(r.subject)}" style="min-height:0;padding:5px 8px;min-width:170px">${Object.entries(CA_TH).map(([v,tx])=>`<option value="${v}" ${r.level===v?'selected':''}>${tx}</option>`).join('')}</select></td><td><button class="x" data-cadel="${esc(r.subject)}" title="ลบกฎ (เลิกสิทธิ์)">✕</button></td></tr>`).join('')||'<tr><td colspan="4" class="hint">ยังไม่มีกฎ — มีเพียง Super Admin ที่เห็น (ถ้าเพิ่งอัปเดตระบบ ให้รัน supabase_update_cost_access.sql และ supabase_update_cost_access2.sql เพื่อสร้างค่าเริ่มต้น)</td></tr>'}
+    </tbody></table></div>
+    <form id="caForm" class="row" style="margin-top:12px;align-items:end">
+      <div><label>ประเภทผู้ถูกกำหนด</label><select id="caType"><option value="sys">Role ระบบ</option><option value="ap">Role อนุมัติ</option><option value="emp">รายบุคคล</option></select></div>
+      <div id="caSubjBox"></div>
+      <div><label>ขอบเขต</label><select id="caScope"><option value="all">ทุกโครงการ</option><option value="scoped">ตามขอบเขตผู้อนุมัติ</option></select></div>
+      <div><label>ระดับ</label><select id="caLevel"><option value="hours">เห็นชั่วโมง</option><option value="cost">เห็นชั่วโมง + บาท</option><option value="none">ไม่เห็น</option></select></div>
+      <div><button class="btn pri">+ เพิ่มกฎ</button></div></form>
+    <div class="err" id="caMsg" style="margin-top:6px"></div></div>`;
+  const fillCa=()=>{const ty=$('#caType').value,b=$('#caSubjBox');
+    if(ty==='sys')b.innerHTML=`<label>Role ระบบ</label><select id="caSubj">${CA_SYS.map(([k,l])=>`<option value="${k}">${esc(l)}</option>`).join('')}</select>`;
+    else if(ty==='ap')b.innerHTML=`<label>Role อนุมัติ</label><select id="caSubj">${AP_ROLES.map(([k,l])=>`<option value="${k}">${esc(l)}</option>`).join('')}</select>`;
+    else{b.innerHTML=`<label>พนักงาน (ค้นหาได้)</label><select id="caSubj">${db.employees.slice().sort(byId).map(e=>`<option value="emp:${esc(e.id)}">${esc(e.id+' — '+e.name)}</option>`).join('')}</select>`;makeSearch('#caSubj')}
+    $('#caScope').value=ty==='ap'?'scoped':'all'};
+  fillCa();$('#caType').onchange=fillCa;
+  const caSet=(k,fld,v)=>{db.costacc=db.costacc||[];const r=db.costacc.find(x=>x.subject===k);if(r)r[fld]=v;save();costRep.at=0;renderApPerm()};
+  $$('[data-cas]').forEach(s=>s.onchange=()=>caSet(s.dataset.cas,'scope',s.value));
+  $$('[data-cal]').forEach(s=>s.onchange=()=>caSet(s.dataset.cal,'level',s.value));
+  $$('[data-cadel]').forEach(b=>b.onclick=()=>{if(!confirm('ลบกฎนี้? (ผู้ถูกกำหนดจะไม่ได้สิทธิ์จากกฎข้อนี้อีก)'))return;db.costacc=(db.costacc||[]).filter(x=>x.subject!==b.dataset.cadel);save();costRep.at=0;renderApPerm()});
+  $('#caForm').onsubmit=ev=>{ev.preventDefault();const m=$('#caMsg'),subject=$('#caSubj').value;if(!subject)return m.textContent='เลือกผู้ถูกกำหนดก่อน';
+    db.costacc=db.costacc||[];if(db.costacc.some(x=>x.subject===subject))return m.textContent='มีกฎของผู้ถูกกำหนดนี้อยู่แล้ว — แก้ไขในตารางด้านบน';
+    db.costacc.push({subject,level:$('#caLevel').value,scope:$('#caScope').value});save();costRep.at=0;renderApPerm()};
   const fillDg=()=>{const ty=$('#dgType').value,b=$('#dgKeyBox');
     if(ty==='emp')b.innerHTML=`<label>พนักงาน (ค้นหาได้)</label><select id="dgKey">${db.employees.slice().sort(byId).map(e=>`<option value="${esc(e.id)}">${esc(e.id+' — '+e.name)}</option>`).join('')}</select>`;
     else if(ty==='dept')b.innerHTML=`<label>ฝ่าย</label><select id="dgKey">${db.depts.slice().sort(byId).map(d=>`<option value="${esc(d.id)}">${esc(d.id+' '+d.name)}</option>`).join('')}</select>`;
@@ -1420,15 +1438,23 @@ function renderExec(D,proj){
    ระดับ: none = ไม่เห็น · hours = เห็นชั่วโมง · cost = เห็นชั่วโมง + บาท (ต้นทุนแรงงานรวมระดับโครงการ ไม่เห็นเงินเดือนรายคน)
    Super Admin เห็นทั้งหมดเสมอ · สิทธิ์ตาม Role ของระบบ = ทุกโครงการ · สิทธิ์ตาม Role อนุมัติ = เฉพาะโครงการในขอบเขต "รายโครงการ" หรือ "ทั้งบริษัท"
    ยอดใช้ไปตัดเมื่อรายการงานอนุมัติขั้นสุดท้าย · คำนวณที่ฐานข้อมูล (RPC project_cost_report) จึงครบทุกช่วงเวลา */
-const CA_SUBJ=[['controller_admin','Controller Admin','ทุกโครงการ'],['project_admin','Project Admin','ทุกโครงการ'],['user','User (พนักงานทั่วไป)','ทุกโครงการ'],['pm','PM','โครงการในขอบเขต'],['mgr','Mgr (ผู้จัดการ)','โครงการในขอบเขต'],['dir','ผู้บริหารฝ่าย / ผอ.','โครงการในขอบเขต'],['coo','COO','โครงการในขอบเขต'],['ceo','CEO','โครงการในขอบเขต']];
-const CA_DEFAULT={controller_admin:'cost',project_admin:'hours',user:'none',pm:'hours',mgr:'none',dir:'none',coo:'cost',ceo:'cost'};
+const CA_SYS=[['super_admin','Super Admin'],['controller_admin','Controller Admin'],['project_admin','Project Admin'],['user','User (พนักงานทั่วไป)']];
 const CA_TH={none:'ไม่เห็น',hours:'เห็นชั่วโมง',cost:'เห็นชั่วโมง + บาท'};
 const CA_LV={none:0,hours:1,cost:2};
-const caOf=s=>((db.costacc||[]).find(r=>r.subject===s)||{}).level||CA_DEFAULT[s]||'none';
-function myCostLevel(code){
-  if(isSuperAdmin)return 2;if(!me)return 0;
-  let lv=CA_LV[caOf(normRole(me.role))]||0;
-  myScopes().forEach(s=>{const ty=scTypeOf(s);if(ty==='all'||(ty==='project'&&s.key===code))lv=Math.max(lv,CA_LV[caOf(s.role)]||0)});
+const CA_SC={all:'ทุกโครงการ',scoped:'ตามขอบเขตผู้อนุมัติ'};
+const isApRole=s=>AP_ROLES.some(a=>a[0]===s);
+const caRules=()=>db.costacc||[];
+const caLabel=s=>{const sy=CA_SYS.find(x=>x[0]===s);if(sy)return '<span class="tag st">Role ระบบ</span> '+esc(sy[1]);
+  if(isApRole(s))return '<span class="tag sga">Role อนุมัติ</span> '+esc(AP_TH[s]);
+  if(String(s).startsWith('emp:')){const id=s.slice(4),e=find(db.employees,id);return '<span class="tag cost">รายบุคคล</span> '+esc(id)+' '+esc(e?e.name:'')}
+  return esc(s)};
+function myCostLevel(code){   // กฎหลายข้อ → ใช้ระดับสูงสุด · scoped = เฉพาะโครงการ/ทั้งบริษัทในขอบเขตผู้อนุมัติของตน
+  if(!me)return isSuperAdmin?2:0;if(isSuperAdmin&&!caRules().some(r=>r.subject==='super_admin'))return 2;   // ไม่มีกฎ Super Admin = เห็นทั้งหมด (กันล็อกตัวเอง)
+  const sc=myScopes(),hold=new Set(sc.map(s=>s.role));let lv=0;
+  caRules().forEach(r=>{const ap=isApRole(r.subject);
+    if(!(r.subject===normRole(me.role)||r.subject==='emp:'+me.id||(ap&&hold.has(r.subject))))return;
+    const ok=r.scope!=='scoped'||sc.some(s=>(!ap||s.role===r.subject)&&(scTypeOf(s)==='all'||(scTypeOf(s)==='project'&&s.key===code)));
+    if(ok)lv=Math.max(lv,CA_LV[r.level]||0)});
   return lv}
 const PTYPE_TH=k=>k==='sc_dp'?'Sales Contract (DP)':k==='sc_demco'?'Sales Contract (Demco)':KIND_TH(k);
 let costRep={rows:null,at:0,err:'',busy:false,src:''};
@@ -1503,7 +1529,7 @@ function renderCostBudget(proj,code){
     ${list.map(r=>{const rh=r.bh-r.uh,rb=(r.bb||0)-(r.ub||0);return `<tr><td>${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(PTYPE_TH(r.ptype))}</td><td class="n">${r.bh?xh(r.bh):'—'}</td><td class="n">${xh(r.uh)}</td><td class="n" style="${r.bh>0&&rh<0?'color:var(--bad);font-weight:700':''}">${r.bh?xh(rh):'—'}</td>
       ${hasB?(bc(r)?`<td class="n">${r.bb?xm(r.bb):'—'}</td><td class="n">${xm(r.ub||0)}</td><td class="n" style="${r.bb>0&&rb<0?'color:var(--bad);font-weight:700':''}">${r.bb?xm(rb):'—'}</td>`:'<td class="n hint" colspan="3">ไม่มีสิทธิ์ดูบาท</td>'):''}
       <td class="n" style="color:${r.$s.c};font-weight:600">${r.$s.p==null?'—':Math.round(r.$s.p)+'%'}</td><td class="n hint">${r.ph?xh(r.ph):'—'}</td><td><span class="tag" style="background:${r.$s.c}">${esc(r.$s.t)}</span></td></tr>`}).join('')||`<tr><td colspan="${hasB?12:9}" class="hint">ไม่พบรายการ</td></tr>`}</tbody></table></div>`;
-  const lvTxt=isSuperAdmin?'Super Admin — เห็นทั้งหมด':(()=>{const g=caOf(normRole(me?.role));return `ตาม Role ${esc(normRole(me?.role))}: ${CA_TH[g]}${myScopes().length?' · และตามขอบเขตผู้อนุมัติ':''}`})();
+  const lvTxt='ตามที่ Super Admin กำหนด (ระดับสูงสุดของกฎที่ตรงกับคุณ)';
   el.innerHTML=`<div class="xcard"><div class="dashhead" style="margin-bottom:8px"><div><h3 style="margin:0">💼 บริหารค่าใช้จ่ายเทียบ Budget (ต้นทุนแรงงานต่อโครงการ)</h3>
       <div class="hint">ยอดสะสมตั้งแต่เริ่มโครงการ (ไม่ขึ้นกับช่วงเวลาที่เลือกด้านบน) · ตัด Budget เมื่อรายการงานอนุมัติขั้นสุดท้าย · สิทธิ์ของคุณ: ${lvTxt}</div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center" class="noprint">${hasB?`<div class="seg2" style="display:inline-flex"><button data-cbu="h" class="${U2?'':'on'}">ชั่วโมง</button><button data-cbu="b" class="${U2?'on':''}">บาท (฿)</button></div>`:''}<button class="btn" id="cbX">⬇ Excel</button><button class="btn" id="cbR" title="ดึงข้อมูลล่าสุด">⟳</button></div></div>
@@ -2428,7 +2454,7 @@ TBL.salary={t:'salary_rates',pk:'id',admin:true,sup:true,key:r=>r.id,
   from:r=>({id:r.id,scope:r.scope,key:r.key,amount:Number(r.amount),updatedBy:r.updated_by||'',updatedAt:r.updated_at||''})};
 TBL.deleg={t:'entry_delegates',pk:'id',admin:true,sup:true,key:r=>r.id,
   to:r=>({id:r.id,delegate_id:r.empId,scope_type:r.type,scope_key:r.key}),from:r=>({id:r.id,empId:r.delegate_id,type:r.scope_type,key:r.scope_key})};
-TBL.costacc={t:'cost_access',pk:'subject',admin:true,sup:true,key:r=>r.subject,to:r=>({subject:r.subject,level:r.level}),from:r=>({subject:r.subject,level:r.level})};
+TBL.costacc={t:'cost_access',pk:'subject',admin:true,sup:true,key:r=>r.subject,to:r=>({subject:r.subject,level:r.level,scope:r.scope==='scoped'?'scoped':'all'}),from:r=>({subject:r.subject,level:r.level,scope:r.scope==='scoped'?'scoped':'all'})};
 TBL.ui={t:'app_settings',pk:'key',admin:true,key:r=>r.key,to:o=>({key:'ui',value:o.value}),from:r=>({id:r.key,value:r.value})};
 function emptyCloudDb(){const s=seed();return{...s,employees:[],depts:[],projects:[],contracts:[],assign:[],holidays:[],timesheets:[],salary:[],perms:[],scopes:[],deleg:[],costacc:[],regs:[],admins:[],ui:[],settings:{regOpen:true,autoApprove:false}}}
 function rowsOf(k){const s=TBL[k];return new Map(db[k].map(x=>s.to(x)).filter(r=>k!=='employees'||r.email).map(r=>[s.key(r),r]))}
@@ -2438,7 +2464,7 @@ function setSync(st,msg){
   el.textContent=st==='saving'?'☁ กำลังบันทึก…':st==='ok'?'☁ บันทึกแล้ว':'⚠ บันทึกไม่สำเร็จ';
   el.title=msg||'';el.style.color=st==='err'?'#ffd0d0':'';
   if(st==='err'&&msg&&msg!==setSync.last){setSync.last=msg;   // แจ้งสาเหตุให้ชัด (ส่วนมากคือยังไม่ได้รัน SQL อัปเดตฐานข้อมูล)
-    const sql=/cost_access|project_cost_report/.test(msg)?'supabase_update_cost_access.sql':/budget_hours|budget_baht|entry_delegates/.test(msg)?'supabase_update_budget_delegate.sql':/updated_by|updated_at/.test(msg)?'supabase_update_import_log.sql':/company/.test(msg)?'supabase_update_company.sql':/approved_by|approved_at|reject_note|timesheets_status_check|Pending/.test(msg)?'supabase_update_approval_flow.sql':/salary_rates/.test(msg)?'supabase_update_salary.sql':/employees_role_check|role/.test(msg)?'supabase_update_roles.sql':'';
+    const sql=/cost_access|project_cost_report/.test(msg)?'supabase_update_cost_access.sql และ supabase_update_cost_access2.sql':/budget_hours|budget_baht|entry_delegates/.test(msg)?'supabase_update_budget_delegate.sql':/updated_by|updated_at/.test(msg)?'supabase_update_import_log.sql':/company/.test(msg)?'supabase_update_company.sql':/approved_by|approved_at|reject_note|timesheets_status_check|Pending/.test(msg)?'supabase_update_approval_flow.sql':/salary_rates/.test(msg)?'supabase_update_salary.sql':/employees_role_check|role/.test(msg)?'supabase_update_roles.sql':'';
     setTimeout(()=>alert('บันทึกขึ้นระบบกลางไม่สำเร็จ\n\n'+(sql?'น่าจะยังไม่ได้รัน SQL อัปเดตฐานข้อมูล: '+sql+'\n(Supabase > SQL Editor > วางไฟล์ > Run) แล้วรีเฟรชแอป\n\n':'')+'รายละเอียด: '+msg+'\n\nข้อมูลที่เพิ่งเพิ่มยังอยู่ในหน้าจอนี้ แต่จะหายเมื่อรีเฟรช จนกว่าจะแก้สาเหตุข้างต้น'),50)}
   if(st==='ok')setSync.last='';
 }
