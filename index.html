@@ -485,7 +485,7 @@ header>*{min-width:0}
   </div>
   <div class="card"><h2>นำเข้าสมาชิกจาก Excel (อัปเดตอัตโนมัติ)</h2>
     <p class="hint">ไฟล์ .xlsx คอลัมน์: <b>Emp.No, Name, Email, Dept, Level, Position, Nickname, Role, WorkSat, Active</b> — จับคู่ด้วย <b>Emp.No</b>: ไม่มีในระบบ = <b>เพิ่มใหม่</b> (ต้องมี Name และ Email) · มีแล้ว = <b>อัปเดตเฉพาะช่องที่กรอก</b> (ช่องว่างไม่แก้) · ไม่ลบสมาชิกที่ไม่อยู่ในไฟล์ · Role: user / project_admin / controller_admin / super_admin · WorkSat และ Active ใช้ 1/0 · ถ้า Emp.No เป็นตัวเลขที่ Excel ตัดเลข 0 หน้าออก ระบบเติมให้ครบ 5 หลัก (แนะนำให้ตั้งคอลัมน์เป็น Text)</p>
-    <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink);margin:10px 0"><input type="checkbox" id="mpPre" style="width:auto;min-height:0;margin-top:4px"> <span>อนุมัติล่วงหน้าให้สมาชิกที่เพิ่มใหม่ (ใช้งานได้ทันทีเมื่อสมัครด้วยอีเมลตรงกัน)<br><span class="hint">ความเสี่ยง: ระบบยังไม่ยืนยันอีเมล ใครสมัครด้วยอีเมลของคนอื่นจะได้สิทธิ์นั้นทันที แนะนำให้ปิดไว้แล้วอนุมัติทีละคนในตารางสมาชิก</span></span></label>
+    <p class="hint" style="margin:10px 0">🔒 สมาชิกที่นำเข้าจะ <b>ไม่ถูกอนุมัติล่วงหน้า</b> — เมื่อพนักงานสมัครสมาชิกแล้วต้องรอ Admin กด "อนุมัติ" ที่ตารางสมาชิกก่อนจึงใช้งานได้</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <label class="btn pri" style="display:inline-block;cursor:pointer">⬆ เลือกไฟล์ Excel สมาชิก<input type="file" id="mpImp" accept=".xlsx,.xls" class="hide"></label>
       <button class="btn" id="mpTpl">⬇ ส่งออกรายชื่อปัจจุบัน / ไฟล์ต้นแบบ</button>
@@ -2107,7 +2107,7 @@ $('#mpImp').onchange=async ev=>{
       const e=nd.find(z=>z.id===id);
       if(!e){
         if(!name||!email){skip.push(`แถว ${line}: ${id} พนักงานใหม่ต้องมี Name และ Email`);return}
-        nd.push({id,name,email,dept,level,position:pos,nick,role:role||'user',workSat:sat!==''&&B(sat),active:act===''?true:B(act),approved:$('#mpPre').checked});add++;return}
+        nd.push({id,name,email,dept,level,position:pos,nick,role:role||'user',workSat:sat!==''&&B(sat),active:act===''?true:B(act),approved:false});add++;return}
       const before=JSON.stringify(e);
       if(name)e.name=name;if(dept)e.dept=dept;if(level)e.level=level;if(pos)e.position=pos;if(nick)e.nick=nick;
       if(sat!=='')e.workSat=B(sat);
@@ -2121,7 +2121,7 @@ $('#mpImp').onchange=async ev=>{
     if(!add&&!upd&&!same&&!skip.length)return msg.textContent='ไม่พบแถวข้อมูล (ต้องมีคอลัมน์ Emp.No)';
     const sum=`เพิ่มใหม่ ${add} · อัปเดต ${upd} · เหมือนเดิม ${same} · ข้าม ${skip.length}${newDept?` · สร้างฝ่ายใหม่ ${newDept}`:''}`;
     if(!add&&!upd&&!newDept)return msg.innerHTML=esc(sum)+(skip.length?'<br>'+skip.slice(0,8).map(esc).join('<br>'):'')+'<br>ไม่มีการเปลี่ยนแปลง';
-    if(!confirm('สรุปการนำเข้าสมาชิก\n'+sum+(skip.length?'\n\nรายการที่ข้าม:\n'+skip.slice(0,6).join('\n')+(skip.length>6?`\n… และอีก ${skip.length-6}`:''):'')+(add&&$('#mpPre').checked?'\n\n⚠ สมาชิกใหม่จะถูกอนุมัติล่วงหน้า':'')+'\n\nดำเนินการต่อ?'))return msg.textContent='ยกเลิกแล้ว';
+    if(!confirm('สรุปการนำเข้าสมาชิก\n'+sum+(skip.length?'\n\nรายการที่ข้าม:\n'+skip.slice(0,6).join('\n')+(skip.length>6?`\n… และอีก ${skip.length-6}`:''):'')+'\n\nดำเนินการต่อ?'))return msg.textContent='ยกเลิกแล้ว';
     db.employees=nd;db.depts=depts;if(me)me=find(db.employees,me.id)||me;save();renderMem();fillEmp();
     msg.innerHTML='นำเข้าสำเร็จ — '+esc(sum)+(skip.length?'<br><span style="color:var(--bad)">'+skip.slice(0,10).map(esc).join('<br>')+'</span>':'');
   }catch(e){msg.textContent='นำเข้าไม่สำเร็จ: '+e.message}
@@ -2477,7 +2477,7 @@ if(CLOUD){
       n.textContent='เพิ่มรายชื่อสมาชิก (พร้อมอีเมล) ที่นี่ก่อน แล้วให้พนักงานกด "สมัครสมาชิก" ที่หน้า login (หรือให้พนักงานสมัครเองได้เลยโดยไม่ต้องมีรายชื่อก่อน) แล้วตรวจสอบข้อมูลและกด "อนุมัติ" ที่แถวของเขา — ผู้สมัครใหม่จะอยู่สถานะ "รออนุมัติ" และยังใช้งานไม่ได้ (ไม่มีการเก็บรหัสผ่านในแอป)';
       $('#tab-mem').insertBefore(n,$('#tab-mem').firstChild)}
     [...$('#memList').children].forEach((tr,i)=>{const e=db.employees[i],td=tr.lastElementChild;if(!e||!td)return;
-      const stc=tr.children[4];if(stc)stc.innerHTML=!e.linked?'<span class="tag st">ยังไม่สมัคร</span>'+(e.approved?' <span class="hint">(อนุมัติล่วงหน้า)</span>':''):(e.approved?'<span class="tag cost">ใช้งานได้</span>':'<span class="tag sga">รออนุมัติ</span>');
+      const stc=tr.children[4];if(stc)stc.innerHTML=!e.linked?'<span class="tag st">ยังไม่สมัคร</span>':(e.approved?'<span class="tag cost">ใช้งานได้</span>':'<span class="tag sga">รออนุมัติ</span>');
       if(stc&&e.lineLinked)stc.innerHTML+=' <span class="hint">LINE ✓</span>';
       const selfRow=me&&me.id===e.id;
       const pendBtns=(!selfRow&&e.linked&&!e.approved)?`<button class="btn" style="padding:4px 10px;color:var(--bad)" data-crej="${esc(e.id)}" title="ปฏิเสธและลบคำขอสมัครนี้">ปฏิเสธ</button> <button class="btn" style="padding:4px 10px" data-cid="${esc(e.id)}" title="แก้รหัสพนักงานให้ถูกต้อง">แก้รหัส</button> `:'';
