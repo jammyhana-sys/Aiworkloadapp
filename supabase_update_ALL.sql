@@ -417,3 +417,99 @@ drop policy if exists ts_delegate_write on public.timesheets;
 create policy ts_delegate_write on public.timesheets for all to authenticated
   using (public.can_enter_for(emp_id) and status in ('Draft','Pending'))
   with check (public.can_enter_for(emp_id) and status in ('Draft','Pending'));
+
+-- ===== supabase_update_cost_access.sql =====
+-- v62: บริหารค่าใช้จ่ายโครงการ (Budget vs Actual) + สิทธิ์การเข้าถึงข้อมูลตามระดับ
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_budget_delegate.sql) — รันซ้ำได้
+
+-- 1) ตารางระดับสิทธิ์: none = ไม่เห็น · hours = เห็นชั่วโมง · cost = เห็นชั่วโมง + บาท
+--    subject = Role ของระบบ (controller_admin / project_admin / user) หรือ Role อนุมัติ (pm / mgr / dir / coo / ceo)
+create table if not exists public.cost_access (
+  subject text primary key check (subject in ('controller_admin','project_admin','user','pm','mgr','dir','coo','ceo')),
+  level   text not null default 'none' check (level in ('none','hours','cost'))
+);
+insert into public.cost_access (subject, level) values
+  ('controller_admin','cost'), ('project_admin','hours'), ('user','none'),
+  ('pm','hours'), ('mgr','none'), ('dir','none'), ('coo','cost'), ('ceo','cost')
+on conflict (subject) do nothing;
+
+alter table public.cost_access enable row level security;
+revoke all on public.cost_access from anon;
+drop policy if exists ca_read on public.cost_access;
+create policy ca_read on public.cost_access for select to authenticated using (true);
+drop policy if exists ca_super on public.cost_access;
+create policy ca_super on public.cost_access for all to authenticated
+  using (public.is_super_admin()) with check (public.is_super_admin());
+
+-- 2) รายงาน Budget vs Actual รายโครงการ — คำนวณที่ฐานข้อมูล (ครบทุกช่วงเวลา) และคืนเฉพาะที่ผู้เรียกมีสิทธิ์
+--    ยอดใช้ไป = รายการงานที่อนุมัติขั้นสุดท้ายแล้ว · บาท = ชั่วโมง × (เงินเดือน ÷ ชั่วโมงมาตรฐาน/เดือน)
+--    ผู้ที่ไม่ใช่ Super Admin ได้เพียงยอดรวมระดับโครงการ ไม่เห็นเงินเดือนรายคน
+create or replace function public.project_cost_report()
+returns table (code text, name text, ptype text, lvl text,
+               budget_hours numeric, budget_baht numeric,
+               used_hours numeric, used_baht numeric, pending_hours numeric, months jsonb)
+language plpgsql stable security definer set search_path = public as $$
+#variable_conflict use_column
+declare
+  v_me     public.employees%rowtype;
+  v_global int;
+  v_hpm    numeric;
+begin
+  select * into v_me from public.employees where user_id = auth.uid() and active and approved limit 1;
+  if v_me.id is null then return; end if;
+
+  v_hpm := coalesce((select amount from public.salary_rates where scope = 'config' and key = 'hours'), 160);
+  if v_hpm <= 0 then v_hpm := 160; end if;
+
+  v_global := case when v_me.role in ('super_admin','admin') then 2
+                   else coalesce((select case level when 'cost' then 2 when 'hours' then 1 else 0 end
+                                    from public.cost_access where subject = v_me.role), 0) end;
+
+  return query
+  with codes as (
+    select p.id as c_code, p.name as c_name, p.kind as c_type, p.budget_hours as bh, p.budget_baht as bb from public.projects p
+    union all
+    select c.id, c.name, 'sc_' || lower(c.company), c.budget_hours, c.budget_baht from public.contracts c
+  ),
+  acc as (
+    select k.*, greatest(v_global, coalesce((
+      select max(case a.level when 'cost' then 2 when 'hours' then 1 else 0 end)
+        from public.approver_scopes s join public.cost_access a on a.subject = s.role
+       where s.emp_id = v_me.id
+         and (s.scope_type = 'all' or (s.scope_type = 'project' and s.scope_key = k.c_code))), 0)) as lv
+    from codes k
+  ),
+  ent as (
+    select e->>'code' as e_code, (e->>'hours')::numeric as h, to_char(t.day, 'YYYY-MM') as ym, t.emp_id as e_emp,
+           case when (e->'ap'->>'s') = 'A' or (e->'ap' is null and t.status = 'Submitted') then 'A'
+                when (e->'ap'->>'s') = 'P' or (e->'ap' is null and t.status = 'Pending')   then 'P' end as st
+      from public.timesheets t, jsonb_array_elements(t.entries) e
+     where coalesce(e->>'code', '') <> ''
+  ),
+  rate as (
+    select em.id as r_emp, coalesce(
+      (select amount from public.salary_rates where scope = 'emp'   and key = em.id),
+      (select amount from public.salary_rates where scope = 'level' and key = em.level and coalesce(em.level,'') <> ''),
+      (select amount from public.salary_rates where scope = 'dept'  and key = em.dept  and coalesce(em.dept,'')  <> '')) / v_hpm as r
+    from public.employees em
+  ),
+  agg as (
+    select ent.e_code, ent.ym, ent.st, sum(ent.h) as h, sum(ent.h * coalesce(rate.r, 0)) as b
+      from ent left join rate on rate.r_emp = ent.e_emp
+     where ent.st is not null
+     group by 1, 2, 3
+  )
+  select a.c_code, a.c_name, a.c_type,
+         case when a.lv >= 2 then 'cost' else 'hours' end,
+         a.bh,
+         case when a.lv >= 2 then a.bb end,
+         coalesce((select sum(g.h) from agg g where g.e_code = a.c_code and g.st = 'A'), 0),
+         case when a.lv >= 2 then coalesce((select round(sum(g.b), 2) from agg g where g.e_code = a.c_code and g.st = 'A'), 0) end,
+         coalesce((select sum(g.h) from agg g where g.e_code = a.c_code and g.st = 'P'), 0),
+         coalesce((select jsonb_agg(jsonb_build_object('ym', g.ym, 'h', g.h, 'b', case when a.lv >= 2 then round(g.b, 2) end) order by g.ym)
+                     from agg g where g.e_code = a.c_code and g.st = 'A'), '[]'::jsonb)
+    from acc a
+   where a.lv >= 1;
+end $$;
+revoke all on function public.project_cost_report() from public, anon;
+grant execute on function public.project_cost_report() to authenticated;
