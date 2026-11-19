@@ -235,7 +235,7 @@ header>*{min-width:0}
 <section id="tab-log">
   <div class="card">
     <div class="row">
-      <div><label>ผู้บันทึก (ตามบัญชีที่ login)</label><div id="meBox" class="meBox"></div><select id="emp" class="hide"></select></div>
+      <div><label id="empLbl">ผู้บันทึก (ตามบัญชีที่ login)</label><div id="meBox" class="meBox"></div><select id="emp" class="hide"></select></div>
       <div><label>วันที่ทำงาน</label><input type="date" id="date"></div>
     </div>
     <div class="sum" id="empInfo"></div>
@@ -404,7 +404,7 @@ header>*{min-width:0}
   </div>
   <div id="salaryCard"></div>
   <div class="card"><h2>นำเข้ารหัสโครงการ (Cost / MT / Backlog / Sales Contract) + Assign จาก Excel</h2>
-    <p class="hint">เลือกไฟล์ .xlsx ที่มีคอลัมน์ <b>Project Code, Project Name</b> (ชีต Projects หรือชีตแรก; มีคอลัมน์ <b>Kind</b> = cost / mt / backlog / <b>sc_demco</b> / <b>sc_dp</b> (Sales Contract ของ Demco / DP) ได้ ถ้าไม่มีระบบจัดให้เอง: รหัสลงท้าย -MT = mt ที่เหลือ = cost) รวมอยู่ตารางเดียวกันทั้งหมด · ชีต <b>Assignments</b> (Emp.No, Code) เพิ่มการ assign แบบไม่ลบของเดิม (นำเข้าสมาชิกก่อน) · ใช้ชีต SalesContracts แยกได้เหมือนเดิม และ/หรือชีต SalesContracts (คอลัมน์ <b>Sales Contract No., Sales Contract Name, Company</b> = DP / Demco; ไม่ใส่ = Demco) — ระบบ<b>เพิ่มรหัสใหม่ + อัปเดตชื่อ/ประเภทของรหัสเดิม</b> ไม่ลบรหัสอื่นที่มีอยู่ และตัดรหัสซ้ำในไฟล์ให้เอง</p>
+    <p class="hint">เลือกไฟล์ .xlsx ที่มีคอลัมน์ <b>Project Code, Project Name</b> (ชีต Projects หรือชีตแรก; มีคอลัมน์ <b>Kind</b> = cost / mt / backlog / <b>sc_demco</b> / <b>sc_dp</b> (Sales Contract ของ Demco / DP) ได้ ถ้าไม่มีระบบจัดให้เอง: รหัสลงท้าย -MT = mt ที่เหลือ = cost) รวมอยู่ตารางเดียวกันทั้งหมด · ชีต <b>Assignments</b> (Emp.No, Code) เพิ่มการ assign แบบไม่ลบของเดิม (นำเข้าสมาชิกก่อน) · ใช้ชีต SalesContracts แยกได้เหมือนเดิม และ/หรือชีต SalesContracts (คอลัมน์ <b>Sales Contract No., Sales Contract Name, Company</b> = DP / Demco; ไม่ใส่ = Demco) — ระบบ<b>เพิ่มรหัสใหม่ + อัปเดตชื่อ/ประเภทของรหัสเดิม</b> ไม่ลบรหัสอื่นที่มีอยู่ และตัดรหัสซ้ำในไฟล์ให้เอง · คอลัมน์ <b>Budget Hours</b> (และ <b>Budget Baht</b> สำหรับ Super Admin) = ยอด Budget ตั้งต้น — ช่องว่าง = ไม่แก้ยอดเดิม</p>
     <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="pjOff" style="width:auto;min-height:0"> ปิดการใช้งานรหัสโครงการที่ไม่อยู่ในไฟล์ (ไม่ลบ ย้อนกลับได้)</label>
     <label class="btn pri" style="display:inline-block;cursor:pointer">⬆ เลือกไฟล์ Excel โครงการ<input type="file" id="pjImp" accept=".xlsx,.xls" class="hide"></label>
     <div class="hint" id="pjMsg" style="margin-top:8px"></div>
@@ -624,11 +624,17 @@ $$('nav button').forEach(b=>b.onclick=()=>{
 
 /* ---- log ---- */
 let cat='Cost';
+/* ===== สิทธิ์บันทึกงานแทนผู้อื่น (entry_delegates): รายบุคคล / รายฝ่าย / ทั้งบริษัท ===== */
+const delegTargets=()=>{if(!me)return[];const ds=(db.deleg||[]).filter(d=>d.empId===me.id);if(!ds.length)return[];
+  return db.employees.filter(e=>e.id!==me.id&&e.active!==false&&ds.some(d=>d.type==='all'||(d.type==='emp'&&d.key===e.id)||(d.type==='dept'&&d.key===e.dept))).sort(byId)};
 function fillEmp(){
   const keep=$('#emp').value;
-  const pool=me?[me]:[];
-  $('#emp').innerHTML=opt(pool,e=>`${e.id} — ${e.name}${e.nick?` (${e.nick})`:''}`);
-  $('#emp').value=me?me.id:'';$('#meBox').textContent=me?(me.id+' — '+me.name+(me.nick?' ('+me.nick+')':'')):'บัญชีนี้ยังไม่ผูกกับรหัสพนักงาน';
+  const pool=me?[me,...delegTargets()]:[],multi=pool.length>1;
+  $('#emp').innerHTML=opt(pool,e=>`${e.id} — ${e.name}${e.nick?` (${e.nick})`:''}${me&&e.id!==me.id?' · บันทึกแทน':''}`);
+  $('#emp').value=pool.some(e=>e.id===keep)?keep:(me?me.id:'');
+  $('#emp').classList.toggle('hide',!multi);$('#meBox').classList.toggle('hide',multi);
+  $('#empLbl').textContent=multi?'บันทึกงานของ (ตนเอง หรือบันทึกแทนผู้อื่น)':'ผู้บันทึก (ตามบัญชีที่ login)';
+  $('#meBox').textContent=me?(me.id+' — '+me.name+(me.nick?' ('+me.nick+')':'')):'บัญชีนี้ยังไม่ผูกกับรหัสพนักงาน';
 }
 /* รหัสอ้างอิง SG&A มี 4 ประเภท: Backlog No. (DP) · Sale Contract No. (DP) · Sale Contract No. (Demco) · MT Code (Demco) */
 const REF_TH={scDemco:'Sale Contract No. (Demco)',scDP:'Sale Contract No. (DP)',backlog:'Backlog No. (DP)',mt:'MT Code (Demco)'};
@@ -845,7 +851,7 @@ function renderLog(){
   $('#remain').textContent=diff>0?`เหลืออีก ${diff} ชม.`:diff<0?`เกิน ${-diff} ชม.`:'ครบ 8 ชม. ✓';
   $('#entries').innerHTML=(t?.entries||[]).map((x,i)=>{
     const lbl=x.cat==='Cost'?`${esc(x.code)} ${esc(entryName(x))}`:`${esc(x.sgaId)}: ${esc(find(db.sgaTypes,x.sgaId)?.name||'')}${x.code?` <span class="hint">(${esc(x.code)} ${esc(entryName(x))})</span>`:''}`;
-    return `<tr><td class="hint">${txNo(t,i)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${typeTag(x.code)}</td><td>${esc(x.note)}</td><td class="n">${x.hours}</td><td>${apBadge(t,x)}</td><td style="white-space:nowrap">${(locked||entState(t,x)==='A')?'':`<button class="x" style="color:var(--pri)" data-edit="${x.id}" title="แก้ไขรายการนี้">✎</button><button class="x" data-del="${x.id}" title="ลบ">✕</button>`}</td></tr>`}).join('')
+    return `<tr><td class="hint">${txNo(t,i)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${typeTag(x.code)}</td><td>${esc(x.note)}${x.rbn?`<div class="hint">✎ บันทึกแทนโดย ${esc(x.rbn)}</div>`:''}</td><td class="n">${x.hours}</td><td>${apBadge(t,x)}</td><td style="white-space:nowrap">${(locked||entState(t,x)==='A')?'':`<button class="x" style="color:var(--pri)" data-edit="${x.id}" title="แก้ไขรายการนี้">✎</button><button class="x" data-del="${x.id}" title="ลบ">✕</button>`}</td></tr>`}).join('')
     ||'<tr><td colspan="8" class="hint">ยังไม่มีรายการ</td></tr>';
   $$('[data-edit]').forEach(b=>b.onclick=()=>startEdit(b.dataset.edit));
   $$('[data-del]').forEach(b=>b.onclick=()=>{if(editId===b.dataset.del)stopEdit();t.entries=t.entries.filter(x=>x.id!==b.dataset.del);if(!t.entries.length)db.timesheets=db.timesheets.filter(x=>x!==t);save();renderLog()});
@@ -872,6 +878,7 @@ $('#add').onclick=()=>{
   const hours=+$('#hours').value;
   if(!Number.isInteger(hours)||hours<1)return err('กรอกชั่วโมงเป็นจำนวนเต็ม ตั้งแต่ 1 ขึ้นไป (ไม่ลงนาที)');
   const x={id:'E'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),cat,hours,note:$('#note').value.trim()};
+  if(me&&$('#emp').value!==me.id){x.rb=me.id;x.rbn=me.name}                       // บันทึกแทนผู้อื่น
   if(cat==='Cost'){x.code=$('#project').value;if(!x.code)return err('กรุณาเลือกโครงการ')}
   else{x.sgaId=$('#sga').value;const s=find(db.sgaTypes,x.sgaId);if(!s)return err('กรุณาเลือกประเภท SG&A');
     if(refsOf(s).length){x.code=$('#ref').value;if(!x.code)return err(`ประเภท ${s.id} ต้องเลือก ${refsOf(s).map(r=>REF_TH[r]).join(' / ')}`)}}
@@ -924,7 +931,8 @@ const meName=()=>(me&&me.name)||(user&&user.name)||'';
 function canApproveEntry(t,x){
   if(entState(t,x)!=='P')return false;
   if(isSuperAdmin)return true;                                         // Super Admin อนุมัติแทน/ข้ามขั้นได้
-  if(!me||t.empId===me.id)return false;                                // อนุมัติรายการของตัวเองไม่ได้
+  if(!me||t.empId===me.id)return false;
+  if(x.rb&&x.rb===me.id)return false;                                   // ผู้บันทึกแทน อนุมัติรายการที่ตนบันทึกเองไม่ได้                                // อนุมัติรายการของตัวเองไม่ได้
   const nr=nextRole(t,x);                                              // ถึงคิวของ Role นี้เท่านั้น
   return !!nr&&myScopes().some(s=>s.role===nr&&scopeMatch(s,t,x));
 }
@@ -1022,7 +1030,9 @@ $('#apprRef').onclick=()=>renderAppr();
 /* ----- ตาราง Role and permission (ลำดับขั้น) + ผู้อนุมัติและขอบเขต (เมนูสมาชิก · Super Admin) ----- */
 function renderApPerm(){
   const host=$('#apPermCard');if(!host)return;if(!isSuperAdmin){host.innerHTML='';return}
-  db.perms=db.perms||[];db.scopes=db.scopes||[];
+  db.perms=db.perms||[];db.scopes=db.scopes||[];db.deleg=db.deleg||[];
+  const dgTxt=d=>d.type==='all'?'<span class="tag st">ทั้งบริษัท</span>':d.type==='dept'?'<span class="tag st">ฝ่าย</span> '+esc(d.key)+' '+esc((find(db.depts,d.key)||{}).name||''):'<span class="tag st">รายบุคคล</span> '+esc(d.key)+' '+esc((find(db.employees,d.key)||{}).name||'');
+  const dgList=db.deleg.slice().sort((a,b)=>String(a.empId).localeCompare(String(b.empId))).map(d=>{const e=find(db.employees,d.empId)||{};return `<tr><td>${esc(d.empId)} ${esc(e.name||'')}</td><td>${dgTxt(d)}</td><td><button class="x" data-ddel="${esc(d.id)}" title="ลบ">✕</button></td></tr>`}).join('')||'<tr><td colspan="3" class="hint">ยังไม่มีการกำหนดสิทธิ์บันทึกแทน</td></tr>';
   const psel=(role,cat)=>{const v=permOf(role,cat);return `<select data-pp="${role}|${cat}" style="min-height:0;padding:5px 8px;min-width:128px"><option value="no" ${v==='no'?'selected':''}>— ไม่เกี่ยวข้อง</option><option value="na" ${v==='na'?'selected':''}>N/A</option>${[1,2,3,4,5].map(n=>`<option value="${n}" ${v===String(n)?'selected':''}>ขั้นที่ ${n}</option>`).join('')}</select>`};
   const flow=cat=>{const rs=AP_ROLES.map(r=>r[0]).filter(r=>stepOf(r,cat)!==null).sort((a,b)=>stepOf(a,cat)-stepOf(b,cat));return rs.length?rs.map(r=>`<b>${esc(AP_SHORT[r])}</b>`).join(' → '):'<span class="hint">ไม่มี (ไม่ต้องอนุมัติ)</span>'};
   const matrix=`<div class="scroll"><table><thead><tr><th>รายการ</th>${AP_ROLES.map(([k,l])=>`<th style="text-align:center">${esc(l)}</th>`).join('')}</tr></thead><tbody>
@@ -1044,7 +1054,28 @@ function renderApPerm(){
       <div><label>ขอบเขตการอนุมัติ</label><select id="apType"><option value="project">รายโครงการ</option><option value="dept">รายฝ่าย</option><option value="emp">รายบุคคล</option><option value="all">ทั้งบริษัท</option></select></div>
       <div id="apScopeBox"></div>
       <div><button class="btn pri">+ เพิ่มผู้อนุมัติ</button></div></form>
-    <div class="err" id="apMsg" style="margin-top:6px"></div></div>`;
+    <div class="err" id="apMsg" style="margin-top:6px"></div></div>
+    <div class="card"><h2>สิทธิ์บันทึกงานแทนผู้อื่น</h2>
+    <p class="hint">กำหนดให้พนักงานบันทึกชั่วโมงทำงาน <b>แทน</b> พนักงานรายบุคคล / รายฝ่าย / ทั้งบริษัท ได้ — ผู้บันทึกแทนจะเห็นช่องเลือกพนักงานในหน้า "บันทึกงาน" · รายการที่บันทึกแทนจะแสดง "บันทึกแทนโดย …" และต้องผ่านการอนุมัติตามสายเดิม · ผู้บันทึกแทนอนุมัติรายการที่ตนเองบันทึกแทนไม่ได้ (ยกเว้น Super Admin) · ผู้บันทึกแทนแก้ไข/ลบ/ส่งใบงานแทนได้เฉพาะใบที่ยังเป็น Draft / รออนุมัติ</p>
+    <div class="scroll"><table><thead><tr><th>ผู้บันทึกแทน</th><th>บันทึกแทนให้</th><th></th></tr></thead><tbody>${dgList}</tbody></table></div>
+    <form id="dgForm" class="row" style="margin-top:12px;align-items:end">
+      <div style="grid-column:span 2"><label>ผู้บันทึกแทน (พิมพ์ค้นหารหัส/ชื่อ)</label><select id="dgEmp">${db.employees.slice().sort(byId).map(e=>`<option value="${esc(e.id)}">${esc(e.id+' — '+e.name)}</option>`).join('')}</select></div>
+      <div><label>ขอบเขต</label><select id="dgType"><option value="emp">รายบุคคล</option><option value="dept">รายฝ่าย</option><option value="all">ทั้งบริษัท</option></select></div>
+      <div id="dgKeyBox"></div>
+      <div><button class="btn pri">+ เพิ่มสิทธิ์</button></div></form>
+    <div class="err" id="dgMsg" style="margin-top:6px"></div></div>`;
+  const fillDg=()=>{const ty=$('#dgType').value,b=$('#dgKeyBox');
+    if(ty==='emp')b.innerHTML=`<label>พนักงาน (ค้นหาได้)</label><select id="dgKey">${db.employees.slice().sort(byId).map(e=>`<option value="${esc(e.id)}">${esc(e.id+' — '+e.name)}</option>`).join('')}</select>`;
+    else if(ty==='dept')b.innerHTML=`<label>ฝ่าย</label><select id="dgKey">${db.depts.slice().sort(byId).map(d=>`<option value="${esc(d.id)}">${esc(d.id+' '+d.name)}</option>`).join('')}</select>`;
+    else b.innerHTML='<label>ขอบเขต</label><div class="hint" style="padding:10px 0">พนักงานทั้งบริษัท</div>';
+    if($('#dgKey'))makeSearch('#dgKey')};
+  makeSearch('#dgEmp');fillDg();$('#dgType').onchange=fillDg;
+  $$('[data-ddel]').forEach(b=>b.onclick=()=>{if(!confirm('ลบสิทธิ์บันทึกแทนนี้?'))return;db.deleg=db.deleg.filter(s=>s.id!==b.dataset.ddel);save();renderApPerm()});
+  $('#dgForm').onsubmit=ev=>{ev.preventDefault();const m=$('#dgMsg'),emp=$('#dgEmp').value,type=$('#dgType').value,key=type==='all'?'*':($('#dgKey')?$('#dgKey').value:'');
+    if(!emp)return m.textContent='เลือกผู้บันทึกแทนก่อน';if(!key)return m.textContent='เลือกขอบเขต';
+    if(type==='emp'&&key===emp)return m.textContent='ผู้บันทึกแทนกับผู้ถูกบันทึกแทนเป็นคนเดียวกัน';
+    const id=`${emp}|${type}|${key}`;if(db.deleg.some(s=>s.id===id))return m.textContent='มีสิทธิ์นี้อยู่แล้ว';
+    db.deleg.push({id,empId:emp,type,key});save();renderApPerm()};
   const fillScope=()=>{const ty=$('#apType').value,b=$('#apScopeBox');
     if(ty==='project')b.innerHTML=`<label>รหัสโครงการ / สัญญา (ค้นหาได้)</label><select id="apKey">${[...db.projects,...db.contracts].sort(byId).map(p=>`<option value="${esc(p.id)}">${esc(p.id+' — '+p.name)}</option>`).join('')}</select>`;
     else if(ty==='dept')b.innerHTML=`<label>ฝ่าย</label><select id="apKey">${db.depts.slice().sort(byId).map(d=>`<option value="${esc(d.id)}">${esc(d.id+' '+d.name)}</option>`).join('')}</select>`;
@@ -1613,11 +1644,28 @@ const byId=(a,b)=>String(a.id).localeCompare(String(b.id),undefined,{numeric:tru
 const stamp=o=>{o.updatedAt=new Date().toISOString();o.updatedBy=(me&&me.name)||(user&&user.name)||''};
 const fmtTs=s=>{if(!s)return '—';const d=new Date(s);return isNaN(d)?'—':d.toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'})};
 const byUpd=(a,b)=>String(a.updatedAt||'').localeCompare(String(b.updatedAt||''))||byId(a,b);   // เรียงตามลำดับการนำเข้า/อัปเดต (เก่า→ใหม่)
-function renderSetup(){
+/* ===== Budget โครงการ: ยอดตั้งต้น · ยอดใช้ไป (ตัดเมื่ออนุมัติขั้นสุดท้าย) · ยอดคงเหลือ ===== */
+const fmtN=v=>(Math.round((+v||0)*100)/100).toLocaleString('th-TH');
+function budgetUsed(){   // u = รายการที่อนุมัติขั้นสุดท้ายแล้ว (ตัดงบ) · p = ยังรออนุมัติ (ยังไม่ตัด)
+  const u={},p={};db.timesheets.forEach(t=>(t.entries||[]).forEach(x=>{if(!x.code)return;const s=entState(t,x),o=s==='A'?u:s==='P'?p:null;if(!o)return;
+    const r=o[x.code]=o[x.code]||{h:0,b:0};r.h+=x.hours;if(isSuperAdmin)r.b+=bahtOf(t,x)}));return{u,p}}
+const BUD_HEAD=()=>'<th class="n">Budget ตั้งต้น (ชม.)</th><th class="n">ใช้ไป (ชม.)</th><th class="n">คงเหลือ (ชม.)</th><th class="n">รออนุมัติ (ชม.)</th>'+(isSuperAdmin?'<th class="n">Budget ตั้งต้น (บาท)</th><th class="n">ใช้ไป (บาท)</th><th class="n">คงเหลือ (บาท)</th>':'');
+function budCells(r,k,i,bu){
+  const u=bu.u[r.id]||{h:0,b:0},p=bu.p[r.id]||{h:0},bh=+r.budgetH||0,bb=+r.budgetB||0;
+  const rem=(b,used)=>{const v=b-used;return `<td class="n" style="${b>0&&v<0?'color:var(--bad);font-weight:700':''}" ${b>0&&v<0?'title="เกิน Budget"':''}>${b>0||used>0?fmtN(v):'—'}</td>`};
+  const inp=(f,v)=>`<td class="n"><input type="number" min="0" step="0.5" data-bud="${k}:${i}:${f}" value="${v||''}" placeholder="0" style="width:96px;min-height:0;padding:5px 6px;text-align:right" ${isAdmin?'':'disabled'}></td>`;
+  return inp('h',bh)+`<td class="n">${fmtN(u.h)}</td>`+rem(bh,u.h)+`<td class="n hint">${fmtN(p.h)}</td>`+(isSuperAdmin?inp('b',bb)+`<td class="n">${fmtN(u.b)}</td>`+rem(bb,u.b):'');
+}
+function budSummary(){
+  const bu=budgetUsed();let B=0,U=0,P=0,BB=0,UB=0;
+  [...db.projects,...db.contracts].forEach(r=>{B+=+r.budgetH||0;BB+=+r.budgetB||0;const u=bu.u[r.id],p=bu.p[r.id];if(u){U+=u.h;UB+=u.b}if(p)P+=p.h});
+  return `<div class="sum" style="margin:6px 0 6px"><span>💼 Budget รวม (ชม.) ตั้งต้น <b>${fmtN(B)}</b></span><span>ใช้ไป <b>${fmtN(U)}</b></span><span>คงเหลือ <b style="color:${B-U<0?'var(--bad)':'var(--cost)'}">${fmtN(B-U)}</b></span><span class="hint">รออนุมัติ ${fmtN(P)} ชม. (ยังไม่ตัด)</span>${isSuperAdmin?`<span>· บาท: ตั้งต้น <b>${fmtN(BB)}</b> · ใช้ไป <b>${fmtN(UB)}</b> · คงเหลือ <b style="color:${BB-UB<0?'var(--bad)':'var(--cost)'}">${fmtN(BB-UB)}</b></span>`:''}</div>
+    <div class="hint" style="margin-bottom:8px">ระบบ <b>ตัด Budget เมื่อรายการงานได้รับการอนุมัติขั้นสุดท้าย</b> (ผ่านครบทุกขั้นตามสายอนุมัติ) — รายการ Draft / รออนุมัติ / ส่งกลับ ยังไม่ตัด · คำนวณจากบันทึกงานย้อนหลัง 18 เดือนที่โหลดมา · ช่อง Budget (บาท) เห็นและแก้ได้เฉพาะ Super Admin (คิดจากอัตราเงินเดือนที่ตั้งไว้) · แก้ตัวเลขในช่องได้โดยตรง หรือนำเข้าผ่าน Excel (คอลัมน์ Budget Hours / Budget Baht)</div>`}
+function renderSetup(){const BU=budgetUsed();
   ['employees','depts','holidays'].forEach(k=>{if(db[k])db[k].sort(byId)});['projects','contracts'].forEach(k=>{if(db[k])db[k].sort(byUpd)});
-  $('#masters').innerHTML=MASTERS.filter(m=>m.key!=='contracts').map(m=>`<div class="card"><h2>${m.title}</h2><div class="scroll"><table>
-    <thead><tr><th>No.</th><th>${m.date?'วันที่':'รหัส'}</th><th>ชื่อ</th>${m.f.map(f=>`<th>${f[1]}</th>`).join('')}${m.stamp?'<th>ผู้นำเข้า/แก้ไข</th><th>อัปเดตล่าสุด</th>':''}<th>ใช้งาน</th><th></th></tr></thead><tbody>
-    ${masterRows(m).map(({r,i,k},n)=>`<tr><td class="hint">${n+1}</td><td>${esc(r.id)}</td><td>${esc(r.name)}</td>${m.f.map(f=>`<td>${fv(r,f)}</td>`).join('')}${m.stamp?`<td>${esc(r.updatedBy||'—')}</td><td class="hint">${fmtTs(r.updatedAt)}</td>`:''}
+  $('#masters').innerHTML=MASTERS.filter(m=>m.key!=='contracts').map(m=>`<div class="card"><h2>${m.title}</h2>${m.key==='projects'?budSummary():''}<div class="scroll"><table>
+    <thead><tr><th>No.</th><th>${m.date?'วันที่':'รหัส'}</th><th>ชื่อ</th>${m.f.map(f=>`<th>${f[1]}</th>`).join('')}${m.stamp?'<th>ผู้นำเข้า/แก้ไข</th><th>อัปเดตล่าสุด</th>':''}${m.key==='projects'?BUD_HEAD():''}<th>ใช้งาน</th><th></th></tr></thead><tbody>
+    ${masterRows(m).map(({r,i,k},n)=>`<tr><td class="hint">${n+1}</td><td>${esc(r.id)}</td><td>${esc(r.name)}</td>${m.f.map(f=>`<td>${fv(r,f)}</td>`).join('')}${m.stamp?`<td>${esc(r.updatedBy||'—')}</td><td class="hint">${fmtTs(r.updatedAt)}</td>`:''}${m.key==='projects'?budCells(r,k,i,BU):''}
     <td>${m.date?'':`<input type="checkbox" ${r.active!==false?'checked':''} data-act="${k}:${i}" style="width:auto">`}</td><td><button class="x" data-rm="${k}:${i}">✕</button></td></tr>`).join('')}
     </tbody></table></div>
     <form data-add="${m.key}" class="row" style="margin-top:12px;align-items:end">
@@ -1628,6 +1676,7 @@ function renderSetup(){
     <tr><td>Cost</td><td><input data-cname value="${esc(costSty().label)}" style="min-height:0;padding:6px 8px"></td><td><input type="color" data-ccolor value="${costSty().color}" style="width:46px;height:34px;padding:2px"></td><td>รหัสโครงการ (assign)</td><td></td></tr>
     ${db.sgaTypes.map((t,i)=>`<tr><td>${t.id}</td><td><input data-tname="${i}" value="${esc(t.name)}" style="min-height:0;padding:6px 8px"><div class="hint">${esc(t.desc)}</div></td><td><input type="color" data-tcolor="${i}" value="${sgaColor(t)}" style="width:46px;height:34px;padding:2px"></td><td>${refsOf(t).map(r=>esc(REF_TH[r])).join('<br>')||'—'}</td><td><input type="checkbox" ${t.active!==false?'checked':''} data-act="sgaTypes:${i}" style="width:auto"></td></tr>`).join('')}
     </tbody></table></div><div class="hint" style="margin-top:8px"><button class="btn" id="uiReset" style="padding:4px 10px;margin-right:8px">คืนค่าชื่อ/สีเริ่มต้น</button>ชื่อและสีที่แก้ไขมีผลกับวงกลมสรุป รายการเลือกประเภท และไฟล์ส่งออก (รหัส N1–N8 ยังเหมือนเดิม)</div><div class="hint" style="margin-top:8px">ฝ่ายที่เลือก Backlog No. (DP) ได้ใน N3: ${esc(db.backlogDepts.join(', ')||'-')}</div></div>`;
+  $$('[data-bud]').forEach(inp=>inp.onchange=()=>{const[k,i,fl]=inp.dataset.bud.split(':'),o=db[k][+i];if(!o)return;const v=Math.max(0,+inp.value||0);if(fl==='h')o.budgetH=v;else o.budgetB=v;save();renderSetup()});
   $$('[data-act]').forEach(c=>c.onchange=()=>{const[k,i]=c.dataset.act.split(':');db[k][i].active=c.checked;save();fillEmp();syncForm();renderLog()});
   $$('[data-rm]').forEach(b=>b.onclick=()=>{const[k,i]=b.dataset.rm.split(':');
     if(confirm('ลบรายการนี้? (ถ้าเคยถูกใช้แล้ว แนะนำให้ปิดการใช้งานแทน)')){const id=db[k][i].id;db[k].splice(i,1);
@@ -1664,12 +1713,12 @@ function sheetsFromDb(){
   return{
     Employees:db.employees.map(e=>({'Emp.No':e.id,Name:e.name,Nickname:e.nick||'',Dept:e.dept||'',Level:e.level||'',Position:e.position||'',Email:e.email||'',Username:e.username||'',Role:e.role||'user',WorkSat:e.workSat?1:0,Active:e.active===false?0:1})),
     Departments:db.depts.map(d=>({'Dept.No':d.id,'Dept.Name':d.name})),
-    Projects:db.projects.map(p=>({'Project Code':p.id,'Project Name':p.name,Kind:p.kind,Active:p.active===false?0:1,'Updated By':p.updatedBy||'','Updated At':p.updatedAt||''})),
-    SalesContracts:db.contracts.map(c=>({'Sales Contract No.':c.id,'Sales Contract Name':c.name,Company:coOf(c),Active:c.active===false?0:1,'Updated By':c.updatedBy||'','Updated At':c.updatedAt||''})),
+    Projects:db.projects.map(p=>({'Project Code':p.id,'Project Name':p.name,Kind:p.kind,Active:p.active===false?0:1,'Budget Hours':p.budgetH||0,...(isSuperAdmin?{'Budget Baht':p.budgetB||0}:{}),'Updated By':p.updatedBy||'','Updated At':p.updatedAt||''})),
+    SalesContracts:db.contracts.map(c=>({'Sales Contract No.':c.id,'Sales Contract Name':c.name,Company:coOf(c),Active:c.active===false?0:1,'Budget Hours':c.budgetH||0,...(isSuperAdmin?{'Budget Baht':c.budgetB||0}:{}),'Updated By':c.updatedBy||'','Updated At':c.updatedAt||''})),
     Assignments:db.assign.map(a=>({'Emp.No':a.empId,Code:a.code})),
     Holidays:db.holidays.map(h=>({Date:h.id,Name:h.name})),
     WorkLog:db.timesheets.flatMap(t=>t.entries.map((x,i)=>{const e=emp(t.empId);return{'Transaction No.':txNo(t,i),Date:t.date,'Emp.No':t.empId,Name:e.name||'',Nickname:e.nick||'',Dept:e.dept||'',Level:e.level||'',Position:e.position||'',
-      'PL Type':x.cat,'SG&A Type':x.cat==='Cost'?'-':`${x.sgaId}:${find(db.sgaTypes,x.sgaId)?.name||''}`,Hours:x.hours,'Project Code':x.code||'-','Project Name':x.code?entryName(x):'-','Project Type':codeType(x.code),Text:x.note||'',Status:t.status}}))
+      'PL Type':x.cat,'SG&A Type':x.cat==='Cost'?'-':`${x.sgaId}:${find(db.sgaTypes,x.sgaId)?.name||''}`,Hours:x.hours,'Project Code':x.code||'-','Project Name':x.code?entryName(x):'-','Project Type':codeType(x.code),Text:x.note||'','Recorded By':x.rbn||'',Status:t.status}}))
   };
 }
 function writeXlsx(sheets,name){
@@ -1682,6 +1731,7 @@ function writeXlsx(sheets,name){
 }
 $('#xExp').onclick=()=>{if(xlsxReady())writeXlsx(sheetsFromDb(),'DEMCO_Timesheet_DB_'+todayStr()+'.xlsx')};
 $('#xTpl').onclick=()=>{if(!xlsxReady())return;const s=sheetsFromDb();s.WorkLog=[];writeXlsx(s,'DEMCO_Timesheet_Template.xlsx')};
+const bq=(x,k,old)=>S(x[k])!==''?Math.max(0,+String(x[k]).replace(/,/g,'')||0):(old||0);
 const S=v=>String(v??'').trim(), B=v=>!(v===0||v==='0'||v===false||/^(false|no|n)$/i.test(S(v)));
 function xDate(v){
   if(v instanceof Date)return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())}`;
@@ -1711,6 +1761,9 @@ $('#pjImp').onchange=async ev=>{
           if(ch){if(name)o.name=name;if(kindK)o.kind=kind;if(co)o.company=co;o.active=true;stamp(o);upd++}else same++}});
       if($('#pjOff').checked)list.forEach(o=>{if(!seen.has(o.id)&&o.active!==false){o.active=false;stamp(o);off++}});
       sum.push(`${label}: ใหม่ ${add} · อัปเดต ${upd} · เหมือนเดิม ${same}${off?` · ปิดใช้งาน ${off}`:''} (ในไฟล์ ${seen.size} รหัสไม่ซ้ำ)`)};
+    const budOf=x=>{const g=k=>{const v=x[k];return v===''||v===undefined?null:Math.max(0,+String(v).replace(/,/g,'')||0)};return{h:g('Budget Hours'),b:isSuperAdmin?g('Budget Baht'):null}};
+    const setBud=(o,x)=>{const d=budOf(x);if(d.h!=null)o.budgetH=d.h;if(d.b!=null)o.budgetB=d.b};
+    const budCh=(o,x)=>{const d=budOf(x);return(d.h!=null&&d.h!==(o.budgetH||0))||(d.b!=null&&d.b!==(o.budgetB||0))};
     if(pr){   // ตารางเดียว: Kind = cost / mt / backlog / sc_demco / sc_dp (Sales Contract)
       const nk=(raw,code)=>{const s=String(raw||'').toLowerCase();
         if(/^mt/.test(s))return 'mt';if(/backlog|^bl/.test(s))return 'backlog';if(s==='cost')return 'cost';
@@ -1722,12 +1775,13 @@ $('#pjImp').onchange=async ev=>{
         const name=S(x['Project Name']).replace(/\s+/g,' '),raw=S(x.Kind),op=nd.projects.find(y=>y.id===c),oc=nd.contracts.find(y=>y.id===c),o=op||oc;
         let kind=raw?nk(raw,c):(o?(op?op.kind:('sc_'+(coOf(oc)==='DP'?'dp':'demco'))):nk('',c));
         cnt[kind]=(cnt[kind]||0)+1;const isSc=/^sc_/.test(kind),co=kind==='sc_dp'?'DP':'Demco',arr=isSc?nd.contracts:nd.projects;
-        if(!o){const n=isSc?{id:c,name,company:co,active:true}:{id:c,name,kind,active:true};stamp(n);arr.push(n);add++;return}
+        if(!o){const n=isSc?{id:c,name,company:co,active:true}:{id:c,name,kind,active:true};setBud(n,x);stamp(n);arr.push(n);add++;return}
         if((op&&isSc)||(oc&&!isSc)){   // เปลี่ยนประเภท (ย้ายระหว่างโครงการ/สัญญา)
           (op?nd.projects:nd.contracts).splice((op?nd.projects:nd.contracts).indexOf(o),1);
-          const n=isSc?{id:c,name:name||o.name,company:co,active:true}:{id:c,name:name||o.name,kind,active:true};stamp(n);arr.push(n);moved++;return}
+          const n=isSc?{id:c,name:name||o.name,company:co,active:true}:{id:c,name:name||o.name,kind,active:true};n.budgetH=o.budgetH||0;n.budgetB=o.budgetB||0;setBud(n,x);stamp(n);arr.push(n);moved++;return}
         const ch=(name&&name!==o.name)||(!isSc&&kind!==o.kind)||(isSc&&co!==coOf(o))||o.active===false;
-        if(ch){if(name)o.name=name;if(isSc)o.company=co;else o.kind=kind;o.active=true;stamp(o);upd++}else same++});
+        const bch=budCh(o,x);
+        if(ch||bch){if(name)o.name=name;if(isSc)o.company=co;else o.kind=kind;o.active=true;setBud(o,x);stamp(o);upd++}else same++});
       if($('#pjOff').checked)[...nd.projects,...nd.contracts].forEach(o=>{if(!seen.has(o.id)&&o.active!==false){o.active=false;stamp(o);off++}});
       sum.push(`รหัสโครงการ: ใหม่ ${add} · อัปเดต ${upd}${moved?` · เปลี่ยนประเภท ${moved}`:''} · เหมือนเดิม ${same}${off?` · ปิดใช้งาน ${off}`:''} (ในไฟล์ ${seen.size} รหัส: ${Object.entries(cnt).map(([k,v])=>(k==='sc_demco'?'SC Demco':k==='sc_dp'?'SC DP':k)+' '+v).join(', ')})`)}
     if(cr)run(nd.contracts,cr,'Sales Contract No.','Sales Contract Name',false,'Sales Contract',true);
@@ -1749,8 +1803,8 @@ $('#xImp').onchange=async ev=>{
     let r;
     if(r=rows('Departments')){nd.depts=r.filter(x=>S(x['Dept.No'])).map(x=>({id:S(x['Dept.No']),name:S(x['Dept.Name']),active:true}));done.push('Departments '+nd.depts.length)}
     if(r=rows('Employees')){nd.employees=r.filter(x=>S(x['Emp.No'])).map(x=>({id:S(x['Emp.No']),name:S(x.Name),nick:S(x.Nickname),dept:S(x.Dept||x['Dept.No']),level:S(x.Level),position:S(x.Position),email:S(x.Email),username:S(x.Username),role:S(x.Role).toLowerCase()==='admin'?'admin':'user',workSat:B(x.WorkSat)&&S(x.WorkSat)!=='',active:x.Active===''?true:B(x.Active)}));nd.employees.forEach(e=>{const o=find(db.employees,e.id);if(o){e.salt=o.salt;e.hash=o.hash;e.linked=o.linked;e.uid=o.uid;e.approved=o.approved;e.mustChange=o.mustChange;if(!e.username)e.username=o.username}});const noMail=nd.employees.filter(e=>!e.email).length;if(noMail)warn.push('พนักงาน '+noMail+' คนไม่มีอีเมล (ต้องมีอีเมลก่อนจึงตั้งบัญชีสมาชิกได้)');done.push('Employees '+nd.employees.length)}
-    if(r=rows('Projects')){nd.projects=r.filter(x=>S(x['Project Code'])).map(x=>({id:S(x['Project Code']),name:S(x['Project Name']),kind:['mt','backlog'].includes(S(x.Kind).toLowerCase())?S(x.Kind).toLowerCase():'cost',active:x.Active===''?true:B(x.Active),updatedBy:S(x['Updated By']),updatedAt:S(x['Updated At'])}));done.push('Projects '+nd.projects.length)}
-    if(r=rows('SalesContracts')){nd.contracts=r.filter(x=>S(x['Sales Contract No.'])).map(x=>({id:S(x['Sales Contract No.']),name:S(x['Sales Contract Name']),company:/^dp$/i.test(S(x.Company))?'DP':'Demco',active:x.Active===''?true:B(x.Active),updatedBy:S(x['Updated By']),updatedAt:S(x['Updated At'])}));done.push('SalesContracts '+nd.contracts.length)}
+    if(r=rows('Projects')){nd.projects=r.filter(x=>S(x['Project Code'])).map(x=>({id:S(x['Project Code']),name:S(x['Project Name']),kind:['mt','backlog'].includes(S(x.Kind).toLowerCase())?S(x.Kind).toLowerCase():'cost',active:x.Active===''?true:B(x.Active),updatedBy:S(x['Updated By']),updatedAt:S(x['Updated At']),budgetH:bq(x,'Budget Hours',(find(db.projects,S(x['Project Code']))||{}).budgetH),budgetB:isSuperAdmin?bq(x,'Budget Baht',(find(db.projects,S(x['Project Code']))||{}).budgetB):((find(db.projects,S(x['Project Code']))||{}).budgetB||0)}));done.push('Projects '+nd.projects.length)}
+    if(r=rows('SalesContracts')){nd.contracts=r.filter(x=>S(x['Sales Contract No.'])).map(x=>({id:S(x['Sales Contract No.']),name:S(x['Sales Contract Name']),company:/^dp$/i.test(S(x.Company))?'DP':'Demco',active:x.Active===''?true:B(x.Active),updatedBy:S(x['Updated By']),updatedAt:S(x['Updated At']),budgetH:bq(x,'Budget Hours',(find(db.contracts,S(x['Sales Contract No.']))||{}).budgetH),budgetB:isSuperAdmin?bq(x,'Budget Baht',(find(db.contracts,S(x['Sales Contract No.']))||{}).budgetB):((find(db.contracts,S(x['Sales Contract No.']))||{}).budgetB||0)}));done.push('SalesContracts '+nd.contracts.length)}
     if(r=rows('Holidays')){nd.holidays=r.filter(x=>S(x.Date)).map(x=>({id:xDate(x.Date),name:S(x.Name)}));done.push('Holidays '+nd.holidays.length)}
     if(r=rows('Assignments')){nd.assign=r.filter(x=>S(x['Emp.No'])&&S(x.Code)).map(x=>({empId:S(x['Emp.No']),code:S(x.Code)}));done.push('Assignments '+nd.assign.length)}
     if(r=rows('WorkLog')){
@@ -2231,9 +2285,9 @@ const TBL={
   depts:{t:'departments',pk:'id',admin:true,key:r=>r.id,
     to:d=>({id:d.id,name:d.name||'',active:d.active!==false}),from:r=>({id:r.id,name:r.name,active:r.active!==false})},
   projects:{t:'projects',pk:'id',admin:true,key:r=>r.id,
-    to:p=>({id:p.id,name:p.name||'',kind:['mt','backlog'].includes(p.kind)?p.kind:'cost',active:p.active!==false,updated_by:p.updatedBy||'',...(p.updatedAt?{updated_at:p.updatedAt}:{})}),from:r=>({id:r.id,name:r.name,kind:r.kind,active:r.active!==false,updatedBy:r.updated_by||'',updatedAt:r.updated_at||''})},
+    to:p=>({id:p.id,name:p.name||'',kind:['mt','backlog'].includes(p.kind)?p.kind:'cost',active:p.active!==false,updated_by:p.updatedBy||'',budget_hours:+p.budgetH||0,budget_baht:+p.budgetB||0,...(p.updatedAt?{updated_at:p.updatedAt}:{})}),from:r=>({id:r.id,name:r.name,kind:r.kind,active:r.active!==false,updatedBy:r.updated_by||'',updatedAt:r.updated_at||'',budgetH:+r.budget_hours||0,budgetB:+r.budget_baht||0})},
   contracts:{t:'contracts',pk:'id',admin:true,key:r=>r.id,
-    to:c=>({id:c.id,name:c.name||'',company:coOf(c),active:c.active!==false,updated_by:c.updatedBy||'',...(c.updatedAt?{updated_at:c.updatedAt}:{})}),from:r=>({id:r.id,name:r.name,company:r.company==='DP'?'DP':'Demco',active:r.active!==false,updatedBy:r.updated_by||'',updatedAt:r.updated_at||''})},
+    to:c=>({id:c.id,name:c.name||'',company:coOf(c),active:c.active!==false,updated_by:c.updatedBy||'',budget_hours:+c.budgetH||0,budget_baht:+c.budgetB||0,...(c.updatedAt?{updated_at:c.updatedAt}:{})}),from:r=>({id:r.id,name:r.name,company:r.company==='DP'?'DP':'Demco',active:r.active!==false,updatedBy:r.updated_by||'',updatedAt:r.updated_at||'',budgetH:+r.budget_hours||0,budgetB:+r.budget_baht||0})},
   assign:{t:'assignments',pk:'emp_id',admin:true,key:r=>r.emp_id+'|'+r.code,conf:'emp_id,code',
     to:a=>({emp_id:a.empId,code:a.code}),from:r=>({empId:r.emp_id,code:r.code})},
   holidays:{t:'holidays',pk:'day',admin:true,key:r=>r.day,conf:'day',
@@ -2249,8 +2303,10 @@ TBL.scopes={t:'approver_scopes',pk:'id',admin:true,sup:true,key:r=>r.id,
 TBL.salary={t:'salary_rates',pk:'id',admin:true,sup:true,key:r=>r.id,
   to:r=>({id:r.id,scope:r.scope,key:r.key,amount:Number(r.amount),updated_by:r.updatedBy||'',...(r.updatedAt?{updated_at:r.updatedAt}:{})}),
   from:r=>({id:r.id,scope:r.scope,key:r.key,amount:Number(r.amount),updatedBy:r.updated_by||'',updatedAt:r.updated_at||''})};
+TBL.deleg={t:'entry_delegates',pk:'id',admin:true,sup:true,key:r=>r.id,
+  to:r=>({id:r.id,delegate_id:r.empId,scope_type:r.type,scope_key:r.key}),from:r=>({id:r.id,empId:r.delegate_id,type:r.scope_type,key:r.scope_key})};
 TBL.ui={t:'app_settings',pk:'key',admin:true,key:r=>r.key,to:o=>({key:'ui',value:o.value}),from:r=>({id:r.key,value:r.value})};
-function emptyCloudDb(){const s=seed();return{...s,employees:[],depts:[],projects:[],contracts:[],assign:[],holidays:[],timesheets:[],salary:[],perms:[],scopes:[],regs:[],admins:[],ui:[],settings:{regOpen:true,autoApprove:false}}}
+function emptyCloudDb(){const s=seed();return{...s,employees:[],depts:[],projects:[],contracts:[],assign:[],holidays:[],timesheets:[],salary:[],perms:[],scopes:[],deleg:[],regs:[],admins:[],ui:[],settings:{regOpen:true,autoApprove:false}}}
 function rowsOf(k){const s=TBL[k];return new Map(db[k].map(x=>s.to(x)).filter(r=>k!=='employees'||r.email).map(r=>[s.key(r),r]))}
 function takeSnap(){snap={};Object.keys(TBL).forEach(k=>{snap[k]=Object.fromEntries([...rowsOf(k)].map(([key,r])=>[key,JSON.stringify(r)]))})}
 function setSync(st,msg){
@@ -2258,7 +2314,7 @@ function setSync(st,msg){
   el.textContent=st==='saving'?'☁ กำลังบันทึก…':st==='ok'?'☁ บันทึกแล้ว':'⚠ บันทึกไม่สำเร็จ';
   el.title=msg||'';el.style.color=st==='err'?'#ffd0d0':'';
   if(st==='err'&&msg&&msg!==setSync.last){setSync.last=msg;   // แจ้งสาเหตุให้ชัด (ส่วนมากคือยังไม่ได้รัน SQL อัปเดตฐานข้อมูล)
-    const sql=/updated_by|updated_at/.test(msg)?'supabase_update_import_log.sql':/company/.test(msg)?'supabase_update_company.sql':/approved_by|approved_at|reject_note|timesheets_status_check|Pending/.test(msg)?'supabase_update_approval_flow.sql':/salary_rates/.test(msg)?'supabase_update_salary.sql':/employees_role_check|role/.test(msg)?'supabase_update_roles.sql':'';
+    const sql=/budget_hours|budget_baht|entry_delegates/.test(msg)?'supabase_update_budget_delegate.sql':/updated_by|updated_at/.test(msg)?'supabase_update_import_log.sql':/company/.test(msg)?'supabase_update_company.sql':/approved_by|approved_at|reject_note|timesheets_status_check|Pending/.test(msg)?'supabase_update_approval_flow.sql':/salary_rates/.test(msg)?'supabase_update_salary.sql':/employees_role_check|role/.test(msg)?'supabase_update_roles.sql':'';
     setTimeout(()=>alert('บันทึกขึ้นระบบกลางไม่สำเร็จ\n\n'+(sql?'น่าจะยังไม่ได้รัน SQL อัปเดตฐานข้อมูล: '+sql+'\n(Supabase > SQL Editor > วางไฟล์ > Run) แล้วรีเฟรชแอป\n\n':'')+'รายละเอียด: '+msg+'\n\nข้อมูลที่เพิ่งเพิ่มยังอยู่ในหน้าจอนี้ แต่จะหายเมื่อรีเฟรช จนกว่าจะแก้สาเหตุข้างต้น'),50)}
   if(st==='ok')setSync.last='';
 }
@@ -2272,7 +2328,7 @@ async function fetchAll(t,pk,filter){
 async function loadCloud(){
   const cut=new Date();cut.setMonth(cut.getMonth()-18);const cutS=cut.toISOString().slice(0,10);   // โหลดบันทึกงานย้อนหลัง 18 เดือน
   const keys=Object.keys(TBL);
-  const res=await Promise.all(keys.map(k=>fetchAll(TBL[k].t,TBL[k].pk,k==='timesheets'?q=>q.gte('day',cutS):null).catch(er=>{if(k==='ui'||k==='salary'||k==='perms'||k==='scopes')return [];throw er})));
+  const res=await Promise.all(keys.map(k=>fetchAll(TBL[k].t,TBL[k].pk,k==='timesheets'?q=>q.gte('day',cutS):null).catch(er=>{if(k==='ui'||k==='salary'||k==='perms'||k==='scopes'||k==='deleg')return [];throw er})));
   db=emptyCloudDb();keys.forEach((k,i)=>{db[k]=res[i].map(TBL[k].from)});applyUi();takeSnap();
 }
 function cloudSave(){if(!sb||!cur)return;cloudBusy=true;clearTimeout(cloudT);setSync('saving');cloudT=setTimeout(syncUp,300)}
@@ -2552,10 +2608,11 @@ async function refreshLite(force){
   if(!force){const ae=document.activeElement;if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)&&!ae.closest('#login'))return}   // กำลังพิมพ์/เลือกอยู่ ไม่รบกวน
   try{
     const cut=new Date();cut.setDate(cut.getDate()-45);const cutS=cut.toISOString().slice(0,10),wide=isAdmin||canApprove();
-    const [perms,scopes,mine,pend]=await Promise.all([
+    const dids=me?[me.id,...delegTargets().map(e=>e.id)]:[];
+    const [perms,scopes,mine,pend,dgs]=await Promise.all([
       fetchAll('approval_perms','role').catch(()=>null),fetchAll('approver_scopes','id').catch(()=>null),
-      me?fetchAll('timesheets','id',q=>q.gte('day',cutS).eq('emp_id',me.id)):Promise.resolve([]),
-      wide?fetchAll('timesheets','id',q=>q.eq('status','Pending')):Promise.resolve([])]);
+      me?fetchAll('timesheets','id',q=>q.gte('day',cutS).in('emp_id',dids)):Promise.resolve([]),
+      wide?fetchAll('timesheets','id',q=>q.eq('status','Pending')):Promise.resolve([]),fetchAll('entry_delegates','id').catch(()=>null)]);
     if(syncing||cloudBusy)return;                                                         // มีการบันทึกเกิดขึ้นระหว่างดึง ข้ามรอบนี้
     const got=new Map([...mine,...pend].map(r=>[r.id,r]));
     const stale=db.timesheets.filter(t=>t.status==='Pending'&&!got.has(t.id)).map(t=>t.id);   // ใบที่เคยรออนุมัติแต่ตอนนี้เปลี่ยนสถานะแล้ว
@@ -2567,6 +2624,14 @@ async function refreshLite(force){
       snap.timesheets=snap.timesheets||{};snap.timesheets[n.id]=s});
     if(perms){const n=perms.map(TBL.perms.from);if(JSON.stringify(n)!==JSON.stringify(db.perms||[])){db.perms=n;changed=true}snap.perms=Object.fromEntries(n.map(x=>{const r=TBL.perms.to(x);return[TBL.perms.key(r),JSON.stringify(r)]}))}
     if(scopes){const n=scopes.map(TBL.scopes.from);if(JSON.stringify(n)!==JSON.stringify(db.scopes||[])){db.scopes=n;changed=true}snap.scopes=Object.fromEntries(n.map(x=>{const r=TBL.scopes.to(x);return[TBL.scopes.key(r),JSON.stringify(r)]}))}
+    if(dgs){const n=dgs.map(TBL.deleg.from),mk=a=>JSON.stringify((a||[]).filter(d=>me&&d.empId===me.id));
+      if(JSON.stringify(n)!==JSON.stringify(db.deleg||[])){
+        const mineChanged=mk(n)!==mk(db.deleg);db.deleg=n;changed=true;
+        if(me&&!isAdmin&&mineChanged){
+          const [e2,a2,p2,c2]=await Promise.all([['employees','id'],['assignments','emp_id'],['projects','id'],['contracts','id']].map(([tb,pk])=>fetchAll(tb,pk)));
+          db.employees=e2.map(TBL.employees.from);db.assign=a2.map(TBL.assign.from);db.projects=p2.map(TBL.projects.from);db.contracts=c2.map(TBL.contracts.from);me=find(db.employees,me.id)||me}
+        fillEmp();if(typeof syncForm==='function')syncForm()}
+      snap.deleg=Object.fromEntries(n.map(x=>{const r=TBL.deleg.to(x);return[TBL.deleg.key(r),JSON.stringify(r)]}))}
     lastRefreshAt=Date.now();
     if(changed){const tab=document.querySelector('nav button.on')?.dataset.tab;
       if(tab==='appr')renderApprView();else if(tab==='astat')renderAStat();else if(tab==='hist')renderHist();else if(tab==='log')renderLog();
