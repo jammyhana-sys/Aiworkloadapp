@@ -402,6 +402,13 @@ header>*{min-width:0}
     </form>
     <div class="scroll" style="margin-top:12px"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>พนักงานที่ได้รับ assign</th></tr></thead><tbody id="asgList"></tbody></table></div>
   </div>
+  <div class="card" id="bgCard"><h2>Budget ตั้งต้นโครงการ — นำเข้าจาก Excel และตรวจสอบตัวเลข</h2>
+    <p class="hint">ไฟล์ .xlsx คอลัมน์ <b>Project Code, Budget Hours</b> (และ <b>Budget Baht</b> เฉพาะ Super Admin) — ช่องว่าง = ไม่แก้ยอดเดิม · ระบบ <b>ตรวจก่อนบันทึก</b>: ไม่พบรหัส, รหัสซ้ำ, ไม่ใช่ตัวเลข/ติดลบ, Budget ต่ำกว่ายอดที่ใช้ไปแล้ว, อัตราบาทต่อชั่วโมงผิดปกติ แล้วแสดงผลให้ตรวจ ก่อนกด "ยืนยันนำเข้า" · ปุ่ม "ตรวจสอบตัวเลข" เทียบยอดในหน้าจอกับฐานข้อมูล และหาข้อมูลที่ไม่สอดคล้อง</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <label class="btn pri" style="display:inline-block;cursor:pointer">⬆ เลือกไฟล์ Budget<input type="file" id="bgImp" accept=".xlsx,.xls" class="hide"></label>
+      <button class="btn" id="bgTpl" type="button">⬇ แม่แบบ (รหัสและ Budget ปัจจุบัน)</button>
+      <button class="btn" id="bgChk" type="button">🔍 ตรวจสอบตัวเลข Budget</button></div>
+    <div id="bgOut" style="margin-top:12px"></div></div>
   <div id="salaryCard"></div>
   <div class="card"><h2>นำเข้ารหัสโครงการ (Cost / MT / Backlog / Sales Contract) + Assign จาก Excel</h2>
     <p class="hint">เลือกไฟล์ .xlsx ที่มีคอลัมน์ <b>Project Code, Project Name</b> (ชีต Projects หรือชีตแรก; มีคอลัมน์ <b>Kind</b> = cost / mt / backlog / <b>sc_demco</b> / <b>sc_dp</b> (Sales Contract ของ Demco / DP) ได้ ถ้าไม่มีระบบจัดให้เอง: รหัสลงท้าย -MT = mt ที่เหลือ = cost) รวมอยู่ตารางเดียวกันทั้งหมด · ชีต <b>Assignments</b> (Emp.No, Code) เพิ่มการ assign แบบไม่ลบของเดิม (นำเข้าสมาชิกก่อน) · ใช้ชีต SalesContracts แยกได้เหมือนเดิม และ/หรือชีต SalesContracts (คอลัมน์ <b>Sales Contract No., Sales Contract Name, Company</b> = DP / Demco; ไม่ใส่ = Demco) — ระบบ<b>เพิ่มรหัสใหม่ + อัปเดตชื่อ/ประเภทของรหัสเดิม</b> ไม่ลบรหัสอื่นที่มีอยู่ และตัดรหัสซ้ำในไฟล์ให้เอง · คอลัมน์ <b>Budget Hours</b> (และ <b>Budget Baht</b> สำหรับ Super Admin) = ยอด Budget ตั้งต้น — ช่องว่าง = ไม่แก้ยอดเดิม</p>
@@ -1532,7 +1539,7 @@ function renderCostBudget(proj,code){
   const lvTxt='ตามที่ Super Admin กำหนด (ระดับสูงสุดของกฎที่ตรงกับคุณ)';
   el.innerHTML=`<div class="xcard"><div class="dashhead" style="margin-bottom:8px"><div><h3 style="margin:0">💼 บริหารค่าใช้จ่ายเทียบ Budget (ต้นทุนแรงงานต่อโครงการ)</h3>
       <div class="hint">ยอดสะสมตั้งแต่เริ่มโครงการ (ไม่ขึ้นกับช่วงเวลาที่เลือกด้านบน) · ตัด Budget เมื่อรายการงานอนุมัติขั้นสุดท้าย · สิทธิ์ของคุณ: ${lvTxt}</div></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center" class="noprint">${hasB?`<div class="seg2" style="display:inline-flex"><button data-cbu="h" class="${U2?'':'on'}">ชั่วโมง</button><button data-cbu="b" class="${U2?'on':''}">บาท (฿)</button></div>`:''}<button class="btn" id="cbX">⬇ Excel</button><button class="btn" id="cbR" title="ดึงข้อมูลล่าสุด">⟳</button></div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center" class="noprint">${hasB?`<div class="seg2" style="display:inline-flex"><button data-cbu="h" class="${U2?'':'on'}">ชั่วโมง</button><button data-cbu="b" class="${U2?'on':''}">บาท (฿)</button></div>`:''}${isAdmin?'<button class="btn" id="cbChk">🔍 ตรวจตัวเลข</button>':''}<button class="btn" id="cbX">⬇ Excel</button><button class="btn" id="cbR" title="ดึงข้อมูลล่าสุด">⟳</button></div></div>
     ${costRep.src==='local'?`<div class="hint" style="color:var(--bad);margin-bottom:8px">⚠ คำนวณจากข้อมูลในเครื่อง (ย้อนหลัง 18 เดือน)${costRep.err?' — ยังไม่ได้รัน supabase_update_cost_access.sql':''}</div>`:''}
     <div class="kpis">${kpis}</div>
     <div class="xrow two"><div class="xcard"><h3>% ใช้ไปเทียบ Budget (สูงสุด 12 รายการ)</h3>${bars}
@@ -1542,8 +1549,9 @@ function renderCostBudget(proj,code){
       <div><label>ค้นหารหัส/ชื่อ</label><input id="cbQ" value="${esc(cb.q)}" placeholder="เช่น CSP26"></div>
       <div><label>สถานะ</label><select id="cbSt">${[['all','ทั้งหมด'],['over','เกินงบ'],['warn','เฝ้าระวัง'],['ok','ปกติ'],['nob','ยังไม่ตั้ง Budget'],['idle','ยังไม่มีการใช้']].map(([k,l])=>`<option value="${k}" ${cb.st===k?'selected':''}>${l}</option>`).join('')}</select></div>
       <div><label>เรียงตาม</label><select id="cbSort">${[['pct','% ใช้ไป มาก→น้อย'],['used','ยอดใช้ไป มาก→น้อย'],['rem','คงเหลือ น้อย→มาก'],['code','รหัส']].map(([k,l])=>`<option value="${k}" ${cb.sort===k?'selected':''}>${l}</option>`).join('')}</select></div></div>`}
-    ${tbl}</div>`;
+    ${tbl}<div id="cbChkOut" style="margin-top:10px"></div></div>`;
   const rr=()=>renderCostBudget(proj,code);
+  if($('#cbChk'))$('#cbChk').onclick=()=>runBudgetCheck('#cbChkOut');
   $$('#xBudget [data-cbu]').forEach(b=>b.onclick=()=>{cb.unit=b.dataset.cbu;rr()});
   if($('#cbQ'))$('#cbQ').onchange=ev=>{cb.q=ev.target.value;rr()};
   if($('#cbSt'))$('#cbSt').onchange=ev=>{cb.st=ev.target.value;rr()};
@@ -1810,6 +1818,102 @@ function budSummary(){
   [...db.projects,...db.contracts].forEach(r=>{B+=+r.budgetH||0;BB+=+r.budgetB||0;const u=bu.u[r.id],p=bu.p[r.id];if(u){U+=u.h;UB+=u.b}if(p)P+=p.h});
   return `<div class="sum" style="margin:6px 0 6px"><span>💼 Budget รวม (ชม.) ตั้งต้น <b>${fmtN(B)}</b></span><span>ใช้ไป <b>${fmtN(U)}</b></span><span>คงเหลือ <b style="color:${B-U<0?'var(--bad)':'var(--cost)'}">${fmtN(B-U)}</b></span><span class="hint">รออนุมัติ ${fmtN(P)} ชม. (ยังไม่ตัด)</span>${isSuperAdmin?`<span>· บาท: ตั้งต้น <b>${fmtN(BB)}</b> · ใช้ไป <b>${fmtN(UB)}</b> · คงเหลือ <b style="color:${BB-UB<0?'var(--bad)':'var(--cost)'}">${fmtN(BB-UB)}</b></span>`:''}</div>
     <div class="hint" style="margin-bottom:8px">ระบบ <b>ตัด Budget เมื่อรายการงานได้รับการอนุมัติขั้นสุดท้าย</b> (ผ่านครบทุกขั้นตามสายอนุมัติ) — รายการ Draft / รออนุมัติ / ส่งกลับ ยังไม่ตัด · คำนวณจากบันทึกงานย้อนหลัง 18 เดือนที่โหลดมา · ช่อง Budget (บาท) เห็นและแก้ได้เฉพาะ Super Admin (คิดจากอัตราเงินเดือนที่ตั้งไว้) · แก้ตัวเลขในช่องได้โดยตรง หรือนำเข้าผ่าน Excel (คอลัมน์ Budget Hours / Budget Baht)</div>`}
+/* ===== นำเข้า Budget ตั้งต้น (ตรวจก่อนบันทึก) + ตรวจสอบตัวเลข ===== */
+const numOf=v=>{if(v===''||v==null)return null;const s=String(v).replace(/[,฿\s]/g,'');return /^-?\d+(\.\d+)?$/.test(s)?+s:NaN};
+const avgRate=()=>{const rs=db.employees.filter(e=>e.active!==false).map(hourlyRate).filter(v=>v!=null&&v>0);return rs.length?rs.reduce((a,b)=>a+b,0)/rs.length:null};
+const issHtml=(iss)=>{const C={err:'var(--bad)',warn:'#e8711a',info:'var(--mut)',ok:'var(--cost)'},I={err:'✖',warn:'⚠',info:'ℹ',ok:'✔'};
+  return iss.map(i=>`<div style="padding:4px 0;color:${C[i.lv]}"><b>${I[i.lv]}</b> ${i.code?`<b>${esc(i.code)}</b> `:''}${i.msg}</div>`).join('')};
+let bgPending=null;
+function bgPreview(rows,target){
+  const out=$(target||'#bgOut'),bu=budgetUsed(),seen=new Map(),iss=[],dups=new Set(),apply=[];let blank=0,same=0;
+  rows.forEach((x,i)=>{const c=S(x['Project Code']);if(!c)return;if(seen.has(c))dups.add(c);seen.set(c,{x,line:i+2})});
+  dups.forEach(c=>iss.push({lv:'warn',code:c,msg:'รหัสซ้ำในไฟล์ — ใช้แถวสุดท้าย'}));
+  const ar=isSuperAdmin?avgRate():null;
+  seen.forEach(({x,line},code)=>{
+    const op=find(db.projects,code),o=op||find(db.contracts,code),k=op?'projects':'contracts';
+    if(!o){iss.push({lv:'err',code,msg:`บรรทัด ${line}: ไม่พบรหัสนี้ในระบบ — ข้าม (นำเข้ารหัสโครงการก่อน)`});return}
+    const h=numOf(x['Budget Hours']),b=isSuperAdmin?numOf(x['Budget Baht']):null;
+    if(!isSuperAdmin&&S(x['Budget Baht'])!=='')iss.push({lv:'warn',code,msg:'ช่อง Budget Baht ถูกข้าม (เฉพาะ Super Admin นำเข้าได้)'});
+    if(Number.isNaN(h)||Number.isNaN(b)){iss.push({lv:'err',code,msg:`บรรทัด ${line}: ค่า Budget ไม่ใช่ตัวเลข — ข้าม`});return}
+    if((h!=null&&h<0)||(b!=null&&b<0)){iss.push({lv:'err',code,msg:`บรรทัด ${line}: ค่า Budget ติดลบ — ข้าม`});return}
+    if(h==null&&b==null){blank++;return}
+    const u=bu.u[code]||{h:0,b:0},oh=+o.budgetH||0,ob=+o.budgetB||0;
+    if(h!=null&&h===oh&&(b==null||b===ob)){same++;return}
+    if(h!=null&&h<u.h)iss.push({lv:'warn',code,msg:`Budget ชั่วโมง ${fmtN(h)} ต่ำกว่ายอดที่ใช้ไปแล้ว ${fmtN(u.h)} — คงเหลือจะติดลบทันที`});
+    if(b!=null&&isSuperAdmin&&b<u.b)iss.push({lv:'warn',code,msg:`Budget บาท ${fmtN(b)} ต่ำกว่ายอดที่ใช้ไปแล้ว ${fmtN(u.b)} — คงเหลือจะติดลบทันที`});
+    if(h===0&&oh>0)iss.push({lv:'warn',code,msg:`ตั้ง Budget ชั่วโมงเป็น 0 (เดิม ${fmtN(oh)}) — ถ้าต้องการยกเลิก Budget ให้ใช้ 0 โดยตั้งใจ`});
+    const hh=h!=null?h:oh,bb=b!=null?b:ob;
+    if(ar&&hh>0&&bb>0){const r=bb/hh;if(r<ar*0.4||r>ar*2.5)iss.push({lv:'warn',code,msg:`อัตรา Budget ฿${fmtN(r)}/ชม. ต่างจากเรทเฉลี่ยของบริษัท ฿${fmtN(ar)}/ชม. มาก — ตรวจว่าตัวเลขชั่วโมง/บาทไม่สลับหรือหน่วยผิด`})}
+    apply.push({k,o,code,h,b,oh,ob,uh:u.h,ub:u.b})});
+  bgPending=apply;
+  const tot={h:0,b:0};apply.forEach(a=>{tot.h+=(a.h!=null?a.h:a.oh)-a.oh;tot.b+=(a.b!=null?a.b:a.ob)-a.ob});
+  const ok=apply.length>0;
+  out.innerHTML=`<div class="sum" style="margin:6px 0"><span>ในไฟล์ <b>${seen.size}</b> รหัส</span><span style="color:var(--cost)">จะเปลี่ยน <b>${apply.length}</b></span><span>เท่าเดิม <b>${same}</b></span><span>ไม่มีตัวเลข <b>${blank}</b></span><span style="color:var(--bad)">ข้าม/ผิดพลาด <b>${iss.filter(i=>i.lv==='err').length}</b></span><span style="color:#e8711a">เตือน <b>${iss.filter(i=>i.lv==='warn').length}</b></span><span>ผลต่าง Budget รวม: <b>${tot.h>=0?'+':''}${fmtN(tot.h)}</b> ชม.${isSuperAdmin?` · <b>${tot.b>=0?'+':''}${fmtN(tot.b)}</b> บาท`:''}</span></div>
+    ${iss.length?`<div style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:8px 0">${issHtml(iss)}</div>`:'<div style="color:var(--cost);margin:8px 0">✔ ตรวจแล้วไม่พบข้อผิดพลาด</div>'}
+    ${ok?`<div class="scroll" style="max-height:260px"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th class="n">ชม. เดิม → ใหม่</th>${isSuperAdmin?'<th class="n">บาท เดิม → ใหม่</th>':''}<th class="n">ใช้ไป (ชม.)</th><th class="n">คงเหลือใหม่ (ชม.)</th></tr></thead><tbody>
+      ${apply.slice(0,60).map(a=>{const nh=a.h!=null?a.h:a.oh,nb=a.b!=null?a.b:a.ob;return `<tr><td>${esc(a.code)}</td><td>${esc(trunc(a.o.name,40))}</td><td class="n">${fmtN(a.oh)} → <b>${fmtN(nh)}</b></td>${isSuperAdmin?`<td class="n">${fmtN(a.ob)} → <b>${fmtN(nb)}</b></td>`:''}<td class="n">${fmtN(a.uh)}</td><td class="n" style="${nh>0&&nh-a.uh<0?'color:var(--bad);font-weight:700':''}">${nh>0?fmtN(nh-a.uh):'—'}</td></tr>`}).join('')}</tbody></table></div>${apply.length>60?`<div class="hint">แสดง 60 จาก ${apply.length} รายการ</div>`:''}`:''}
+    <div style="display:flex;gap:8px;margin-top:10px">${ok?`<button class="btn pri" id="bgOk">ยืนยันนำเข้า (${apply.length} รหัส)</button>`:''}<button class="btn" id="bgNo">${ok?'ยกเลิก':'ปิด'}</button></div>`;
+  if($('#bgOk'))$('#bgOk').onclick=()=>{(bgPending||[]).forEach(a=>{if(a.h!=null)a.o.budgetH=a.h;if(a.b!=null)a.o.budgetB=a.b});const n=(bgPending||[]).length;bgPending=null;save();renderSetup();$(target||'#bgOut').innerHTML=`<div style="color:var(--cost)">✔ นำเข้า Budget แล้ว ${n} รหัส — กด "ตรวจสอบตัวเลข Budget" เพื่อตรวจซ้ำ</div>`};
+  $('#bgNo').onclick=()=>{bgPending=null;out.innerHTML=''};
+  return {iss,apply};
+}
+$('#bgImp').onchange=async ev=>{
+  const file=ev.target.files[0];ev.target.value='';if(!file||!xlsxReady())return;const out=$('#bgOut');
+  try{const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});let rows=null;
+    for(const n of wb.SheetNames){const r=XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:''});if(r.length&&('Project Code' in r[0])){rows=r;break}}
+    if(!rows)return out.innerHTML='<div style="color:var(--bad)">ไม่พบคอลัมน์ "Project Code" ในไฟล์</div>';
+    bgPreview(rows)}catch(e){out.innerHTML='<div style="color:var(--bad)">อ่านไฟล์ไม่สำเร็จ: '+esc(e.message)+'</div>'}};
+$('#bgTpl').onclick=()=>{if(!xlsxReady())return;
+  const rows=[...db.projects.map(p=>({'Project Code':p.id,'Project Name':p.name,Kind:p.kind,r:p})),...db.contracts.map(c=>({'Project Code':c.id,'Project Name':c.name,Kind:'sc_'+coOf(c).toLowerCase(),r:c}))]
+    .map(({r,...x})=>({...x,'Budget Hours':r.budgetH||'',...(isSuperAdmin?{'Budget Baht':r.budgetB||''}:{})}));
+  writeXlsx({Budget:rows,'วิธีใช้':[{'ขั้นตอน':'1. กรอก Budget Hours (และ Budget Baht ถ้าเป็น Super Admin) ในชีต Budget — ช่องว่าง = ไม่แก้ยอดเดิม'},{'ขั้นตอน':'2. ตั้งค่าข้อมูล › Budget ตั้งต้น › เลือกไฟล์ Budget'},{'ขั้นตอน':'3. ตรวจผลที่ระบบแสดง แล้วกดยืนยันนำเข้า'}]},'Budget_import_'+todayStr()+'.xlsx')};
+async function runBudgetCheck(target){
+  const out=$(target||'#bgOut');out.innerHTML='<span class="hint">กำลังตรวจสอบ…</span>';
+  await loadCostRep(true);
+  const iss=[],bu=budgetUsed(),projs=[...db.projects,...db.contracts],codes=new Set(projs.map(r=>r.id));
+  // 1) รหัสในใบงานที่ไม่มีในตารางโครงการ/สัญญา
+  const orphan={};let apprH=0,sumU=0;
+  db.timesheets.forEach(t=>(t.entries||[]).forEach(x=>{if(!x.code)return;if(!codes.has(x.code))orphan[x.code]=(orphan[x.code]||0)+x.hours;if(entState(t,x)==='A')apprH+=x.hours}));
+  Object.entries(orphan).forEach(([c,h])=>iss.push({lv:'err',code:c,msg:`มีในใบงาน (${fmtN(h)} ชม.) แต่ไม่มีในตารางโครงการ/สัญญา — ไม่ถูกนับใน Budget ใดเลย`}));
+  // 2) ผลรวมยอดใช้ไปทุกรหัส = ผลรวมรายการอนุมัติที่มีรหัส (ในข้อมูลที่โหลด)
+  projs.forEach(r=>{sumU+=(bu.u[r.id]||{h:0}).h});const orphanA=Object.keys(orphan).reduce((a,c)=>a+(db.timesheets.reduce((s,t)=>s+(t.entries||[]).filter(x=>x.code===c&&entState(t,x)==='A').reduce((q,x)=>q+x.hours,0),0)),0);
+  if(Math.abs(sumU+orphanA-apprH)>0.005)iss.push({lv:'err',msg:`ผลรวมยอดใช้ไปรายโครงการ (${fmtN(sumU)}) + รหัสที่ไม่พบ (${fmtN(orphanA)}) ไม่เท่ากับรายการอนุมัติทั้งหมดที่มีรหัส (${fmtN(apprH)}) — ตัวเลขไม่ตรง ควรตรวจข้อมูลใบงาน`});
+  else iss.push({lv:'ok',msg:`ผลรวมยอดใช้ไปรายโครงการ ${fmtN(sumU)} ชม. ตรงกับรายการอนุมัติขั้นสุดท้ายที่มีรหัสในข้อมูลที่โหลด`});
+  // 3) สถานะใบงานไม่สอดคล้องกับรายการ
+  let badSub=0,badPen=0,off8=0;
+  db.timesheets.forEach(t=>{const st=(t.entries||[]).map(x=>entState(t,x));
+    if(t.status==='Submitted'&&st.some(s=>s!=='A'))badSub++;
+    if(t.status==='Pending'&&st.length&&st.every(s=>s==='A'))badPen++;
+    if(t.status==='Submitted'&&totals(t).all!==TARGET)off8++});
+  if(badSub)iss.push({lv:'err',msg:`ใบงาน Submitted ${badSub} ใบ มีรายการที่ยังไม่อนุมัติ — ยอดใช้ไปจะต่ำกว่าจริง`});
+  if(badPen)iss.push({lv:'warn',msg:`ใบงาน Pending ${badPen} ใบ รายการอนุมัติครบแล้วแต่สถานะไม่เปลี่ยน`});
+  if(off8)iss.push({lv:'info',msg:`ใบงาน Submitted ${off8} ใบ ชั่วโมงรวมไม่เท่ากับ ${TARGET} ชม. (ตรวจที่หน้ารายละเอียด)`});
+  // 4) เทียบกับฐานข้อมูล
+  if(costRep.src==='db'&&costRep.rows){
+    costRep.rows.forEach(r=>{const p=projs.find(z=>z.id===r.code),l=(bu.u[r.code]||{h:0}).h;
+      if(p&&Math.abs((+p.budgetH||0)-r.bh)>0.005)iss.push({lv:'err',code:r.code,msg:`Budget ชั่วโมงในหน้าจอ (${fmtN(+p.budgetH||0)}) ต่างจากฐานข้อมูล (${fmtN(r.bh)}) — ยังไม่ซิงก์ ลองรีเฟรชแอป`});
+      if(l>r.uh+0.005)iss.push({lv:'err',code:r.code,msg:`ยอดใช้ไปที่คำนวณในเครื่อง (${fmtN(l)}) มากกว่าฐานข้อมูล (${fmtN(r.uh)}) — ตัวเลขไม่ตรง`});
+      else if(r.uh-l>0.005)iss.push({lv:'info',code:r.code,msg:`ฐานข้อมูลมากกว่าในเครื่อง ${fmtN(r.uh-l)} ชม. — มักเป็นใบงานเก่ากว่า 18 เดือนที่แอปไม่ได้โหลด (ฐานข้อมูลคือยอดที่ถูกต้อง)`})});
+    if(!iss.some(i=>i.lv==='err'&&/ฐานข้อมูล/.test(i.msg)))iss.push({lv:'ok',msg:`เทียบกับฐานข้อมูล ${costRep.rows.length} รหัส — Budget ตรงกัน และไม่มียอดในเครื่องเกินฐานข้อมูล`})}
+  else iss.push({lv:'warn',msg:'ยังเทียบกับฐานข้อมูลไม่ได้ (ยังไม่ได้รัน supabase_update_cost_access.sql หรือโหลดไม่สำเร็จ) — ใช้ข้อมูลในเครื่องเท่านั้น'});
+  // 5) Budget เทียบยอดใช้
+  const rows=costRep.rows||[];let over=0,warn80=0,noBud=0,noBudH=0;
+  rows.forEach(r=>{if(r.bh>0){const p=r.uh/r.bh*100;if(p>100){over++;iss.push({lv:'err',code:r.code,msg:`ใช้เกิน Budget ${Math.round(p)}% (ใช้ ${fmtN(r.uh)} / ${fmtN(r.bh)} ชม.)`})}else if(p>=80){warn80++;iss.push({lv:'warn',code:r.code,msg:`ใช้ไปแล้ว ${Math.round(p)}% ของ Budget — เฝ้าระวัง`})}}
+    else if(r.uh>0){noBud++;noBudH+=r.uh}
+    if(r.bb!=null&&r.ub!=null&&r.bb>0&&r.ub>r.bb)iss.push({lv:'err',code:r.code,msg:`ต้นทุนบาทเกิน Budget บาท (฿${fmtN(r.ub)} / ฿${fmtN(r.bb)})`});
+    if(r.bb!=null&&r.bb>0&&!(r.bh>0))iss.push({lv:'warn',code:r.code,msg:'มี Budget บาทแต่ยังไม่ตั้ง Budget ชั่วโมง'});
+    if(r.bh>0&&r.bb!=null&&!(r.bb>0))iss.push({lv:'info',code:r.code,msg:'มี Budget ชั่วโมงแต่ยังไม่ตั้ง Budget บาท'})});
+  if(noBud)iss.push({lv:'info',msg:`${noBud} รหัสมีการใช้ชั่วโมง (รวม ${fmtN(noBudH)} ชม.) แต่ยังไม่ได้ตั้ง Budget`});
+  // 6) เงินเดือน
+  if(isSuperAdmin){let un=0;db.timesheets.forEach(t=>(t.entries||[]).forEach(x=>{if(x.code&&entState(t,x)==='A'&&!isRated(t))un+=x.hours}));
+    if(un)iss.push({lv:'warn',msg:`รายการอนุมัติแล้ว ${fmtN(un)} ชม. ของพนักงานที่ยังไม่มีเรทเงินเดือน — ต้นทุนบาทของโครงการจะต่ำกว่าจริง (ตั้งใน ตารางเงินเดือน)`})}
+  const ne=iss.filter(i=>i.lv==='err').length,nw=iss.filter(i=>i.lv==='warn').length;
+  out.innerHTML=`<div class="sum" style="margin:6px 0"><b>ผลตรวจสอบ</b><span style="color:var(--bad)">ผิดพลาด <b>${ne}</b></span><span style="color:#e8711a">เตือน <b>${nw}</b></span><span class="hint">ตรวจเมื่อ ${new Date().toLocaleTimeString('th-TH')}</span></div>
+    ${!ne&&!nw?'<div style="color:var(--cost);margin:6px 0">✔ ไม่พบความผิดปกติของตัวเลข</div>':''}
+    <div style="max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px 12px">${issHtml(iss.sort((a,b)=>({err:0,warn:1,info:2,ok:3}[a.lv]-{err:0,warn:1,info:2,ok:3}[b.lv])))}</div>`;
+  return iss;
+}
+$('#bgChk').onclick=()=>runBudgetCheck('#bgOut');
 function renderSetup(){const BU=budgetUsed();
   ['employees','depts','holidays'].forEach(k=>{if(db[k])db[k].sort(byId)});['projects','contracts'].forEach(k=>{if(db[k])db[k].sort(byUpd)});
   $('#masters').innerHTML=MASTERS.filter(m=>m.key!=='contracts').map(m=>`<div class="card"><h2>${m.title}</h2>${m.key==='projects'?budSummary():''}<div class="scroll"><table>
