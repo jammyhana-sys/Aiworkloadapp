@@ -400,7 +400,8 @@ header>*{min-width:0}
       <div style="grid-column:span 2"><label>รหัสพนักงาน (คั่นด้วย , หรือขึ้นบรรทัดใหม่)</label><textarea id="asgEmps" rows="2" placeholder="01726, 02326"></textarea></div>
       <div><button class="btn pri">+ Assign</button></div>
     </form>
-    <div class="scroll" style="margin-top:12px"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>พนักงานที่ได้รับ assign</th></tr></thead><tbody id="asgList"></tbody></table></div>
+    <input type="search" data-ms="assign" placeholder="🔍 ค้นหา รหัส / ชื่อโครงการ / รหัสพนักงาน …" style="max-width:380px;margin:12px 0 0">
+    <div class="scroll" style="margin-top:12px"><table><thead><tr><th>ลำดับ</th><th>รหัส</th><th>ชื่อ</th><th>พนักงานที่ได้รับ assign</th></tr></thead><tbody id="asgList"></tbody></table></div>
   </div>
   <div class="card" id="bgCard"><h2>Budget ตั้งต้นโครงการ — นำเข้าจาก Excel และตรวจสอบตัวเลข</h2>
     <p class="hint">ไฟล์ .xlsx คอลัมน์ <b>Project Code, Budget Hours</b> (และ <b>Budget Baht</b> เฉพาะ Super Admin) — ช่องว่าง = ไม่แก้ยอดเดิม · ระบบ <b>ตรวจก่อนบันทึก</b>: ไม่พบรหัส, รหัสซ้ำ, ไม่ใช่ตัวเลข/ติดลบ, Budget ต่ำกว่ายอดที่ใช้ไปแล้ว, อัตราบาทต่อชั่วโมงผิดปกติ แล้วแสดงผลให้ตรวจ ก่อนกด "ยืนยันนำเข้า" · ปุ่ม "ตรวจสอบตัวเลข" เทียบยอดในหน้าจอกับฐานข้อมูล และหาข้อมูลที่ไม่สอดคล้อง</p>
@@ -1806,17 +1807,17 @@ const fmtN=v=>(Math.round((+v||0)*100)/100).toLocaleString('th-TH');
 function budgetUsed(){   // u = รายการที่อนุมัติขั้นสุดท้ายแล้ว (ตัดงบ) · p = ยังรออนุมัติ (ยังไม่ตัด)
   const u={},p={};db.timesheets.forEach(t=>(t.entries||[]).forEach(x=>{if(!x.code)return;const s=entState(t,x),o=s==='A'?u:s==='P'?p:null;if(!o)return;
     const r=o[x.code]=o[x.code]||{h:0,b:0};r.h+=x.hours;if(isSuperAdmin)r.b+=bahtOf(t,x)}));return{u,p}}
-const BUD_HEAD=()=>'<th class="n">Budget ตั้งต้น (ชม.)</th><th class="n">ใช้ไป (ชม.)</th><th class="n">คงเหลือ (ชม.)</th><th class="n">รออนุมัติ (ชม.)</th>'+(isSuperAdmin?'<th class="n">Budget ตั้งต้น (บาท)</th><th class="n">ใช้ไป (บาท)</th><th class="n">คงเหลือ (บาท)</th>':'');
+const BUD_HEAD=()=>(isSuperAdmin?'<th class="n">Budget ตั้งต้น (บาท)</th><th class="n">ใช้ไป (บาท)</th><th class="n">คงเหลือ (บาท)</th>':'')+'<th class="n">Budget ตั้งต้น (ชม.)</th><th class="n">ใช้ไป (ชม.)</th><th class="n">คงเหลือ (ชม.)</th><th class="n">รออนุมัติ (ชม.)</th>';
 function budCells(r,k,i,bu){
   const u=bu.u[r.id]||{h:0,b:0},p=bu.p[r.id]||{h:0},bh=+r.budgetH||0,bb=+r.budgetB||0;
   const rem=(b,used)=>{const v=b-used;return `<td class="n" style="${b>0&&v<0?'color:var(--bad);font-weight:700':''}" ${b>0&&v<0?'title="เกิน Budget"':''}>${b>0||used>0?fmtN(v):'—'}</td>`};
   const inp=(f,v)=>`<td class="n"><input type="number" min="0" step="0.5" data-bud="${k}:${i}:${f}" value="${v||''}" placeholder="0" style="width:96px;min-height:0;padding:5px 6px;text-align:right" ${isAdmin?'':'disabled'}></td>`;
-  return inp('h',bh)+`<td class="n">${fmtN(u.h)}</td>`+rem(bh,u.h)+`<td class="n hint">${fmtN(p.h)}</td>`+(isSuperAdmin?inp('b',bb)+`<td class="n">${fmtN(u.b)}</td>`+rem(bb,u.b):'');
+  return (isSuperAdmin?inp('b',bb)+`<td class="n">${fmtN(u.b)}</td>`+rem(bb,u.b):'')+inp('h',bh)+`<td class="n">${fmtN(u.h)}</td>`+rem(bh,u.h)+`<td class="n hint">${fmtN(p.h)}</td>`;
 }
 function budSummary(){
   const bu=budgetUsed();let B=0,U=0,P=0,BB=0,UB=0;
   [...db.projects,...db.contracts].forEach(r=>{B+=+r.budgetH||0;BB+=+r.budgetB||0;const u=bu.u[r.id],p=bu.p[r.id];if(u){U+=u.h;UB+=u.b}if(p)P+=p.h});
-  return `<div class="sum" style="margin:6px 0 6px"><span>💼 Budget รวม (ชม.) ตั้งต้น <b>${fmtN(B)}</b></span><span>ใช้ไป <b>${fmtN(U)}</b></span><span>คงเหลือ <b style="color:${B-U<0?'var(--bad)':'var(--cost)'}">${fmtN(B-U)}</b></span><span class="hint">รออนุมัติ ${fmtN(P)} ชม. (ยังไม่ตัด)</span>${isSuperAdmin?`<span>· บาท: ตั้งต้น <b>${fmtN(BB)}</b> · ใช้ไป <b>${fmtN(UB)}</b> · คงเหลือ <b style="color:${BB-UB<0?'var(--bad)':'var(--cost)'}">${fmtN(BB-UB)}</b></span>`:''}</div>
+  return `<div class="sum" style="margin:6px 0 6px">${isSuperAdmin?`<span>💰 Budget รวม (บาท) ตั้งต้น <b>${fmtN(BB)}</b> · ใช้ไป <b>${fmtN(UB)}</b> · คงเหลือ <b style="color:${BB-UB<0?'var(--bad)':'var(--cost)'}">${fmtN(BB-UB)}</b></span>`:''}<span>⏱ Budget รวม (ชม.) ตั้งต้น <b>${fmtN(B)}</b></span><span>ใช้ไป <b>${fmtN(U)}</b></span><span>คงเหลือ <b style="color:${B-U<0?'var(--bad)':'var(--cost)'}">${fmtN(B-U)}</b></span><span class="hint">รออนุมัติ ${fmtN(P)} ชม. (ยังไม่ตัด)</span></div>
     <div class="hint" style="margin-bottom:8px">ระบบ <b>ตัด Budget เมื่อรายการงานได้รับการอนุมัติขั้นสุดท้าย</b> (ผ่านครบทุกขั้นตามสายอนุมัติ) — รายการ Draft / รออนุมัติ / ส่งกลับ ยังไม่ตัด · คำนวณจากบันทึกงานย้อนหลัง 18 เดือนที่โหลดมา · ช่อง Budget (บาท) เห็นและแก้ได้เฉพาะ Super Admin (คิดจากอัตราเงินเดือนที่ตั้งไว้) · แก้ตัวเลขในช่องได้โดยตรง หรือนำเข้าผ่าน Excel (คอลัมน์ Budget Hours / Budget Baht)</div>`}
 /* ===== นำเข้า Budget ตั้งต้น (ตรวจก่อนบันทึก) + ตรวจสอบตัวเลข ===== */
 const numOf=v=>{if(v===''||v==null)return null;const s=String(v).replace(/[,฿\s]/g,'');return /^-?\d+(\.\d+)?$/.test(s)?+s:NaN};
@@ -1914,21 +1915,26 @@ async function runBudgetCheck(target){
   return iss;
 }
 $('#bgChk').onclick=()=>runBudgetCheck('#bgOut');
+var MSQ={};   // คำค้นของแต่ละการ์ด (จำไว้ตอนวาดหน้าใหม่)
+function filterMS(inp){const q=(inp.value||'').trim().toLowerCase(),card=inp.closest('.card');
+  card.querySelectorAll('tbody tr').forEach(tr=>{const t=(tr.textContent+' '+[...tr.querySelectorAll('input')].map(x=>x.value).join(' ')).toLowerCase();tr.style.display=!q||t.includes(q)?'':'none'})}
+function applyMS(){document.querySelectorAll('[data-ms]').forEach(inp=>{inp.value=MSQ[inp.dataset.ms]||'';filterMS(inp)})}
+document.addEventListener('input',e=>{const el=e.target;if(el.matches&&el.matches('[data-ms]')){MSQ[el.dataset.ms]=el.value;filterMS(el)}});
 function renderSetup(){const BU=budgetUsed();
   ['employees','depts','holidays'].forEach(k=>{if(db[k])db[k].sort(byId)});['projects','contracts'].forEach(k=>{if(db[k])db[k].sort(byUpd)});
-  $('#masters').innerHTML=MASTERS.filter(m=>m.key!=='contracts').map(m=>`<div class="card"><h2>${m.title}</h2>${m.key==='projects'?budSummary():''}<div class="scroll"><table>
-    <thead><tr><th>No.</th><th>${m.date?'วันที่':'รหัส'}</th><th>ชื่อ</th>${m.f.map(f=>`<th>${f[1]}</th>`).join('')}${m.stamp?'<th>ผู้นำเข้า/แก้ไข</th><th>อัปเดตล่าสุด</th>':''}${m.key==='projects'?BUD_HEAD():''}<th>ใช้งาน</th><th></th></tr></thead><tbody>
-    ${masterRows(m).map(({r,i,k},n)=>`<tr><td class="hint">${n+1}</td><td>${esc(r.id)}</td><td>${esc(r.name)}</td>${m.f.map(f=>`<td>${fv(r,f)}</td>`).join('')}${m.stamp?`<td>${esc(r.updatedBy||'—')}</td><td class="hint">${fmtTs(r.updatedAt)}</td>`:''}${m.key==='projects'?budCells(r,k,i,BU):''}
+  $('#masters').innerHTML=MASTERS.filter(m=>m.key!=='contracts').map(m=>`<div class="card"><h2>${m.title}</h2><input type="search" data-ms="${m.key}" placeholder="🔍 ค้นหา รหัส / ชื่อ …" style="max-width:340px;margin:2px 0 10px">${m.key==='projects'?budSummary():''}<div class="scroll"><table>
+    <thead><tr><th>No.</th><th>${m.date?'วันที่':'รหัส'}</th><th>ชื่อ</th>${m.key==='projects'?BUD_HEAD():''}${m.f.map(f=>`<th>${f[1]}</th>`).join('')}${m.stamp?'<th>ผู้นำเข้า/แก้ไข</th><th>อัปเดตล่าสุด</th>':''}<th>ใช้งาน</th><th></th></tr></thead><tbody>
+    ${masterRows(m).map(({r,i,k},n)=>`<tr><td class="hint">${n+1}</td><td>${esc(r.id)}</td><td>${esc(r.name)}</td>${m.key==='projects'?budCells(r,k,i,BU):''}${m.f.map(f=>`<td>${fv(r,f)}</td>`).join('')}${m.stamp?`<td>${esc(r.updatedBy||'—')}</td><td class="hint">${fmtTs(r.updatedAt)}</td>`:''}
     <td>${m.date?'':`<input type="checkbox" ${r.active!==false?'checked':''} data-act="${k}:${i}" style="width:auto">`}</td><td><button class="x" data-rm="${k}:${i}">✕</button></td></tr>`).join('')}
     </tbody></table></div>
     <form data-add="${m.key}" class="row" style="margin-top:12px;align-items:end">
       <div><label>${m.date?'วันที่':'รหัส'}</label><input name="id" ${m.date?'type="date"':''} required></div><div><label>ชื่อ</label><input name="name" required></div>
       ${m.f.map(f=>f[2]==='bool'?fInput(f):`<div><label>${f[1]}</label>${fInput(f)}</div>`).join('')}
       <div><button class="btn pri">+ เพิ่ม</button></div></form></div>`).join('')
-   +`<div class="card"><h2>ประเภท SG&amp;A (N1–N8)</h2><div class="scroll"><table><thead><tr><th>รหัส</th><th>ชื่อที่แสดง</th><th>สี</th><th>ต้องอ้างอิง</th><th>ใช้งาน</th></tr></thead><tbody>
+   +`<div class="card"><h2>ประเภท SG&amp;A (N1–N8)</h2><input type="search" data-ms="sga" placeholder="🔍 ค้นหา รหัส / ชื่อ …" style="max-width:340px;margin:2px 0 10px"><div class="scroll"><table><thead><tr><th>รหัส</th><th>ชื่อที่แสดง</th><th>สี</th><th>ต้องอ้างอิง</th><th>ใช้งาน</th></tr></thead><tbody>
     <tr><td>Cost</td><td><input data-cname value="${esc(costSty().label)}" style="min-height:0;padding:6px 8px"></td><td><input type="color" data-ccolor value="${costSty().color}" style="width:46px;height:34px;padding:2px"></td><td>รหัสโครงการ (assign)</td><td></td></tr>
     ${db.sgaTypes.map((t,i)=>`<tr><td>${t.id}</td><td><input data-tname="${i}" value="${esc(t.name)}" style="min-height:0;padding:6px 8px"><div class="hint">${esc(t.desc)}</div></td><td><input type="color" data-tcolor="${i}" value="${sgaColor(t)}" style="width:46px;height:34px;padding:2px"></td><td>${refsOf(t).map(r=>esc(REF_TH[r])).join('<br>')||'—'}</td><td><input type="checkbox" ${t.active!==false?'checked':''} data-act="sgaTypes:${i}" style="width:auto"></td></tr>`).join('')}
-    </tbody></table></div><div class="hint" style="margin-top:8px"><button class="btn" id="uiReset" style="padding:4px 10px;margin-right:8px">คืนค่าชื่อ/สีเริ่มต้น</button>ชื่อและสีที่แก้ไขมีผลกับวงกลมสรุป รายการเลือกประเภท และไฟล์ส่งออก (รหัส N1–N8 ยังเหมือนเดิม)</div><div class="hint" style="margin-top:8px">ฝ่ายที่เลือก Backlog No. (DP) ได้ใน N3: ${esc(db.backlogDepts.join(', ')||'-')}</div></div>`;
+    </tbody></table></div><div class="hint" style="margin-top:8px"><button class="btn" id="uiReset" style="padding:4px 10px;margin-right:8px">คืนค่าชื่อ/สีเริ่มต้น</button>ชื่อและสีที่แก้ไขมีผลกับวงกลมสรุป รายการเลือกประเภท และไฟล์ส่งออก (รหัส N1–N8 ยังเหมือนเดิม)</div><div class="hint" style="margin-top:8px">ฝ่ายที่เลือก Backlog No. (DP) ได้ใน N3: ${esc(db.backlogDepts.join(', ')||'-')}</div></div>`;applyMS();
   $$('[data-bud]').forEach(inp=>inp.onchange=()=>{const[k,i,fl]=inp.dataset.bud.split(':'),o=db[k][+i];if(!o)return;const v=Math.max(0,+inp.value||0);if(fl==='h')o.budgetH=v;else o.budgetB=v;save();renderSetup()});
   $$('[data-act]').forEach(c=>c.onchange=()=>{const[k,i]=c.dataset.act.split(':');db[k][i].active=c.checked;save();fillEmp();syncForm();renderLog()});
   $$('[data-rm]').forEach(b=>b.onclick=()=>{const[k,i]=b.dataset.rm.split(':');
@@ -1946,8 +1952,8 @@ function renderSetup(){const BU=budgetUsed();
   // assignments
   const codes=[...db.projects.map(p=>({id:p.id,name:`${p.name} [${p.kind}]`})),...db.contracts.map(c=>({id:c.id,name:`${c.name} [Sales Contract]`}))];
   $('#asgCode').innerHTML=opt(codes,c=>`${c.id} — ${c.name}`,'— เลือกรหัส —');
-  $('#asgList').innerHTML=codes.map(c=>{const es=db.assign.filter(a=>a.code===c.id).map(a=>a.empId);
-    return `<tr><td>${esc(c.id)}</td><td>${esc(c.name)}</td><td>${es.map(id=>`<span class="tag st" style="margin:0 4px 4px 0">${esc(id)} <a href="#" data-unasg="${esc(id)}|${esc(c.id)}" style="color:#fff;text-decoration:none">✕</a></span>`).join('')||'<span class="hint">ยังไม่มี</span>'}</td></tr>`}).join('');
+  $('#asgList').innerHTML=codes.map((c,n)=>{const es=db.assign.filter(a=>a.code===c.id).map(a=>a.empId);
+    return `<tr><td class="hint">${n+1}</td><td>${esc(c.id)}</td><td>${esc(c.name)}</td><td>${es.map(id=>`<span class="tag st" style="margin:0 4px 4px 0">${esc(id)} <a href="#" data-unasg="${esc(id)}|${esc(c.id)}" style="color:#fff;text-decoration:none">✕</a></span>`).join('')||'<span class="hint">ยังไม่มี</span>'}</td></tr>`}).join('');applyMS();
   $$('[data-unasg]').forEach(a=>a.onclick=ev=>{ev.preventDefault();const[e,c]=a.dataset.unasg.split('|');db.assign=db.assign.filter(x=>!(x.empId===e&&x.code===c));save();renderSetup();syncForm();renderLog()});
   $$('[data-tname]').forEach(i=>i.onchange=()=>{const t=db.sgaTypes[+i.dataset.tname],v=i.value.trim();if(!v){i.value=t.name;return}t.name=v;uiSave()});
   $$('[data-tcolor]').forEach(i=>i.onchange=()=>{db.sgaTypes[+i.dataset.tcolor].color=i.value;uiSave()});
