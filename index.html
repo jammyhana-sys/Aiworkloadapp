@@ -3207,7 +3207,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v91 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v92 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3284,18 +3284,21 @@ async function pinGate(lock){   // เรียกหลังล็อกอิ
 }
 
 /* ---------- นาฬิกาจับเวลา 8 ชั่วโมงตามการลงเวลาจริง + บังคับต้องลงเวลาก่อนบันทึกชั่วโมงงาน ---------- */
-let attReq={on:false,from:'0000-00-00',loaded:false};
-async function loadAttReq(){try{const r=await sb.from('app_settings').select('value').eq('key','att_required').limit(1);
-  const v=r.data&&r.data[0]&&r.data[0].value;attReq={on:!!v&&v.on!==false,from:(v&&v.from)||'0000-00-00',loaded:true}}catch(e){attReq.loaded=true}}
+let attReq={on:false,from:'0000-00-00',loaded:false},attTest=false;
+async function loadAttReq(){try{const r=await sb.from('app_settings').select('key,value').in('key',['att_required','att_test']);
+  const m={};(r.data||[]).forEach(x=>m[x.key]=x.value);const v=m.att_required;attTest=!!(m.att_test&&m.att_test.on===true);
+  attReq={on:!!v&&v.on!==false,from:(v&&v.from)||'0000-00-00',loaded:true}}catch(e){attReq.loaded=true}}
+const attBase=(e,ds)=>attTest?{work:true}:baseDay(e,ds);   // โหมดทดลอง: ลงเวลาได้ทุกวัน
 function clockGateFor(empId,ds){
   if(!hubOn()||!attReq.on||!me||empId!==me.id)return{block:false};
   if(ds<attReq.from)return{block:false};
-  const bd=baseDay(me,ds);if(!bd.work)return{block:false,nonwork:true,why:bd.why};
+  const bd=attBase(me,ds);if(!bd.work)return{block:false,nonwork:true,why:bd.why};
   const lr=leaveOn(me.id,ds);if(lr&&lr.part==='full')return{block:false,leave:true};
   if(!att.loaded)return{block:true,msg:'กำลังตรวจสอบการลงเวลา… กรุณารอสักครู่',loading:true};
-  const logs=att.logs.filter(l=>l.emp_id===me.id&&bkkDay(new Date(l.at))===ds),inn=logs.find(l=>l.kind==='in'),out=[...logs].reverse().find(l=>l.kind==='out');
-  if(inn){const el=out?new Date(out.at)-new Date(inn.at):(ds===bkkDay()?Date.now()-new Date(inn.at):null);
-    return{block:false,inn,out,logs,allowed:el==null?8:Math.max(0,Math.min(8,Math.floor(el/3600e3)))}}
+  const logs=att.logs.filter(l=>l.emp_id===me.id&&bkkDay(new Date(l.at))===ds).sort((a,b)=>new Date(a.at)-new Date(b.at)),inn=logs.find(l=>l.kind==='in');
+  if(inn){let tot=0,open=null,lastOut=null;logs.forEach(l=>{const t=+new Date(l.at);if(l.kind==='in'){if(open==null)open=t}else if(l.kind==='out'){if(open!=null){tot+=t-open;open=null}lastOut=l}});
+    const isToday=ds===bkkDay();if(open!=null&&isToday)tot+=Date.now()-open;
+    return{block:false,inn,out:lastOut,logs,tot,running:open!=null&&isToday,allowed:(open!=null&&!isToday)?8:Math.max(0,Math.min(8,Math.floor(tot/3600e3)))}}
   return{block:true,msg:'ยังไม่ได้ลงเวลาเข้างานของวันที่ '+dShort(ds)+' — ไม่สามารถบันทึกชั่วโมงงานได้ ต้องลงเวลาที่ระบบลงเวลา (หรือผ่าน AI-Beacon) ก่อน'}}
 const fmtHMS=ms=>{ms=Math.max(0,Math.floor(ms/1000));const h=Math.floor(ms/3600),m=Math.floor(ms%3600/60),s=ms%60;return h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')};
 function renderClockCard(){
@@ -3318,11 +3321,11 @@ function renderClockCard(){
   else if(!attReq.on){big='—';sub='ระบบยังไม่บังคับการลงเวลา'}
   else if(g.block){ico='🔒';big=ds>bkkDay()?'ยังไม่ถึงวันนั้น':'ยังไม่ได้ลงเวลา';col='var(--bad)';sub=g.loading?'กำลังตรวจสอบ…':(ds>bkkDay()?'ลงเวลา/บันทึกชั่วโมงงานล่วงหน้าไม่ได้':'ลงเวลาเข้างานก่อน จึงจะบันทึกชั่วโมงงานได้ (ลงเวลาในแอป หรือ AI-Beacon)')}
   else if(!g.inn){big='—';sub='ไม่ใช่ใบงานของตัวเอง หรือยังไม่มีข้อมูลการลงเวลา'}
-  else if(g.inn){const t0=new Date(g.inn.at).getTime(),t1=g.out?new Date(g.out.at).getTime():Date.now(),el=t1-t0;ring=Math.min(1,el/TGH);
+  else if(g.inn){const t0=new Date(g.inn.at).getTime(),el=g.tot;ring=Math.min(1,el/TGH);
     const done=el>=TGH,end=new Date(t0+TGH).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'});
     col=done?'var(--cost)':'var(--pri)';ico=done?'✅':'⏳';
-    big=g.out?('ทำงาน '+fmtHMS(el)):(done?'ครบ 8 ชม. แล้ว ✓ (+'+fmtHMS(el-TGH)+')':'เหลืออีก '+fmtHMS(TGH-el));
-    {const t=curSheet(false),used=totals(t).all;sub=`บันทึกงานได้ ${g.allowed} ชม. (ใช้แล้ว ${used} · เหลือ ${Math.max(0,g.allowed-used)}) · `}
+    big=!g.running?('ทำงาน '+fmtHMS(el)):(done?'ครบ 8 ชม. แล้ว ✓ (+'+fmtHMS(el-TGH)+')':'เหลืออีก '+fmtHMS(TGH-el));
+    {const t=curSheet(false),used=totals(t).all;sub=`บันทึกงานได้ ${g.allowed} ชม. (ใช้แล้ว ${used} · เหลือ ${Math.max(0,g.allowed-used)})${g.running&&g.allowed<8?` · ชั่วโมงถัดไปใน ${fmtHMS(3600e3-(g.tot%3600e3))}`:''} · `}
     sub+=`เข้างาน ${hhmm(g.inn.at)} น. (${g.inn.source==='beacon'?'📡 AI-Beacon':'📱 ลงเวลาในแอป'})${g.out?` · ออกงาน ${hhmm(g.out.at)} น.`:` · ครบ 8 ชม. เวลา ${end} น.`}`}
   c.innerHTML=`<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><svg viewBox="0 0 80 80" width="84" height="84"><circle cx="40" cy="40" r="${R}" fill="none" stroke="rgba(120,130,150,.22)" stroke-width="8"/><circle cx="40" cy="40" r="${R}" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(C*ring).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 40 40)"/><text x="40" y="46" text-anchor="middle" font-size="22">${ico}</text></svg>
     <div style="flex:1;min-width:200px"><div class="hint">นาฬิกาจับเวลา 8 ชั่วโมงตามการลงเวลาจริง · ${esc(dShort(ds))}</div><div style="font-size:26px;font-weight:700;color:${col};line-height:1.25">${esc(big)}</div><div class="hint">${esc(sub)}</div></div></div>`;
@@ -3352,7 +3355,7 @@ const fmtDist=d=>d<1000?Math.round(d)+' ม.':(d/1000).toFixed(1)+' กม.';
 function todayLogs(){const day=bkkDay();return att.logs.filter(l=>bkkDay(new Date(l.at))===day)}
 async function attPunch(kind){
   if(att.busy)return;const note=($('#attNote')?$('#attNote').value:'').trim();
-  if((kind==='in'||kind==='offsite_start')&&!baseDay(me,bkkDay()).work)return attSetMsg('วันนี้ไม่ใช่วันทำงานตามปฏิทิน จึงลงเวลาไม่ได้',true);
+  if((kind==='in'||kind==='offsite_start')&&!attBase(me,bkkDay()).work)return attSetMsg('วันนี้ไม่ใช่วันทำงานตามปฏิทิน จึงลงเวลาไม่ได้',true);
   if(kind==='offsite_start'&&!note)return attSetMsg('กรุณาระบุว่าไปที่ไหน/ธุระอะไร ก่อนบันทึกออกนอกสถานที่',true);
   att.busy=true;attSetMsg('กำลังหาตำแหน่ง GPS…');let pos=null;
   try{pos=await getPos()}catch(e){if(!confirm(e.message+'\nต้องการบันทึก "'+ATT_KIND[kind]+'" โดยไม่มีพิกัดหรือไม่?\n(ประวัติจะแสดงว่าไม่มีตำแหน่ง)')){att.busy=false;return attSetMsg('ยกเลิกแล้ว')}}
@@ -3373,7 +3376,8 @@ async function renderAtt(){
   const tl=todayLogs(),last=tl[tl.length-1],lk=last?last.kind:null,first=tl.find(l=>l.kind==='in');
   const stTxt=!lk?'ยังไม่ได้ลงเวลา':lk==='out'?`ออกงานแล้ว ${hhmm(last.at)} น.`:lk==='offsite_start'?`อยู่นอกสถานที่ตั้งแต่ ${hhmm(last.at)} น.`:`เข้างานแล้ว ${hhmm(first?first.at:last.at)} น.`;
   const stCol=!lk?'var(--mut)':lk==='out'?'var(--bad)':lk==='offsite_start'?'var(--sga)':'var(--cost)';
-  const wd=baseDay(me,bkkDay());   // ลงเวลาเฉพาะวันทำงานตามปฏิทิน (ตั้งค่าข้อมูล › วันหยุด / ทำงานวันเสาร์)
+  if(!attReq.loaded&&!att.reqBusy){att.reqBusy=true;loadAttReq().then(()=>{att.reqBusy=false;if(appMode==='att')renderAtt()})}
+  const wd=attBase(me,bkkDay());   // ลงเวลาเฉพาะวันทำงานตามปฏิทิน (โหมดทดลอง: ทุกวัน) (ตั้งค่าข้อมูล › วันหยุด / ทำงานวันเสาร์)
   const canIn=wd.work&&(!lk||lk==='out'),canOff=wd.work&&(lk==='in'||lk==='offsite_end'),canBack=lk==='offsite_start',canOut=lk==='in'||lk==='offsite_end';
   const posTxt=(()=>{if(!att.pos)return 'ตำแหน่งจะถูกบันทึกเมื่อกดลงเวลา (ต้องอนุญาตให้ใช้ GPS)';const n=nearest(att.pos);
     return n?(n.d<=n.s.radius_m?`📍 อยู่ในพื้นที่ ${esc(n.s.name)} (ห่าง ${fmtDist(n.d)})`:`📍 นอกพื้นที่ — ใกล้สุด ${esc(n.s.name)} ห่าง ${fmtDist(n.d)}`):'📍 ยังไม่ได้ตั้งจุดสำนักงาน (ผู้ดูแลกำหนดได้ด้านล่าง)'})();
