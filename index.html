@@ -993,6 +993,7 @@ $('#editCancel').onclick=stopEdit;
 $('#add').onclick=async()=>{
   const err=m=>($('#err').textContent=m,false);$('#err').textContent='';const TG=dayTarget(emp(),$('#date').value)||TARGET;
   if(!$('#emp').value)return err('บัญชีนี้ยังไม่ผูกกับรหัสพนักงาน');
+  {const cg=clockGateFor($('#emp').value,$('#date').value);if(cg.block)return err(cg.msg)}   // ต้องลงเวลาเข้างานก่อนจึงบันทึกชั่วโมงงานได้
   const hours=+$('#hours').value;
   if(!Number.isInteger(hours)||hours<1)return err('กรอกชั่วโมงเป็นจำนวนเต็ม ตั้งแต่ 1 ขึ้นไป (ไม่ลงนาที)');
   const x={id:'E'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),cat,hours,note:$('#note').value.trim()};
@@ -3204,7 +3205,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v88 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v89 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3279,6 +3280,51 @@ async function pinGate(lock){   // เรียกหลังล็อกอิ
   pinSetMode(st.has_pin?'verify':'set1',st.has_pin&&st.locked_until?'ล็อกจนถึง '+hhmm(st.locked_until)+' น.':(lock&&st.has_pin?'หมดเวลาการใช้งาน — ใส่ PIN เพื่อใช้งานต่อ':''));
   return new Promise(res=>{pinResolve=res});
 }
+
+/* ---------- นาฬิกาจับเวลา 8 ชั่วโมงตามการลงเวลาจริง + บังคับต้องลงเวลาก่อนบันทึกชั่วโมงงาน ---------- */
+let attReq={on:false,from:'0000-00-00',loaded:false};
+async function loadAttReq(){try{const r=await sb.from('app_settings').select('value').eq('key','att_required').limit(1);
+  const v=r.data&&r.data[0]&&r.data[0].value;attReq={on:!!v&&v.on!==false,from:(v&&v.from)||'0000-00-00',loaded:true}}catch(e){attReq.loaded=true}}
+function clockGateFor(empId,ds){
+  if(!hubOn()||!attReq.on||!me||empId!==me.id)return{block:false};
+  if(isSuperAdmin||ds<attReq.from)return{block:false};
+  const bd=baseDay(me,ds);if(!bd.work)return{block:false,nonwork:true,why:bd.why};
+  const lr=leaveOn(me.id,ds);if(lr&&lr.part==='full')return{block:false,leave:true};
+  if(!att.loaded)return{block:true,msg:'กำลังตรวจสอบการลงเวลา… กรุณารอสักครู่',loading:true};
+  const logs=att.logs.filter(l=>l.emp_id===me.id&&bkkDay(new Date(l.at))===ds),inn=logs.find(l=>l.kind==='in'),out=[...logs].reverse().find(l=>l.kind==='out');
+  if(inn)return{block:false,inn,out,logs};
+  return{block:true,msg:'ยังไม่ได้ลงเวลาเข้างานของวันที่ '+dShort(ds)+' — ไม่สามารถบันทึกชั่วโมงงานได้ ต้องลงเวลาที่ระบบลงเวลา (หรือผ่าน AI-Beacon) ก่อน'}}
+const fmtHMS=ms=>{ms=Math.max(0,Math.floor(ms/1000));const h=Math.floor(ms/3600),m=Math.floor(ms%3600/60),s=ms%60;return h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')};
+function renderClockCard(){
+  const tabLog=$('#tab-log');if(!tabLog||tabLog.classList.contains('hide')||!me)return;
+  let c=$('#clockCard');if(!c){c=document.createElement('div');c.id='clockCard';c.className='card';$('#ringCard').insertAdjacentElement('beforebegin',c)}
+  if(!hubOn()){c.classList.add('hide');return}
+  if(!attReq.loaded){loadAttReq().then(()=>renderClockCard())}
+  if(!att.loaded&&!att.busy2){att.busy2=true;attLoad().then(()=>{att.busy2=false;renderClockCard()}).catch(()=>{att.busy2=false})}
+  const empId=$('#emp').value,ds=$('#date').value,g=clockGateFor(empId,ds);
+  const add=$('#add');const lock=!!g.block;
+  if(add){add.disabled=lock;add.title=lock?'ต้องลงเวลาเข้างานก่อน':''}
+  let w=$('#clockWarn');if(!w){w=document.createElement('div');w.id='clockWarn';w.className='err';w.style.margin='8px 0';$('#err').insertAdjacentElement('beforebegin',w)}
+  w.textContent=lock?'🔒 '+g.msg:'';
+  if(empId!==me.id){c.classList.add('hide');return}
+  c.classList.remove('hide');
+  const TGH=8*3600e3,R=34,C=2*Math.PI*R;
+  let ring=0,big='',sub='',col='var(--mut)',ico='⏱';
+  if(g.nonwork){big='วันหยุด';sub=g.why||'ไม่ใช่วันทำงานตามปฏิทิน';}
+  else if(g.leave){big='ลาเต็มวัน';sub='ไม่ต้องลงเวลา / ไม่ต้องบันทึกงาน';col='var(--cost)'}
+  else if(!attReq.on){big='—';sub='ระบบยังไม่บังคับการลงเวลา'}
+  else if(g.block){ico='🔒';big='ยังไม่ได้ลงเวลา';col='var(--bad)';sub=g.loading?'กำลังตรวจสอบ…':'ลงเวลาเข้างานก่อน จึงจะบันทึกชั่วโมงงานได้ (ลงเวลาในแอป หรือ AI-Beacon)'}
+  else if(g.inn){const t0=new Date(g.inn.at).getTime(),t1=g.out?new Date(g.out.at).getTime():Date.now(),el=t1-t0;ring=Math.min(1,el/TGH);
+    const done=el>=TGH,end=new Date(t0+TGH).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'});
+    col=done?'var(--cost)':'var(--pri)';ico=done?'✅':'⏳';
+    big=g.out?('ทำงาน '+fmtHMS(el)):(done?'ครบ 8 ชม. แล้ว ✓ (+'+fmtHMS(el-TGH)+')':'เหลืออีก '+fmtHMS(TGH-el));
+    sub=`เข้างาน ${hhmm(g.inn.at)} น. (${g.inn.source==='beacon'?'📡 AI-Beacon':'📱 ลงเวลาในแอป'})${g.out?` · ออกงาน ${hhmm(g.out.at)} น.`:` · ครบ 8 ชม. เวลา ${end} น.`}`}
+  c.innerHTML=`<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><svg viewBox="0 0 80 80" width="84" height="84"><circle cx="40" cy="40" r="${R}" fill="none" stroke="rgba(120,130,150,.22)" stroke-width="8"/><circle cx="40" cy="40" r="${R}" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(C*ring).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 40 40)"/><text x="40" y="46" text-anchor="middle" font-size="22">${ico}</text></svg>
+    <div style="flex:1;min-width:200px"><div class="hint">นาฬิกาจับเวลา 8 ชั่วโมงตามการลงเวลาจริง · ${esc(dShort(ds))}</div><div style="font-size:26px;font-weight:700;color:${col};line-height:1.25">${esc(big)}</div><div class="hint">${esc(sub)}</div></div></div>`;
+}
+{const _rl=renderLog;renderLog=function(){_rl.apply(this,arguments);try{renderClockCard()}catch(e){}}}
+setInterval(()=>{try{renderClockCard()}catch(e){}},1000);
+document.addEventListener('change',ev=>{if(ev.target&&(ev.target.id==='date'||ev.target.id==='emp'))try{renderClockCard()}catch(e){}});
 
 /* ---------- ลงเวลาเข้า-ออกงาน / ออกนอกสถานที่ (GPS + Beacon) ---------- */
 let att={logs:[],sites:[],beacons:[],today:[],loaded:false,busy:false,msg:'',pos:null};

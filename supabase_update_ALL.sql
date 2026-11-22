@@ -1629,3 +1629,54 @@ end $$;
 revoke all on function public.leave_decide(uuid, boolean, text) from public, anon;
 grant execute on function public.leave_decide(uuid, boolean, text) to authenticated;
 
+
+
+-- ===== supabase_update_hub4.sql (v89) =====
+-- v89: บันทึกชั่วโมงงานได้ก็ต่อเมื่อ "ลงเวลาเข้างานจริง" ของวันนั้นแล้ว (ลงเวลาในแอป หรือ AI-Beacon)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub3.sql) — รันซ้ำได้
+-- ตั้งค่า: ตาราง app_settings คีย์ att_required  ค่า {"on": true, "from": "YYYY-MM-DD"}
+--   on   = เปิด/ปิดการบังคับ (ปิด: update public.app_settings set value = jsonb_set(value,'{on}','false') where key='att_required';)
+--   from = บังคับตั้งแต่วันที่นี้เป็นต้นไป (ค่าตั้งต้น = วันที่รัน SQL นี้ ใบงานย้อนหลังก่อนหน้านั้นไม่ถูกบังคับ)
+-- ยกเว้น: Super Admin · วันที่ไม่ใช่วันทำงาน · วันที่ลาเต็มวันที่อนุมัติแล้ว
+
+insert into public.app_settings (key, value)
+values ('att_required', jsonb_build_object('on', true, 'from', ((now() at time zone 'Asia/Bangkok')::date)::text))
+on conflict (key) do nothing;
+
+create or replace function public.att_required_for(p_emp text, p_day date) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare s jsonb;
+begin
+  select value into s from public.app_settings where key = 'att_required';
+  if s is null or coalesce((s->>'on')::boolean, true) is not true then return false; end if;
+  if p_day < coalesce(nullif(s->>'from', '')::date, date '1900-01-01') then return false; end if;
+  if not public.is_work_day(p_emp, p_day) then return false; end if;
+  if exists (select 1 from public.leave_requests l where l.emp_id = p_emp and l.status = 'Approved' and l.part = 'full'
+              and p_day between l.start_date and l.end_date) then return false; end if;
+  return true;
+end $$;
+revoke all on function public.att_required_for(text, date) from public, anon;
+grant execute on function public.att_required_for(text, date) to authenticated, service_role;
+
+-- ตัวป้องกัน: เพิ่ม/แก้ใบงานให้ชั่วโมงรวมเพิ่มขึ้น ต้องมีการลงเวลาเข้างาน (kind = 'in') ของวันนั้นก่อน
+-- (การอนุมัติ/ส่งกลับที่ไม่เพิ่มชั่วโมง ไม่ถูกบล็อก)
+create or replace function public.ts_att_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_new numeric := 0; v_old numeric := 0;
+begin
+  select coalesce(sum(coalesce((e->>'hours')::numeric, 0)), 0) into v_new from jsonb_array_elements(coalesce(new.entries, '[]'::jsonb)) e;
+  if tg_op = 'UPDATE' then
+    select coalesce(sum(coalesce((e->>'hours')::numeric, 0)), 0) into v_old from jsonb_array_elements(coalesce(old.entries, '[]'::jsonb)) e;
+  end if;
+  if v_new <= v_old then return new; end if;
+  if auth.uid() is null or public.is_super_admin() then return new; end if;           -- งานระบบ/นำเข้าด้วยสิทธิ์สูงสุด
+  if not public.att_required_for(new.emp_id, new.day) then return new; end if;
+  if not exists (select 1 from public.attendance_logs a where a.emp_id = new.emp_id and a.kind = 'in'
+                  and (a.at at time zone 'Asia/Bangkok')::date = new.day) then
+    raise exception 'NO_CLOCK_IN:ยังไม่ได้ลงเวลาเข้างานของวันที่ % — ไม่สามารถบันทึกชั่วโมงงานได้ (ลงเวลาที่ระบบลงเวลา หรือผ่าน AI-Beacon ก่อน)', to_char(new.day, 'DD/MM/YYYY');
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_ts_att_guard on public.timesheets;
+create trigger trg_ts_att_guard before insert or update on public.timesheets for each row execute function public.ts_att_guard();
+
