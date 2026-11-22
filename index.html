@@ -3207,7 +3207,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v92 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v94 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3298,7 +3298,7 @@ function clockGateFor(empId,ds){
   const logs=att.logs.filter(l=>l.emp_id===me.id&&bkkDay(new Date(l.at))===ds).sort((a,b)=>new Date(a.at)-new Date(b.at)),inn=logs.find(l=>l.kind==='in');
   if(inn){let tot=0,open=null,lastOut=null;logs.forEach(l=>{const t=+new Date(l.at);if(l.kind==='in'){if(open==null)open=t}else if(l.kind==='out'){if(open!=null){tot+=t-open;open=null}lastOut=l}});
     const isToday=ds===bkkDay();if(open!=null&&isToday)tot+=Date.now()-open;
-    return{block:false,inn,out:lastOut,logs,tot,running:open!=null&&isToday,allowed:(open!=null&&!isToday)?8:Math.max(0,Math.min(8,Math.floor(tot/3600e3)))}}
+    return{block:false,inn,out:lastOut,logs,tot,running:open!=null&&isToday,allowed:8}}   // บันทึกงานได้ 8 ชม./วัน (ตามเวลาในระบบ) เมื่อมีการลงเวลาเข้างานแล้ว · ขั้นต่ำ 1 ชม./รายการ
   return{block:true,msg:'ยังไม่ได้ลงเวลาเข้างานของวันที่ '+dShort(ds)+' — ไม่สามารถบันทึกชั่วโมงงานได้ ต้องลงเวลาที่ระบบลงเวลา (หรือผ่าน AI-Beacon) ก่อน'}}
 const fmtHMS=ms=>{ms=Math.max(0,Math.floor(ms/1000));const h=Math.floor(ms/3600),m=Math.floor(ms%3600/60),s=ms%60;return h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')};
 function renderClockCard(){
@@ -3325,8 +3325,8 @@ function renderClockCard(){
     const done=el>=TGH,end=new Date(t0+TGH).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'});
     col=done?'var(--cost)':'var(--pri)';ico=done?'✅':'⏳';
     big=!g.running?('ทำงาน '+fmtHMS(el)):(done?'ครบ 8 ชม. แล้ว ✓ (+'+fmtHMS(el-TGH)+')':'เหลืออีก '+fmtHMS(TGH-el));
-    {const t=curSheet(false),used=totals(t).all;sub=`บันทึกงานได้ ${g.allowed} ชม. (ใช้แล้ว ${used} · เหลือ ${Math.max(0,g.allowed-used)})${g.running&&g.allowed<8?` · ชั่วโมงถัดไปใน ${fmtHMS(3600e3-(g.tot%3600e3))}`:''} · `}
-    sub+=`เข้างาน ${hhmm(g.inn.at)} น. (${g.inn.source==='beacon'?'📡 AI-Beacon':'📱 ลงเวลาในแอป'})${g.out?` · ออกงาน ${hhmm(g.out.at)} น.`:` · ครบ 8 ชม. เวลา ${end} น.`}`}
+    {const t=curSheet(false),used=totals(t).all;sub=`บันทึกงานได้ ${g.allowed} ชม./วัน ขั้นต่ำ 1 ชม./รายการ (ใช้แล้ว ${used} · เหลือ ${Math.max(0,g.allowed-used)}) · `}
+    sub+=`เข้างาน ${hhmm(g.inn.at)} น. (${g.inn.source==='beacon'?'📡 AI-Beacon':'📱 ลงเวลาในแอป'})${!g.running&&g.out?` · ออกงาน ${hhmm(g.out.at)} น.`:` · ครบ 8 ชม. เวลา ${end} น.`}`}
   c.innerHTML=`<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><svg viewBox="0 0 80 80" width="84" height="84"><circle cx="40" cy="40" r="${R}" fill="none" stroke="rgba(120,130,150,.22)" stroke-width="8"/><circle cx="40" cy="40" r="${R}" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(C*ring).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 40 40)"/><text x="40" y="46" text-anchor="middle" font-size="22">${ico}</text></svg>
     <div style="flex:1;min-width:200px"><div class="hint">นาฬิกาจับเวลา 8 ชั่วโมงตามการลงเวลาจริง · ${esc(dShort(ds))}</div><div style="font-size:26px;font-weight:700;color:${col};line-height:1.25">${esc(big)}</div><div class="hint">${esc(sub)}</div></div></div>`;
 }
@@ -3400,11 +3400,13 @@ async function renderAtt(){
         ${canOut?`<button class="btn big bad" data-ap="out">🔴 ลงเวลาออกงาน</button>`:''}</div>
       <div class="err" id="attMsg" style="min-height:22px;margin-top:10px;color:var(--mut)">${esc(att.msg)}</div>
       <div class="hint">ระบบบันทึกพิกัด GPS และเปรียบเทียบกับจุดสำนักงาน · เมื่อเข้าใกล้ AI-Beacon ที่ลงทะเบียนไว้ จะลงเวลาเข้างานให้อัตโนมัติ</div></div>
-    <div class="card"><h2>บันทึกของวันนี้</h2>${tl.length?tl.map(l=>`<div class="lg"><span>${KIND_ICO[l.kind]} ${esc(ATT_KIND[l.kind])}${l.note?` — ${esc(l.note)}`:''}</span><b>${hhmm(l.at)} น.</b><span class="p" style="min-width:120px">${esc(SRC_TH[l.source]||'')}${l.site_name?' · '+esc(l.site_name):''}</span></div>`).join(''):'<div class="hint">ยังไม่มีรายการ</div>'}</div>
+    <div class="card"><h2>บันทึกของวันนี้</h2>${tl.length?tl.map(l=>`<div class="lg"><span>${KIND_ICO[l.kind]} ${esc(ATT_KIND[l.kind])}${l.note?` — ${esc(l.note)}`:''}</span><b>${hhmm(l.at)} น.</b><span class="p" style="min-width:120px">${esc(SRC_TH[l.source]||'')}${l.site_name?' · '+esc(l.site_name):''}${l.edited_at?' · ✎แก้ไขแล้ว':''}</span>${isSuperAdmin?`<span style="white-space:nowrap"><button class="x" style="color:var(--pri)" data-aled="${esc(l.id)}" title="แก้ไข / ใส่หมายเหตุ">✎</button> <button class="x" data-aldel="${esc(l.id)}" title="ลบ">✕</button></span>`:''}</div>`).join(''):'<div class="hint">ยังไม่มีรายการ</div>'}</div>
     <div class="card"><h2>ประวัติ 14 วันล่าสุด</h2><div class="scroll"><table><thead><tr><th>วันที่</th><th>เข้า</th><th>ออก</th><th class="n">ชม.อยู่ที่ทำงาน</th><th>ออกนอก</th><th>สถานที่</th></tr></thead><tbody>${hist}</tbody></table></div></div>
     <div id="attBackfill"></div><div id="attAdmin"></div>`;
   const tick=()=>{const c=$('#attClock');if(c)c.textContent=new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Asia/Bangkok'})};tick();clearInterval(clockTimer);clockTimer=setInterval(tick,1000);
   $$('#mod-att [data-ap]').forEach(b=>b.onclick=()=>attPunch(b.dataset.ap));
+  $$('#mod-att [data-aled]').forEach(b=>b.onclick=()=>attEditModal(att.logs.find(x=>x.id===b.dataset.aled)));
+  $$('#mod-att [data-aldel]').forEach(b=>b.onclick=()=>attDeleteLog(b.dataset.aldel,()=>{att.logs=att.logs.filter(x=>x.id!==b.dataset.aldel);renderAtt()}));
   renderBackfill();
   if(isAdmin||attApprover())renderAttAdmin();
 }
@@ -3430,6 +3432,44 @@ async function renderBackfill(){
     await attLoad();btNote=`✓ บันทึกแล้ว — วันที่ ${dShort(f.day.value)} บันทึกงานได้ ${data&&data.hours!=null?data.hours:'-'} ชม.`;await renderBackfill();if(typeof renderClockCard==='function')renderClockCard()};
   $$('[data-btdel]').forEach(b=>b.onclick=async()=>{if(!confirm('ลบรายการลงเวลาทดลองของวันนี้?'))return;const {error}=await sb.rpc('att_backfill_clear',{p_day:b.dataset.btdel});if(error)return alert(error.message);await attLoad();renderBackfill()});
 }
+/* ---------- Super Admin: แก้ไข / ลบ / เพิ่ม / ใส่หมายเหตุ รายการลงเวลา ---------- */
+const ATT_KINDS=[['in','🟢 เข้างาน'],['out','🔴 ออกงาน'],['offsite_start','🚗 ออกไปทำงานนอกสถานที่'],['offsite_end','🏢 กลับจากนอกสถานที่']];
+const hmBkk=iso=>new Date(iso).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'});
+function attEditModal(log,done,preset){   // log = รายการเดิม · หรือ null + preset {emp,day} = เพิ่มใหม่
+  if(!isSuperAdmin)return;const isNew=!log;
+  const day=isNew?preset.day:bkkDay(new Date(log.at));
+  let m=$('#attEditM');if(m)m.remove();m=document.createElement('div');m.id='attEditM';
+  m.style.cssText='position:fixed;inset:0;z-index:9500;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML=`<div class="card" style="max-width:440px;width:100%"><h2 style="margin-top:0">${isNew?'เพิ่มรายการลงเวลา':'แก้ไขรายการลงเวลา'}</h2>
+    <div class="hint" style="margin-bottom:8px">${esc(dShort(day))}${isNew?' · '+esc(preset.emp):''}</div>
+    <label>ประเภท</label><select id="aeKind">${ATT_KINDS.map(([k,l])=>`<option value="${k}" ${(!isNew&&log.kind===k)||(isNew&&k==='in')?'selected':''}>${l}</option>`).join('')}</select>
+    <label style="margin-top:8px">เวลา (น.)</label><input type="time" id="aeTime" value="${isNew?'08:30':hmBkk(log.at)}">
+    <label style="margin-top:8px">หมายเหตุ</label><input id="aeNote" maxlength="300" value="${isNew?'':esc(log.note||'')}" placeholder="เช่น ลืมลงเวลา / แก้ตามหลักฐาน">
+    <div class="err" id="aeMsg"></div>
+    <div style="display:flex;gap:8px;margin-top:12px"><button class="btn pri" id="aeSave">บันทึก</button><button class="btn" id="aeCancel">ยกเลิก</button></div></div>`;
+  document.body.appendChild(m);
+  $('#aeCancel').onclick=()=>m.remove();
+  $('#aeSave').onclick=async()=>{const k=$('#aeKind').value,t=$('#aeTime').value,note=$('#aeNote').value.trim();if(!t)return $('#aeMsg').textContent='ระบุเวลา';
+    const at=new Date(`${day}T${t}:00+07:00`).toISOString();
+    const {data,error}=isNew?await sb.rpc('att_admin_add',{p_emp:preset.emp,p_kind:k,p_at:at,p_note:note}):await sb.rpc('att_admin_update',{p_id:log.id,p_kind:k,p_at:at,p_note:note});
+    if(error)return $('#aeMsg').textContent=rpcMsg(error)+(/function|schema/i.test(error.message)?' (ยังไม่ได้รัน supabase_update_hub7.sql)':'');
+    m.remove();att.loaded=false;try{await attLoad()}catch(e){}if(done)done(data);else renderAtt()}}
+async function attDeleteLog(id,done){if(!confirm('ลบรายการลงเวลานี้? (ย้อนกลับไม่ได้)'))return;
+  const {error}=await sb.rpc('att_admin_delete',{p_id:id});if(error)return alert(rpcMsg(error)+(/function|schema/i.test(error.message)?' (ยังไม่ได้รัน supabase_update_hub7.sql)':''));if(done)done()}
+let aeSel={emp:'',day:''};
+function attEditorInit(){
+  const host=$('#attEd');if(!host)return;if(!aeSel.emp)aeSel={emp:me.id,day:bkkDay()};
+  const emps=db.employees.filter(e=>e.active!==false);
+  host.innerHTML=`<h2>🛠 แก้ไขบันทึกลงเวลา (Super Admin)</h2><div class="hint" style="margin-bottom:8px">เลือกพนักงานและวันที่ เพื่อ แก้ไข / ลบ / เพิ่มรายการ และใส่หมายเหตุ · ระบบบันทึกผู้แก้ไขและเวลาที่แก้</div>
+    <div class="row" style="align-items:end"><div><label>พนักงาน</label><select id="aeEmp">${emps.map(e=>`<option value="${esc(e.id)}" ${e.id===aeSel.emp?'selected':''}>${esc(e.id)} ${esc(e.name)}</option>`).join('')}</select></div>
+      <div><label>วันที่</label><input type="date" id="aeDay" value="${aeSel.day}"></div><div><button class="btn pri" id="aeGo">โหลด</button> <button class="btn" id="aeAdd">+ เพิ่มรายการ</button></div></div><div id="aeList" style="margin-top:10px"></div>`;
+  const load=async()=>{aeSel={emp:$('#aeEmp').value,day:$('#aeDay').value};const a=new Date(aeSel.day+'T00:00:00+07:00'),b=new Date(a.getTime()+86400000);
+    const r=await sb.from('attendance_logs').select('*').eq('emp_id',aeSel.emp).gte('at',a.toISOString()).lt('at',b.toISOString()).order('at',{ascending:true});
+    const L=r.data||[];$('#aeList').innerHTML=L.length?`<div class="scroll"><table><thead><tr><th>ประเภท</th><th>เวลา</th><th>ที่มา</th><th>หมายเหตุ</th><th></th></tr></thead><tbody>${L.map(l=>`<tr><td>${KIND_ICO[l.kind]||''} ${esc(ATT_KIND[l.kind]||l.kind)}</td><td>${hhmm(l.at)} น.</td><td class="hint">${esc(SRC_TH[l.source]||l.source)}${l.edited_at?' · ✎':''}</td><td>${esc(l.note||'')}</td><td style="white-space:nowrap"><button class="x" style="color:var(--pri)" data-aee="${esc(l.id)}">✎</button> <button class="x" data-aed="${esc(l.id)}">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="hint">ไม่มีรายการในวันนี้</div>';
+    $$('#aeList [data-aee]').forEach(b=>b.onclick=()=>attEditModal(L.find(x=>x.id===b.dataset.aee),load));
+    $$('#aeList [data-aed]').forEach(b=>b.onclick=()=>attDeleteLog(b.dataset.aed,async()=>{att.loaded=false;try{await attLoad()}catch(e){}load()}))};
+  $('#aeGo').onclick=load;$('#aeAdd').onclick=()=>attEditModal(null,load,{emp:$('#aeEmp').value,day:$('#aeDay').value});load();
+}
 async function renderAttAdmin(){
   const host=$('#attAdmin');if(!host)return;
   const today=bkkDay(),startIso=new Date(today+'T00:00:00+07:00').toISOString();
@@ -3447,12 +3487,14 @@ async function renderAttAdmin(){
         <div><label>ละติจูด</label><input name="lat" required inputmode="decimal" placeholder="13.7563"></div><div><label>ลองจิจูด</label><input name="lng" required inputmode="decimal" placeholder="100.5018"></div>
         <div><label>รัศมี (เมตร)</label><input name="radius" value="150" inputmode="numeric"></div>
         <div style="display:flex;gap:8px"><button class="btn" type="button" id="siteHere">📍 ใช้ตำแหน่งปัจจุบัน</button><button class="btn pri">+ เพิ่ม</button></div></form><div class="err" id="siteMsg"></div></div>
+      <div class="card" id="attEd"><h2>🛠 แก้ไขบันทึกลงเวลา (Super Admin)</h2></div>
       <div class="card"><h2>AI-Beacon ที่ลงทะเบียน</h2><div class="hint" style="margin-bottom:8px">พนักงานที่ผูก LINE แล้วเดินเข้าใกล้ Beacon ครั้งแรกของวัน ระบบจะลงเวลาเข้างานให้ (ต้องเปิด Bluetooth และตั้ง Beacon ที่ LINE Official Account — ดู README_LINE.md)</div>
       <div class="scroll"><table><thead><tr><th>HWID</th><th>ชื่อ</th><th>จุดสำนักงาน</th><th></th></tr></thead><tbody>${beacons.map(b=>`<tr><td><code>${esc(b.hwid)}</code></td><td>${esc(b.name)}</td><td>${esc((att.sites.find(s=>s.id===b.site_id)||{}).name||'—')}</td><td><button class="x" data-bdel="${esc(b.hwid)}">✕</button></td></tr>`).join('')||'<tr><td colspan="4" class="hint">ยังไม่มี Beacon</td></tr>'}</tbody></table></div>
       <form id="beaconForm" class="row" style="margin-top:12px;align-items:end"><div><label>HWID (10 หลัก hex)</label><input name="hwid" required pattern="[0-9a-fA-F]{10}" placeholder="0123456789"></div><div><label>ชื่อ Beacon</label><input name="name" placeholder="ประตูหน้า"></div>
         <div><label>จุดสำนักงาน</label><select name="site"><option value="">—</option>${att.sites.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select></div><div><button class="btn pri">+ เพิ่ม</button></div></form><div class="err" id="beaconMsg"></div></div>`;
   }
   host.innerHTML=html;if(!isSuperAdmin)return;
+  attEditorInit();
   const reload=async()=>{att.loaded=false;await attLoad();renderAtt()};
   $('#siteHere').onclick=async()=>{try{const p=await getPos(),f=$('#siteForm');f.lat.value=p.lat.toFixed(6);f.lng.value=p.lng.toFixed(6);$('#siteMsg').textContent='ใส่พิกัดปัจจุบันแล้ว (±'+Math.round(p.acc)+' ม.)'}catch(e){$('#siteMsg').textContent=e.message}};
   $('#siteForm').onsubmit=async ev=>{ev.preventDefault();const f=ev.target,lat=parseFloat(f.lat.value),lng=parseFloat(f.lng.value),rad=parseInt(f.radius.value,10)||150;

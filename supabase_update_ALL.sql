@@ -1669,7 +1669,7 @@ begin
     select coalesce(sum(coalesce((e->>'hours')::numeric, 0)), 0) into v_old from jsonb_array_elements(coalesce(old.entries, '[]'::jsonb)) e;
   end if;
   if v_new <= v_old then return new; end if;
-  if auth.uid() is null or public.is_super_admin() then return new; end if;           -- งานระบบ/นำเข้าด้วยสิทธิ์สูงสุด
+  if auth.uid() is null or (public.is_super_admin() and new.emp_id is distinct from public.my_emp_id()) then return new; end if;   -- งานระบบ / Super Admin ทำแทนผู้อื่น (ใบงานของตัวเองถูกบังคับเหมือนทุกคน)
   if not public.att_required_for(new.emp_id, new.day) then return new; end if;
   if not exists (select 1 from public.attendance_logs a where a.emp_id = new.emp_id and a.kind = 'in'
                   and (a.at at time zone 'Asia/Bangkok')::date = new.day) then
@@ -1679,4 +1679,203 @@ begin
 end $$;
 drop trigger if exists trg_ts_att_guard on public.timesheets;
 create trigger trg_ts_att_guard before insert or update on public.timesheets for each row execute function public.ts_att_guard();
+
+
+
+-- ===== supabase_update_hub5.sql (v91) =====
+-- v91: (1) จำนวนชั่วโมงที่บันทึกงานได้ = ชั่วโมงที่ได้จากการลงเวลาเข้างานจริง  (2) โหมดทดลอง: ลงเวลาย้อนหลังเพื่อทดสอบระบบ
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub4.sql) — รันซ้ำได้
+--
+-- (1) กติกา: ชั่วโมงรวมที่บันทึกได้ในวันนั้น ≤ floor(ชั่วโมงที่ทำงาน)  โดยนับจากลงเวลาเข้างานครั้งแรกถึงลงเวลาออกงานครั้งสุดท้าย
+--           วันนี้ที่ยังไม่ออกงาน นับถึงเวลาปัจจุบัน · วันย้อนหลังที่ลืมลงเวลาออก อนุญาตสูงสุด 8 ชม. · บันทึกขั้นต่ำ 1 ชม./รายการ (เดิม)
+-- (2) โหมดทดลองลงเวลาย้อนหลัง: คีย์ app_settings 'att_backfill' = {"on": true, "days": 45}
+--     ปิดโหมดทดลอง:  update public.app_settings set value = jsonb_set(value,'{on}','false') where key='att_backfill';
+--     ล้างข้อมูลทดลองทั้งหมด:  delete from public.attendance_logs where source = 'test';
+
+alter table public.attendance_logs drop constraint if exists attendance_logs_source_check;
+alter table public.attendance_logs add constraint attendance_logs_source_check check (source in ('app', 'beacon', 'admin', 'test'));
+
+insert into public.app_settings (key, value) values ('att_backfill', '{"on": true, "days": 45}'::jsonb) on conflict (key) do nothing;
+
+-- ชั่วโมงที่ได้จากการลงเวลาของวันนั้น (null = ไม่มีการลงเวลาเข้างาน)
+create or replace function public.att_hours_for(p_emp text, p_day date) returns integer
+language plpgsql stable security definer set search_path = public as $$
+declare t_in timestamptz; t_out timestamptz; v_h numeric;
+begin
+  select min(a.at) into t_in from public.attendance_logs a where a.emp_id = p_emp and a.kind = 'in' and (a.at at time zone 'Asia/Bangkok')::date = p_day;
+  if t_in is null then return null; end if;
+  select max(a.at) into t_out from public.attendance_logs a where a.emp_id = p_emp and a.kind = 'out' and a.at > t_in and (a.at at time zone 'Asia/Bangkok')::date = p_day;
+  if t_out is not null then v_h := extract(epoch from (t_out - t_in)) / 3600;
+  elsif p_day = (now() at time zone 'Asia/Bangkok')::date then v_h := extract(epoch from (now() - t_in)) / 3600;
+  else return 8; end if;
+  return least(8, floor(v_h))::int;
+end $$;
+revoke all on function public.att_hours_for(text, date) from public, anon;
+grant execute on function public.att_hours_for(text, date) to authenticated, service_role;
+
+-- ตัวป้องกันใบงาน: ต้องมีการลงเวลาเข้างาน และชั่วโมงรวมต้องไม่เกินชั่วโมงที่ได้จากการลงเวลา
+create or replace function public.ts_att_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_new numeric := 0; v_old numeric := 0; v_allow integer;
+begin
+  select coalesce(sum(coalesce((e->>'hours')::numeric, 0)), 0) into v_new from jsonb_array_elements(coalesce(new.entries, '[]'::jsonb)) e;
+  if tg_op = 'UPDATE' then
+    select coalesce(sum(coalesce((e->>'hours')::numeric, 0)), 0) into v_old from jsonb_array_elements(coalesce(old.entries, '[]'::jsonb)) e;
+  end if;
+  if v_new <= v_old then return new; end if;
+  if auth.uid() is null or (public.is_super_admin() and new.emp_id is distinct from public.my_emp_id()) then return new; end if;
+  if not public.att_required_for(new.emp_id, new.day) then return new; end if;
+  v_allow := public.att_hours_for(new.emp_id, new.day);
+  if v_allow is null then
+    raise exception 'NO_CLOCK_IN:ยังไม่ได้ลงเวลาเข้างานของวันที่ % — ไม่สามารถบันทึกชั่วโมงงานได้ (ลงเวลาที่ระบบลงเวลา หรือผ่าน AI-Beacon ก่อน)', to_char(new.day, 'DD/MM/YYYY');
+  end if;
+  if v_new > v_allow then
+    raise exception 'HOURS_EXCEED:ชั่วโมงงานรวม % ชม. เกินชั่วโมงที่ได้จากการลงเวลา % ชม. ของวันที่ %', v_new, v_allow, to_char(new.day, 'DD/MM/YYYY');
+  end if;
+  return new;
+end $$;
+
+-- โหมดทดลอง: ลงเวลาย้อนหลัง (เฉพาะตัวเอง · วันทำงาน · ไม่ใช่วันในอนาคต · ภายใน days วัน) — บันทึกเป็น source = 'test'
+create or replace function public.att_backfill(p_day date, p_in text, p_out text default null, p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := public.my_emp_id(); s jsonb; v_today date := (now() at time zone 'Asia/Bangkok')::date; t_in timestamptz; t_out timestamptz; v_days int;
+begin
+  if v_emp is null then raise exception 'NO_EMPLOYEE'; end if;
+  select value into s from public.app_settings where key = 'att_backfill';
+  if s is null or coalesce((s->>'on')::boolean, false) is not true then raise exception 'DISABLED:โหมดทดลองลงเวลาย้อนหลังถูกปิดอยู่'; end if;
+  v_days := coalesce((s->>'days')::int, 45);
+  if p_day is null or p_day > v_today then raise exception 'BAD_DATE:เลือกได้เฉพาะวันนี้หรือย้อนหลัง'; end if;
+  if p_day < v_today - v_days then raise exception 'BAD_DATE:ย้อนหลังได้ไม่เกิน % วัน', v_days; end if;
+  if not public.is_work_day(v_emp, p_day) then raise exception 'NOT_WORK_DAY:วันที่เลือกไม่ใช่วันทำงานตามปฏิทิน'; end if;
+  if exists (select 1 from public.attendance_logs a where a.emp_id = v_emp and a.kind = 'in' and (a.at at time zone 'Asia/Bangkok')::date = p_day) then
+    raise exception 'DUPLICATE:วันนี้มีการลงเวลาเข้างานอยู่แล้ว (ลบรายการทดลองก่อนหากต้องการลงใหม่)';
+  end if;
+  t_in := (p_day::text || ' ' || p_in || ':00+07')::timestamptz;
+  insert into public.attendance_logs (emp_id, kind, at, source, note) values (v_emp, 'in', t_in, 'test', left('[ทดลองย้อนหลัง] ' || coalesce(p_note, ''), 300));
+  if p_out is not null and p_out <> '' then
+    t_out := (p_day::text || ' ' || p_out || ':00+07')::timestamptz;
+    if t_out <= t_in then raise exception 'BAD_TIME:เวลาออกงานต้องหลังเวลาเข้างาน'; end if;
+    insert into public.attendance_logs (emp_id, kind, at, source, note) values (v_emp, 'out', t_out, 'test', '[ทดลองย้อนหลัง]');
+  end if;
+  return jsonb_build_object('ok', true, 'day', p_day, 'hours', public.att_hours_for(v_emp, p_day));
+end $$;
+
+-- ลบรายการลงเวลาทดลองของตัวเองในวันที่เลือก
+create or replace function public.att_backfill_clear(p_day date) returns integer
+language plpgsql security definer set search_path = public as $$
+declare n integer;
+begin
+  delete from public.attendance_logs where emp_id = public.my_emp_id() and source = 'test' and (at at time zone 'Asia/Bangkok')::date = p_day;
+  get diagnostics n = row_count; return n;
+end $$;
+
+revoke all on function public.att_backfill(date, text, text, text), public.att_backfill_clear(date) from public, anon;
+grant execute on function public.att_backfill(date, text, text, text), public.att_backfill_clear(date) to authenticated;
+
+
+
+-- ===== supabase_update_hub6.sql (v92) =====
+-- v92: โหมดทดลองจับเวลาจริง — ลงเวลาได้ทุกวัน (รวมเสาร์-อาทิตย์/วันหยุด) และชั่วโมงที่บันทึกงานได้เดินตามเวลาจริง ครบชั่วโมงจึงบันทึกได้
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub5.sql) — รันซ้ำได้
+-- เปิด/ปิดโหมดทดลอง:  คีย์ app_settings 'att_test' = {"on": true}
+--   ปิด:  update public.app_settings set value = '{"on": false}'::jsonb where key = 'att_test';
+--   ล้างข้อมูลลงเวลาทดลองทั้งหมด (เฉพาะที่ย้อนหลัง):  delete from public.attendance_logs where source = 'test';
+-- ในโหมดทดลอง: is_work_day() ตอบว่าเป็นวันทำงานทุกวัน (ใช้กับระบบลงเวลา/ตรวจใบงานเท่านั้น ไม่กระทบปฏิทินและการลา)
+
+insert into public.app_settings (key, value) values ('att_test', '{"on": true}'::jsonb) on conflict (key) do nothing;
+
+create or replace function public.is_work_day(p_emp text, p_day date) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_test'), false)
+      or ( not exists (select 1 from public.holidays h where h.day = p_day)
+           and case extract(dow from p_day)::int
+                 when 0 then false
+                 when 6 then coalesce((select e.work_sat from public.employees e where e.id = p_emp), false)
+                 else true end )
+$$;
+
+-- ชั่วโมงที่ได้จากการลงเวลา: รวมทุกช่วง (เข้า→ออก) ของวันนั้น · ช่วงที่ยังไม่ออกงาน: วันนี้นับถึงตอนนี้ (เดินตามเวลาจริง) · วันย้อนหลังที่ลืมออกงาน = 8 ชม.
+create or replace function public.att_hours_for(p_emp text, p_day date) returns integer
+language plpgsql stable security definer set search_path = public as $$
+declare r record; v_open timestamptz; v_tot numeric := 0; v_any boolean := false; v_today boolean := (p_day = (now() at time zone 'Asia/Bangkok')::date);
+begin
+  for r in select kind, at from public.attendance_logs
+            where emp_id = p_emp and kind in ('in', 'out') and (at at time zone 'Asia/Bangkok')::date = p_day order by at loop
+    if r.kind = 'in' then
+      v_any := true; if v_open is null then v_open := r.at; end if;
+    elsif v_open is not null then
+      v_tot := v_tot + extract(epoch from (r.at - v_open)); v_open := null;
+    end if;
+  end loop;
+  if not v_any then return null; end if;
+  if v_open is not null then
+    if v_today then v_tot := v_tot + extract(epoch from (clock_timestamp() - v_open)); else return 8; end if;
+  end if;
+  return greatest(0, least(8, floor(v_tot / 3600)))::int;
+end $$;
+
+
+
+-- ===== supabase_update_hub7.sql (v93) =====
+-- v93: Super Admin แก้ไข / ลบ / เพิ่ม / ใส่หมายเหตุ รายการลงเวลา (attendance_logs) — เขียนผ่านฟังก์ชันเท่านั้น และบันทึกผู้แก้ไข
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub6.sql) — รันซ้ำได้
+
+alter table public.attendance_logs add column if not exists edited_by text;
+alter table public.attendance_logs add column if not exists edited_at timestamptz;
+
+-- แก้ไขประเภท/เวลา/หมายเหตุ ของรายการลงเวลา
+create or replace function public.att_admin_update(p_id uuid, p_kind text, p_at timestamptz, p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r public.attendance_logs%rowtype;
+begin
+  if not public.is_super_admin() then raise exception 'FORBIDDEN:เฉพาะ Super Admin'; end if;
+  if p_kind not in ('in', 'out', 'offsite_start', 'offsite_end') then raise exception 'BAD_KIND'; end if;
+  if p_at is null then raise exception 'BAD_TIME:ระบุเวลา'; end if;
+  update public.attendance_logs set kind = p_kind, at = p_at, note = left(coalesce(p_note, ''), 300),
+         edited_by = public.my_emp_id(), edited_at = now()
+   where id = p_id returning * into r;
+  if r.id is null then raise exception 'NOT_FOUND:ไม่พบรายการ'; end if;
+  return to_jsonb(r);
+end $$;
+
+-- ลบรายการลงเวลา
+create or replace function public.att_admin_delete(p_id uuid) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare n integer;
+begin
+  if not public.is_super_admin() then raise exception 'FORBIDDEN:เฉพาะ Super Admin'; end if;
+  delete from public.attendance_logs where id = p_id;
+  get diagnostics n = row_count;
+  return n > 0;
+end $$;
+
+-- เพิ่มรายการลงเวลาให้พนักงาน (เช่น ลืมลงเวลา) — source = 'admin'
+create or replace function public.att_admin_add(p_emp text, p_kind text, p_at timestamptz, p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r public.attendance_logs%rowtype;
+begin
+  if not public.is_super_admin() then raise exception 'FORBIDDEN:เฉพาะ Super Admin'; end if;
+  if not exists (select 1 from public.employees where id = p_emp) then raise exception 'NOT_FOUND:ไม่พบพนักงาน'; end if;
+  if p_kind not in ('in', 'out', 'offsite_start', 'offsite_end') then raise exception 'BAD_KIND'; end if;
+  insert into public.attendance_logs (emp_id, kind, at, source, note, edited_by, edited_at)
+  values (p_emp, p_kind, p_at, 'admin', left(coalesce(p_note, ''), 300), public.my_emp_id(), now()) returning * into r;
+  return to_jsonb(r);
+end $$;
+
+revoke all on function public.att_admin_update(uuid, text, timestamptz, text), public.att_admin_delete(uuid), public.att_admin_add(text, text, timestamptz, text) from public, anon;
+grant execute on function public.att_admin_update(uuid, text, timestamptz, text), public.att_admin_delete(uuid), public.att_admin_add(text, text, timestamptz, text) to authenticated;
+
+
+
+-- ===== supabase_update_hub8.sql (v94) =====
+-- v94: บันทึกงานได้ 8 ชม./วัน (ตามเวลาในระบบ) เมื่อมีการลงเวลาเข้างานแล้ว · ขั้นต่ำ 1 ชม. ต่อรายการ (ไม่จำกัดตามชั่วโมงที่ผ่านไป)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub7.sql) — รันซ้ำได้
+create or replace function public.att_hours_for(p_emp text, p_day date) returns integer
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if exists (select 1 from public.attendance_logs a where a.emp_id = p_emp and a.kind = 'in' and (a.at at time zone 'Asia/Bangkok')::date = p_day) then
+    return 8;      -- มีการลงเวลาเข้างานแล้ว = บันทึกงานได้เต็ม 8 ชม./วัน
+  end if;
+  return null;     -- ยังไม่ลงเวลาเข้างาน = บันทึกไม่ได้
+end $$;
 
