@@ -2924,10 +2924,24 @@ if(CLOUD){
 /* กดออกจากระบบ → ปิดโปรแกรมเลย (PWA/แท็บที่สคริปต์เปิด ปิดได้) ถ้าเบราว์เซอร์/LINE ไม่ยอมให้ปิด แสดงหน้า "ออกจากระบบแล้ว" แทนหน้า login */
 /* LINE LIFF: เมื่อเปิดจาก Rich menu ผ่านลิงก์ https://liff.line.me/<LIFF_ID> ปุ่มออกจากระบบจะปิดหน้าต่าง LINE ได้จริง (liff.closeWindow)
    ตั้ง LIFF_ID ที่นี่ (ได้จาก LINE Developers › LINE Login channel › LIFF) — ถ้าเว้นว่างจะแสดงหน้า "ออกจากระบบแล้ว" แทน */
-const LIFF_ID='';
+const LIFF_ID='2012746010-IcQPi27P';
 let liffReady=false;
-(function(){if(!LIFF_ID)return;const sc=document.createElement('script');sc.src='https://static.line-scdn.net/liff/edge/2/sdk.js';
-  sc.onload=()=>{try{liff.init({liffId:LIFF_ID}).then(()=>{liffReady=true}).catch(()=>{})}catch(e){}};document.head.appendChild(sc)})();
+/* LIFF: โหลด SDK + init (ใช้ทั้งปิดหน้าต่างตอนออกจากระบบ และ "เข้าระบบอัตโนมัติด้วยบัญชี LINE" เมื่อเปิดจาก Rich menu) */
+const liffP=LIFF_ID?new Promise(res=>{const sc=document.createElement('script');sc.src='https://static.line-scdn.net/liff/edge/2/sdk.js';
+  sc.onload=()=>{try{liff.init({liffId:LIFF_ID}).then(()=>{liffReady=true;res(true)}).catch(()=>res(false))}catch(e){res(false)}};sc.onerror=()=>res(false);document.head.appendChild(sc)}):Promise.resolve(false);
+/* เปิดจาก LINE (LIFF) แต่ยังไม่มี session → ขอ Edge Function line-login แลก ID token เป็น session ของพนักงานที่ผูก LINE ไว้ (ต้องใส่ PIN ต่อ) */
+async function liffAutoLogin(){
+  if(!LIFF_ID||!(await liffP)||!liff.isInClient())return null;
+  try{
+    if(!liff.isLoggedIn()){liff.login();return null}
+    const idt=liff.getIDToken();if(!idt)return null;
+    const r=await fetch(CONFIG.supabaseUrl+'/functions/v1/line-login',{method:'POST',headers:{'Content-Type':'application/json',apikey:CONFIG.supabaseKey,Authorization:'Bearer '+CONFIG.supabaseKey},body:JSON.stringify({id_token:idt})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||!j.token_hash){if(j&&j.error==='NOT_LINKED')loginMsg('บัญชี LINE นี้ยังไม่ได้ผูกกับพนักงาน — เข้าสู่ระบบด้วยอีเมล/รหัสผ่านครั้งแรก แล้วผูก LINE ตามขั้นตอน');return null}
+    const {data,error}=await sb.auth.verifyOtp({token_hash:j.token_hash,type:'magiclink'});
+    return error?null:(data&&data.session)||null;
+  }catch(e){console.warn('liffAutoLogin',e);return null}
+}
 function byeScreen(){
   $('#pinScreen')&&$('#pinScreen').classList.add('hide');$('#idleWarn')&&$('#idleWarn').classList.add('hide');
   let b=$('#byeScr');if(!b){b=document.createElement('div');b.id='byeScr';
@@ -3179,7 +3193,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v77 (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v80 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3463,7 +3477,8 @@ async function cloudInit(){
     else if(ev==='SIGNED_OUT'&&cur){setTimeout(()=>{window.__cloud.resetCloud();logoutUi()},0)}
   });
   const {data}=await sb.auth.getSession();
-  if(data&&data.session&&!recovery)await window.__cloud.onSignedIn(data.session);
+  if(data&&data.session&&!recovery){await window.__cloud.onSignedIn(data.session);return}
+  if(!recovery){const ls=await liffAutoLogin();if(ls)await window.__cloud.onSignedIn(ls)}
 }
 
 async function boot(){
