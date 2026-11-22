@@ -170,7 +170,8 @@ body[data-mode=home] main,body[data-mode=att] main,body[data-mode=leave] main{ma
 .tile:hover{transform:translateY(-2px)}.tile.off{opacity:.55;cursor:not-allowed}.tile.off:hover{transform:none}
 .tile i{font-style:normal;width:54px;height:54px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:27px;color:#fff}
 .tile b{font-size:16px}.tile span{font-size:12.5px;color:var(--mut);min-height:18px}
-.tile .bd{position:absolute;top:12px;right:12px;background:var(--bad);color:#fff;border-radius:12px;padding:1px 8px;font-size:12px;font-weight:700;font-style:normal}
+.nb{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:#e5484d;color:#fff;font-size:11px;font-weight:700;margin-left:6px;line-height:1;box-shadow:0 0 0 2px rgba(255,255,255,.85);vertical-align:middle}
+.tile .bd{position:absolute;top:10px;right:10px;background:#e5484d;color:#fff;border-radius:50%;min-width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px;font-size:13px;font-weight:700;font-style:normal;box-shadow:0 2px 6px rgba(229,72,77,.5)}
 #pinScreen{position:fixed;inset:0;z-index:30;background:linear-gradient(180deg,var(--card) 0%,var(--bg2) 100%);overflow:auto;padding:6vh 16px 16px}
 .pinwrap{width:100%;max-width:360px;margin:0 auto;text-align:center}
 .pin-hi{font-size:24px;font-weight:300}.pin-hi b{font-weight:700}
@@ -1062,7 +1063,9 @@ function finalizeSheet(t){
   else t.status='Pending';
 }
 const pendingRows=()=>{const o=[];db.timesheets.filter(t=>t.status==='Pending').forEach(t=>t.entries.forEach(x=>{if(canApproveEntry(t,x))o.push({t,x})}));return o.sort((a,b)=>a.t.date.localeCompare(b.t.date)||a.t.empId.localeCompare(b.t.empId))};
-function updApprBadge(){const b=$('#navAppr');if(!b)return;const n=canApprove()?pendingRows().length:0;b.textContent=n?'อนุมัติ ('+n+')':'อนุมัติ'}
+function setNavBadge(el,label,n){if(!el)return;el.innerHTML=esc(label)+(n?`<span class="nb">${n>99?'99+':n}</span>`:'')}
+function updApprBadge(){const n=canApprove()?pendingRows().length:0;   // วงกลมแดง = จำนวนเอกสารที่ถึงคิวรออนุมัติ
+  setNavBadge($('#navAppr'),'อนุมัติ',n);setNavBadge($('#navAstat'),'สถานะอนุมัติ',n)}
 const _rl=renderLog;renderLog=function(){_rl();updApprBadge()};
 function doApprove(t,x){          // อนุมัติ 1 ขั้นของรายการ (Super Admin = อนุมัติจบทุกขั้น)
   const now=new Date().toISOString(),by=meName(),hist=(x.ap&&x.ap.hist)||[];
@@ -2795,7 +2798,7 @@ if(CLOUD){
     return 'สมัครไม่สำเร็จ: '+m+(c?' ('+c+')':'');
   }
   const _finish=finishEnter;
-  finishEnter=function(l,f){_finish(l,f);$('#navAdm').classList.add('hide');const pend=isSuperAdmin?db.employees.filter(e=>e.linked&&!e.approved).length:0;$('#navMem').textContent=pend?'สมาชิก ('+pend+')':'สมาชิก'};
+  finishEnter=function(l,f){_finish(l,f);$('#navAdm').classList.add('hide');const pend=isSuperAdmin?db.employees.filter(e=>e.linked&&!e.approved).length:0;setNavBadge($('#navMem'),'สมาชิก',pend)};
 
   /* ---- ผูก LINE: รหัส 6 หลัก → ส่งไปที่ LINE@ → Edge Function ผูกบัญชีให้ ---- */
   // ส่งลิงก์ตั้งรหัสผ่านใหม่: ถ้าผู้ใช้ผูก LINE ไว้ → ส่งทาง LINE@ ส่วนตัว ไม่เช่นนั้นส่งทางอีเมล
@@ -2984,7 +2987,7 @@ function byeScreen(){
   /* ----- แท็บ สมาชิก: ซ่อนส่วนบัญชีแบบเดิม ใช้ปุ่มส่งอีเมลรีเซ็ตแทน ----- */
   const _mem=renderMem;
   renderMem=function(){_mem();
-    {const pend=db.employees.filter(e=>e.linked&&!e.approved).length;$('#navMem').textContent=pend?'สมาชิก ('+pend+')':'สมาชิก'}
+    {const pend=db.employees.filter(e=>e.linked&&!e.approved).length;setNavBadge($('#navMem'),'สมาชิก',pend)}
     [...document.querySelectorAll('#tab-mem .card')].forEach(c=>{
       const t=c.querySelector('h2')?.textContent||'';
       if(/ตั้งค่าการสมัคร|คำขอสมัคร|ตั้งชื่อผู้ใช้/.test(t))c.classList.add('hide')});
@@ -3201,7 +3204,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v87 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v88 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3476,7 +3479,7 @@ window.__hubReset=()=>{att={logs:[],sites:[],beacons:[],today:[],loaded:false,bu
     m.style.color='var(--cost)';m.textContent='✓ เปลี่ยน PIN เรียบร้อย';f.reset()}})();
 
 /* เข้าระบบสำเร็จ → หน้าหลัก (ถ้าต้องเปลี่ยนรหัสผ่านก่อน ไปที่แท็บบัญชี) */
-{const _fe0=finishEnter;finishEnter=function(l,f){_fe0(l,f);setMode(f?'workload':'home')}}
+{const _fe0=finishEnter;finishEnter=function(l,f){_fe0(l,f);try{updApprBadge()}catch(e){}setMode(f?'workload':'home')}}
 
 async function cloudInit(){
   if(!window.supabase||!sb){loginMsg('โหลดตัวเชื่อมต่อ Supabase ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต หรือค่า supabaseUrl/supabaseKey)');return}
