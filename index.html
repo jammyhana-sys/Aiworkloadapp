@@ -3233,7 +3233,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v98 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v99 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3327,6 +3327,8 @@ function clockGateFor(empId,ds){
     return{block:false,inn,out:lastOut,logs,tot,running:open!=null&&isToday,allowed:(open!=null&&!isToday)?8:Math.min(8,Math.floor(tot/3600e3))}}   // บันทึกงานได้ไม่เกินชั่วโมงที่ผ่านไปจริงนับจากลงเวลาเข้างาน (สูงสุด 8) · ขั้นต่ำ 1 ชม./รายการ · วันย้อนหลังที่ลืมลงเวลาออก = 8
   return{block:true,msg:'ยังไม่ได้ลงเวลาเข้างานของวันที่ '+dShort(ds)+' — ไม่สามารถบันทึกชั่วโมงงานได้ ต้องลงเวลาที่ระบบลงเวลา (หรือผ่าน AI-Beacon) ก่อน'}}
 const fmtHMS=ms=>{ms=Math.max(0,Math.floor(ms/1000));const h=Math.floor(ms/3600),m=Math.floor(ms%3600/60),s=ms%60;return h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')};
+/* นาฬิกาทรายพลิกขึ้น-ลงต่อเนื่องจนกว่าจะครบ 8 ชม. (การ์ดถูกวาดใหม่ทุกวินาที จึงตั้ง delay ติดลบตามเวลาจริงให้แอนิเมชันเดินต่อเนื่อง) */
+{const st=document.createElement('style');st.textContent='@keyframes hgflip{0%,42%{transform:rotate(0)}50%,92%{transform:rotate(180deg)}100%{transform:rotate(360deg)}}.hgflip{animation:hgflip 4s ease-in-out infinite;transform-box:fill-box;transform-origin:center}@media (prefers-reduced-motion:reduce){.hgflip{animation:none}}';document.head.appendChild(st)}
 function renderClockCard(){
   const tabLog=$('#tab-log');if(!tabLog||tabLog.classList.contains('hide')||!me)return;
   let c=$('#clockCard');if(!c){c=document.createElement('div');c.id='clockCard';c.className='card';$('#ringCard').insertAdjacentElement('beforebegin',c)}
@@ -3353,7 +3355,7 @@ function renderClockCard(){
     big=!g.running?('ทำงาน '+fmtHMS(el)):(done?'ครบ 8 ชม. แล้ว ✓ (+'+fmtHMS(el-TGH)+')':'เหลืออีก '+fmtHMS(TGH-el));
     {const t=curSheet(false),used=totals(t).all;sub=`บันทึกงานได้ตามเวลาที่ผ่านไป ${g.allowed} ชม. ขั้นต่ำ 1 ชม./รายการ (ใช้แล้ว ${used} · เหลือ ${Math.max(0,g.allowed-used)}) · `}
     sub+=`เข้างาน ${hhmm(g.inn.at)} น. (${g.inn.source==='beacon'?'📡 AI-Beacon':'📱 ลงเวลาในแอป'})${!g.running&&g.out?` · ออกงาน ${hhmm(g.out.at)} น.`:` · ครบ 8 ชม. เวลา ${end} น.`}`}
-  c.innerHTML=`<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><svg viewBox="0 0 80 80" width="84" height="84"><circle cx="40" cy="40" r="${R}" fill="none" stroke="rgba(120,130,150,.22)" stroke-width="8"/><circle cx="40" cy="40" r="${R}" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(C*ring).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 40 40)"/><text x="40" y="46" text-anchor="middle" font-size="22">${ico}</text></svg>
+  c.innerHTML=`<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><svg viewBox="0 0 80 80" width="84" height="84"><circle cx="40" cy="40" r="${R}" fill="none" stroke="rgba(120,130,150,.22)" stroke-width="8"/><circle cx="40" cy="40" r="${R}" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(C*ring).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 40 40)"/><text x="40" y="46" text-anchor="middle" font-size="22"${g.running&&ico==='⏳'?` class="hgflip" style="animation-delay:-${((Date.now()%4000)/1000).toFixed(2)}s"`:''}>${ico}</text></svg>
     <div style="flex:1;min-width:200px"><div class="hint">นาฬิกาจับเวลา 8 ชั่วโมงตามการลงเวลาจริง · ${esc(dShort(ds))}</div><div style="font-size:26px;font-weight:700;color:${col};line-height:1.25">${esc(big)}</div><div class="hint">${esc(sub)}</div></div></div>`;
 }
 {const _rl=renderLog;renderLog=function(){_rl.apply(this,arguments);try{renderClockCard()}catch(e){}}}
