@@ -2846,6 +2846,22 @@ if(CLOUD){
   $('#pendCheck').onclick=()=>pendRefresh(true);
   $('#pendOut').onclick=async()=>{clearInterval(pendTimer);clearInterval(lineTimer);try{await sb.auth.signOut()}catch(_){}resetCloud();showLoginView()};
 
+  /* ด่านตรวจการผูกบัญชี LINE: ต้องผูกครบก่อนเข้าหน้าหลัก/เมนูต่าง ๆ (Super Admin กด "ข้ามไปก่อน" ได้ กันล็อกตัวเองเมื่อ LINE มีปัญหา) */
+  async function lineGate(){
+    try{const {data,error}=await sb.from('employees').select('line_user_id').eq('id',me.id).limit(1);if(error)throw error;me.lineLinked=!!(data&&data[0]&&data[0].line_user_id)}catch(e){console.warn('ตรวจการผูก LINE ไม่ได้',e.message||e);return true}
+    if(me.lineLinked)return true;
+    let g=$('#lineGate');if(g)g.remove();g=document.createElement('div');g.id='lineGate';
+    g.style.cssText='position:fixed;inset:0;z-index:9000;background:linear-gradient(135deg,#4f6df5,#7a5cf0);overflow:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center';
+    g.innerHTML=`<div class="card" style="max-width:520px;width:100%;margin-top:6vh"><h2 style="margin-top:0">🔗 ผูกบัญชี LINE ก่อนเข้าใช้งาน</h2>
+      <div class="hint" style="margin-bottom:10px">คุณ <b>${esc(me.name||'')}</b> ยังไม่ได้ผูกบัญชี LINE — ต้องผูกให้เสร็จก่อนจึงจะเข้าเมนู Workload / ลงเวลา / ลางาน ได้ (ใช้รับแจ้งเตือน อนุมัติผ่าน LINE และลงเวลาด้วย Beacon)<br>1) กด "ผูก LINE" 2) กด "เปิด LINE และส่งรหัส" แล้วกดส่ง 3) หน้านี้จะผ่านต่อให้อัตโนมัติเมื่อผูกสำเร็จ</div>
+      <div id="lgBox"></div>
+      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="lgOut">ออกจากระบบ</button>${isSuperAdmin?'<button class="btn" id="lgSkip">ข้ามไปก่อน (Super Admin)</button>':''}</div></div>`;
+    document.body.appendChild(g);renderLineBox($('#lgBox'));
+    return new Promise(res=>{let t=null;const done=v=>{clearInterval(t);g.remove();res(v)};
+      t=setInterval(async()=>{if(!me.lineLinked){try{const {data}=await sb.from('employees').select('line_user_id').eq('id',me.id).limit(1);if(data&&data[0]&&data[0].line_user_id){me.lineLinked=true}}catch(e){}}
+        if(me.lineLinked)done(true)},2000);
+      $('#lgOut').onclick=async()=>{try{await sb.rpc('release_session',{p_device:deviceId()})}catch(_){}try{await sb.auth.signOut()}catch(_){}clearInterval(lineTimer);resetCloud();done(false);byeScreen()};
+      const sk=$('#lgSkip');if(sk)sk.onclick=()=>{clearInterval(lineTimer);done(true)}})}
   async function onSignedIn(session){
     sbEmail=session.user.email||'';
     try{await loadCloud()}
@@ -2859,7 +2875,8 @@ if(CLOUD){
       if(ce)console.warn('claim_session:',ce.message)}catch(e){console.warn('claim_session unavailable',e)}
     isAdmin=isAdminRole(me.role);isSuperAdmin=isSuperRole(me.role);user={name:me.name,email:me.email};
     cur={kind:'cloud',cred:{username:sbEmail}};
-    if(!(await pinGate()))return;                                   // รหัส PIN: ตั้งครั้งแรก / ปลดล็อกทุกครั้งที่เข้าระบบ
+    if(!(await pinGate()))return;
+    if(!(await lineGate()))return;                                  // ต้องผูก LINE ครบก่อนเปิดเมนู                                   // รหัส PIN: ตั้งครั้งแรก / ปลดล็อกทุกครั้งที่เข้าระบบ
     try{await loadLeave()}catch(e){console.warn('โหลดข้อมูลการลาไม่สำเร็จ (ยังไม่ได้รัน supabase_update_hub.sql?):',e.message||e)}
     finishEnter(me.name+(isAdmin?' (admin)':''),false);
     setSync('ok');
@@ -2905,6 +2922,12 @@ if(CLOUD){
   };
   $('#logout').onclick=async()=>{try{await sb.rpc('release_session',{p_device:deviceId()})}catch(_){}try{await sb.auth.signOut()}catch(_){}resetCloud();if(window.__idleOut){window.__idleOut=false;logoutUi()}else byeScreen()};
 /* กดออกจากระบบ → ปิดโปรแกรมเลย (PWA/แท็บที่สคริปต์เปิด ปิดได้) ถ้าเบราว์เซอร์/LINE ไม่ยอมให้ปิด แสดงหน้า "ออกจากระบบแล้ว" แทนหน้า login */
+/* LINE LIFF: เมื่อเปิดจาก Rich menu ผ่านลิงก์ https://liff.line.me/<LIFF_ID> ปุ่มออกจากระบบจะปิดหน้าต่าง LINE ได้จริง (liff.closeWindow)
+   ตั้ง LIFF_ID ที่นี่ (ได้จาก LINE Developers › LINE Login channel › LIFF) — ถ้าเว้นว่างจะแสดงหน้า "ออกจากระบบแล้ว" แทน */
+const LIFF_ID='';
+let liffReady=false;
+(function(){if(!LIFF_ID)return;const sc=document.createElement('script');sc.src='https://static.line-scdn.net/liff/edge/2/sdk.js';
+  sc.onload=()=>{try{liff.init({liffId:LIFF_ID}).then(()=>{liffReady=true}).catch(()=>{})}catch(e){}};document.head.appendChild(sc)})();
 function byeScreen(){
   $('#pinScreen')&&$('#pinScreen').classList.add('hide');$('#idleWarn')&&$('#idleWarn').classList.add('hide');
   let b=$('#byeScr');if(!b){b=document.createElement('div');b.id='byeScr';
@@ -2912,7 +2935,7 @@ function byeScreen(){
     b.innerHTML='<div><div style="font-size:54px">👋</div><h2 style="color:#fff;margin:8px 0">ออกจากระบบแล้ว</h2><div style="opacity:.9;margin-bottom:18px">ปิดหน้านี้ได้เลย · หากต้องการใช้งานอีก เปิดจากไอคอนแอปหรือเมนู LINE</div><button class="btn" id="byeAgain" style="background:#fff;color:#4f6df5">เข้าสู่ระบบอีกครั้ง</button></div>';
     document.body.appendChild(b);$('#byeAgain').onclick=()=>location.reload()}
   b.classList.remove('hide');b.style.display='flex';
-  try{window.close()}catch(e){}try{if(window.liff&&liff.closeWindow)liff.closeWindow()}catch(e){}
+  try{window.close()}catch(e){}try{if(window.liff&&liffReady&&liff.isInClient())liff.closeWindow()}catch(e){}
 }
 
   /* ----- แท็บ บัญชี: เปลี่ยนรหัสผ่านผ่าน Supabase ----- */
@@ -3062,6 +3085,13 @@ async function refreshLite(force){
 setInterval(()=>{if(!document.hidden&&Date.now()-lastAct<IDLE.ms)refreshLite()},IDLE.refresh);
 setInterval(()=>{if(!cur||document.hidden)return;const ae=document.activeElement;if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))return;   // อัปเดตตัวเลขเวลาที่รอ
   const tab=document.querySelector('nav button.on')?.dataset.tab;if(tab==='log'&&!editId)renderLog();else if(tab==='appr'&&!document.querySelector('#apprList [data-ak]:checked'))renderApprView();else if(tab==='astat')renderAStat()},60000);
+/* กลับเข้าแอปจาก Rich menu / สลับแอปกลับมา: ถ้าออกจากหน้านี้เกิน 5 วินาที ให้ใส่ PIN ใหม่ทุกครั้ง (ไม่ต้อง login ใหม่) */
+let hiddenAt=0;
+function relockIfAway(){if(!cur||!hasPin||pinOpen())return;if(hiddenAt&&Date.now()-hiddenAt>5000){hiddenAt=0;pinGate(true)}}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)hiddenAt=Date.now();else relockIfAway()});
+window.addEventListener('pageshow',ev=>{if(ev.persisted){if(!hiddenAt)hiddenAt=Date.now()-6000;relockIfAway()}});
+window.addEventListener('pagehide',()=>{hiddenAt=Date.now()});
+window.addEventListener('focus',relockIfAway);
 document.addEventListener('visibilitychange',async()=>{
   if(document.hidden||!cur)return;
   if(Date.now()-lastAct>=IDLE.ms){idleLogout();return}                                 // กลับมาหลังพักเกินเวลา
@@ -3149,7 +3179,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v74 (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v77 (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
