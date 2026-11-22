@@ -2931,7 +2931,7 @@ const liffP=LIFF_ID?new Promise(res=>{const sc=document.createElement('script');
   sc.onload=()=>{try{liff.init({liffId:LIFF_ID}).then(()=>{liffReady=true;res(true)}).catch(()=>res(false))}catch(e){res(false)}};sc.onerror=()=>res(false);document.head.appendChild(sc)}):Promise.resolve(false);
 /* เปิดจาก LINE (LIFF) แต่ยังไม่มี session → ขอ Edge Function line-login แลก ID token เป็น session ของพนักงานที่ผูก LINE ไว้ (ต้องใส่ PIN ต่อ) */
 async function liffAutoLogin(){
-  const dbg=m=>{try{loginMsg('v84 · LINE auto-login: '+m)}catch(e){}return null};
+  const dbg=m=>{try{loginMsg('v85 · LINE auto-login: '+m)}catch(e){}return null};
   if(!LIFF_ID)return dbg('ยังไม่ได้ตั้ง LIFF ID');
   dbg('กำลังตรวจ…');
   if(!(await liffP))return dbg('LIFF เริ่มต้นไม่สำเร็จ (ตรวจ LIFF ID / Endpoint URL / สถานะ channel)');
@@ -2939,7 +2939,7 @@ async function liffAutoLogin(){
   try{
     if(!liff.isLoggedIn()){liff.login();return null}
     const idt=liff.getIDToken();if(!idt)return dbg('ไม่ได้ ID token (ตรวจว่า LIFF เปิด scope openid)');
-    const r=await fetch(CONFIG.supabaseUrl+'/functions/v1/line-login',{method:'POST',headers:{'Content-Type':'application/json',apikey:CONFIG.supabaseKey,Authorization:'Bearer '+CONFIG.supabaseKey},body:JSON.stringify({id_token:idt})});
+    const r=await fetch(CONFIG.supabaseUrl+'/functions/v1/bright-handler',{method:'POST',headers:{'Content-Type':'application/json',apikey:CONFIG.supabaseKey,Authorization:'Bearer '+CONFIG.supabaseKey},body:JSON.stringify({id_token:idt})});
     const j=await r.json().catch(()=>({}));
     if(!r.ok||!j.token_hash){return dbg(j&&j.error==='NOT_LINKED'?'บัญชี LINE นี้ยังไม่ได้ผูกกับพนักงาน — เข้าสู่ระบบด้วยอีเมล/รหัสผ่านครั้งแรก แล้วผูก LINE':'เซิร์ฟเวอร์ตอบ '+r.status+' '+(j&&j.error||''))}
     const {data,error}=await sb.auth.verifyOtp({token_hash:j.token_hash,type:'magiclink'});
@@ -3198,7 +3198,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v84 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v85 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
