@@ -268,6 +268,7 @@ button.btn.ok{background:var(--cost);border-color:var(--cost);color:#fff}button.
 <main>
 
 <section id="home" class="hide"></section>
+<div id="hubBar" class="hide"></div>
 <section id="mod-att" class="hide"></section>
 <section id="mod-leave" class="hide"></section>
 
@@ -2967,16 +2968,20 @@ function deviceId(){let d='';try{d=localStorage.getItem('tsDeviceId')||'';if(!d)
 async function forceLogout(msg){try{await sb.auth.signOut()}catch(_){}try{window.__cloud.resetCloud()}catch(_){}logoutUi();setTimeout(()=>loginMsg(msg),300)}
 setInterval(async()=>{if(typeof CLOUD==='undefined'||!CLOUD||!sb||!cur)return;
   try{const {data,error}=await sb.rpc('heartbeat',{p_device:deviceId()});if(!error&&data===false)forceLogout('บัญชีนี้ถูกเข้าสู่ระบบจากอุปกรณ์อื่น ระบบจึงออกจากระบบอุปกรณ์นี้ (1 บัญชีใช้ได้ 1 อุปกรณ์ในเวลาเดียวกัน)')}catch(e){}},30000);
+let hasPin=false;   // ผู้ใช้ที่ตั้ง PIN แล้ว: หมดเวลา = ล็อกหน้าจอ (ใส่ PIN) ไม่ต้องกลับไปหน้า login
+const pinOpen=()=>{const p=$('#pinScreen');return p&&!p.classList.contains('hide')};
 async function idleLogout(){
+  if(pinOpen())return;
   try{if(CLOUD&&sb){clearTimeout(cloudT);await syncUp()}}catch(e){}              // บันทึกที่ค้างให้เสร็จก่อนออก
+  if(hasPin&&typeof pinGate==='function'){pinGate(true);return}
   $('#logout').click();
   setTimeout(()=>loginMsg('หมดเวลาการใช้งาน (ไม่มีการใช้งานเกิน '+Math.round(IDLE.ms/60000*10)/10+' นาที) กรุณาเข้าสู่ระบบใหม่'),300);
 }
 setInterval(()=>{
-  if(!cur){lastAct=Date.now();const w=$('#idleWarn');if(w)w.classList.add('hide');return}
+  if(!cur||pinOpen()){lastAct=Date.now();const w=$('#idleWarn');if(w)w.classList.add('hide');return}
   const idle=Date.now()-lastAct,w=$('#idleWarn');
   if(idle>=IDLE.ms){w.classList.add('hide');idleLogout();lastAct=Date.now();return}
-  if(idle>=IDLE.warn){w.textContent=`⏱ ไม่มีการใช้งาน — จะออกจากระบบใน ${Math.max(0,Math.ceil((IDLE.ms-idle)/1000))} วินาที (ขยับเมาส์หรือแตะหน้าจอเพื่อใช้งานต่อ)`;w.classList.remove('hide')}
+  if(idle>=IDLE.warn){w.textContent=`⏱ ไม่มีการใช้งาน — จะ${hasPin?'ล็อกหน้าจอ (ใส่ PIN)':'ออกจากระบบ'}ใน${Math.max(0,Math.ceil((IDLE.ms-idle)/1000))} วินาที (ขยับเมาส์หรือแตะหน้าจอเพื่อใช้งานต่อ)`;w.classList.remove('hide')}
 },1000);
 async function refreshLite(force){
   if(typeof CLOUD==='undefined'||!CLOUD||!sb||!cur||syncing||cloudBusy)return;
@@ -3045,8 +3050,22 @@ function setMode(m){
   document.querySelector('header nav').classList.toggle('hide',m!=='workload');
   $('#homeBtn').classList.toggle('hide',m==='home');
   if(m==='workload'){const b=document.querySelector('nav button.on')||document.querySelector('nav button[data-tab=log]');b.click()}
+  hubBarPaint(m);
   if(m==='home')renderHome();else if(m==='att')renderAtt();else if(m==='leave')renderLeave();
   window.scrollTo(0,0);
+}
+/* แถบเมนูผู้ดูแลในระบบลงเวลา/ลางาน: จัดการสมาชิก · ผู้อนุมัติ · ปฏิทินวันทำงาน (ใช้ข้อมูลชุดเดียวกับ Workload) */
+function hubBarPaint(m){
+  const b=$('#hubBar');if(!b)return;
+  const show=(m==='att'||m==='leave')&&(isSuperAdmin||isAdmin);
+  b.classList.toggle('hide',!show);if(!show){b.innerHTML='';return}
+  const btn=(t,ico,txt,f)=>`<button class="btn" type="button" data-wl="${t}" data-f="${f||''}">${ico} ${txt}</button>`;
+  b.innerHTML=`<div class="card" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 14px"><b style="margin-right:6px">เมนูผู้ดูแล</b>
+    ${isSuperAdmin?btn('mem','👥','จัดการสมาชิก')+btn('mem','✅','ผู้อนุมัติ / Role',m==='leave'?'apPermCard':'apPermCard'):''}
+    ${isAdmin?btn('setup','📅','ปฏิทินวันทำงาน (วันหยุด)'):''}</div>`;
+  b.querySelectorAll('[data-wl]').forEach(x=>x.onclick=()=>{
+    setMode('workload');const t=document.querySelector(`nav button[data-tab=${x.dataset.wl}]`);if(t)t.click();
+    if(x.dataset.f)setTimeout(()=>{const el=$('#'+x.dataset.f);if(el)el.scrollIntoView({behavior:'smooth',block:'start'})},150)});
 }
 $('#homeBtn').onclick=()=>setMode('home');
 document.addEventListener('click',ev=>{const b=ev.target.closest&&ev.target.closest('[data-go]');if(b)setMode(b.dataset.go)});
@@ -3118,7 +3137,7 @@ async function pinKey(k){
     }
   }finally{pinBusy=false}
 }
-function pinDone(){$('#pinScreen').classList.add('hide');pinBuf='';const r=pinResolve;pinResolve=null;if(r)r(true)}
+function pinDone(){$('#pinScreen').classList.add('hide');pinBuf='';hasPin=true;lastAct=Date.now();const r=pinResolve;pinResolve=null;if(r)r(true)}
 $('#pinForgot').onclick=ev=>{ev.preventDefault();$('#pinPw').value='';pinSetMode('forgot')};
 $('#pinForgotCancel').onclick=()=>pinSetMode('verify');
 $('#pinForgotGo').onclick=async()=>{
@@ -3132,14 +3151,15 @@ $('#pinOut').onclick=async ev=>{ev.preventDefault();
   try{await sb.rpc('release_session',{p_device:deviceId()})}catch(_){}try{await sb.auth.signOut()}catch(_){}
   $('#pinScreen').classList.add('hide');const r=pinResolve;pinResolve=null;if(r)r(false);
   try{window.__cloud.resetCloud()}catch(_){}logoutUi()};
-async function pinGate(){   // เรียกหลังล็อกอินสำเร็จ — คืน true เมื่อปลดล็อก/ตั้ง PIN เสร็จ (false = ออกจากระบบ)
+async function pinGate(lock){   // เรียกหลังล็อกอินสำเร็จ — คืน true เมื่อปลดล็อก/ตั้ง PIN เสร็จ (false = ออกจากระบบ) · lock=true: ล็อกหน้าจอเมื่อหมดเวลา
   if(!hubOn())return true;
   let st;try{const {data,error}=await sb.rpc('pin_status');if(error)throw error;st=data}catch(e){console.warn('PIN ใช้ไม่ได้ (ยังไม่ได้รัน supabase_update_hub.sql):',e.message||e);return true}
   if(!st||st.ok===false)return true;
+  hasPin=!!st.has_pin;
   const nm=String((me&&me.name)||''),fn=nm.split(/\s+/)[0];
   $('#pinHi').innerHTML=`${greet()}, <b>${esc(fn)}</b>`;$('#pinAv').textContent=initials(nm);
   $('#pinScreen').classList.remove('hide');pinFirst='';
-  pinSetMode(st.has_pin?'verify':'set1',st.has_pin&&st.locked_until?'ล็อกจนถึง '+hhmm(st.locked_until)+' น.':'');
+  pinSetMode(st.has_pin?'verify':'set1',st.has_pin&&st.locked_until?'ล็อกจนถึง '+hhmm(st.locked_until)+' น.':(lock&&st.has_pin?'หมดเวลาการใช้งาน — ใส่ PIN เพื่อใช้งานต่อ':''));
   return new Promise(res=>{pinResolve=res});
 }
 
@@ -3163,6 +3183,7 @@ const fmtDist=d=>d<1000?Math.round(d)+' ม.':(d/1000).toFixed(1)+' กม.';
 function todayLogs(){const day=bkkDay();return att.logs.filter(l=>bkkDay(new Date(l.at))===day)}
 async function attPunch(kind){
   if(att.busy)return;const note=($('#attNote')?$('#attNote').value:'').trim();
+  if((kind==='in'||kind==='offsite_start')&&!baseDay(me,bkkDay()).work)return attSetMsg('วันนี้ไม่ใช่วันทำงานตามปฏิทิน จึงลงเวลาไม่ได้',true);
   if(kind==='offsite_start'&&!note)return attSetMsg('กรุณาระบุว่าไปที่ไหน/ธุระอะไร ก่อนบันทึกออกนอกสถานที่',true);
   att.busy=true;attSetMsg('กำลังหาตำแหน่ง GPS…');let pos=null;
   try{pos=await getPos()}catch(e){if(!confirm(e.message+'\nต้องการบันทึก "'+ATT_KIND[kind]+'" โดยไม่มีพิกัดหรือไม่?\n(ประวัติจะแสดงว่าไม่มีตำแหน่ง)')){att.busy=false;return attSetMsg('ยกเลิกแล้ว')}}
@@ -3183,7 +3204,8 @@ async function renderAtt(){
   const tl=todayLogs(),last=tl[tl.length-1],lk=last?last.kind:null,first=tl.find(l=>l.kind==='in');
   const stTxt=!lk?'ยังไม่ได้ลงเวลา':lk==='out'?`ออกงานแล้ว ${hhmm(last.at)} น.`:lk==='offsite_start'?`อยู่นอกสถานที่ตั้งแต่ ${hhmm(last.at)} น.`:`เข้างานแล้ว ${hhmm(first?first.at:last.at)} น.`;
   const stCol=!lk?'var(--mut)':lk==='out'?'var(--bad)':lk==='offsite_start'?'var(--sga)':'var(--cost)';
-  const canIn=!lk||lk==='out',canOff=lk==='in'||lk==='offsite_end',canBack=lk==='offsite_start',canOut=lk==='in'||lk==='offsite_end';
+  const wd=baseDay(me,bkkDay());   // ลงเวลาเฉพาะวันทำงานตามปฏิทิน (ตั้งค่าข้อมูล › วันหยุด / ทำงานวันเสาร์)
+  const canIn=wd.work&&(!lk||lk==='out'),canOff=wd.work&&(lk==='in'||lk==='offsite_end'),canBack=lk==='offsite_start',canOut=lk==='in'||lk==='offsite_end';
   const posTxt=(()=>{if(!att.pos)return 'ตำแหน่งจะถูกบันทึกเมื่อกดลงเวลา (ต้องอนุญาตให้ใช้ GPS)';const n=nearest(att.pos);
     return n?(n.d<=n.s.radius_m?`📍 อยู่ในพื้นที่ ${esc(n.s.name)} (ห่าง ${fmtDist(n.d)})`:`📍 นอกพื้นที่ — ใกล้สุด ${esc(n.s.name)} ห่าง ${fmtDist(n.d)}`):'📍 ยังไม่ได้ตั้งจุดสำนักงาน (ผู้ดูแลกำหนดได้ด้านล่าง)'})();
   // ประวัติ 14 วัน
@@ -3194,7 +3216,9 @@ async function renderAtt(){
     return `<tr><td>${esc(dShort(d))}</td><td>${i?hhmm(i.at):'—'} <span class="hint">${i?(SRC_TH[i.source]||''):''}</span></td><td>${o?hhmm(o.at):'—'}</td><td class="n">${hrs==null?'—':hrs.toFixed(1)}</td><td>${off?`🚗 ${off} ครั้ง`:''}</td><td class="hint">${esc((i&&i.site_name)||'')}${i&&!i.site_name&&i.lat!=null?'นอกพื้นที่':''}${i&&i.lat==null&&i.source==='app'?'ไม่มีพิกัด':''}</td></tr>`}).join('')||'<tr><td colspan="6" class="hint">ยังไม่มีประวัติ</td></tr>';
   el.innerHTML=`<div class="card" style="text-align:center">
       <div class="hint">${esc(dShort(bkkDay()))}</div><div id="attClock" style="font-size:44px;font-weight:700;letter-spacing:1px;line-height:1.1;margin:4px 0"></div>
-      <div style="font-weight:700;color:${stCol};font-size:17px">${esc(stTxt)}</div><div class="hint" style="margin:6px 0 12px">${posTxt}</div>
+      <div style="font-weight:700;color:${stCol};font-size:17px">${esc(stTxt)}</div>
+      ${wd.work?'':`<div class="err" style="margin:8px 0;padding:10px;border-radius:10px;background:rgba(242,155,47,.12);color:var(--sga)">🗓 วันนี้ไม่ใช่วันทำงานตามปฏิทินของระบบ — ${esc(wd.why)}<br>ระบบเปิดให้ลงเวลาเฉพาะวันทำงานเท่านั้น</div>`}
+      <div class="hint" style="margin:6px 0 12px">${posTxt}</div>
       ${canOff?`<input id="attNote" placeholder="ออกไปที่ไหน / ธุระอะไร (จำเป็นเมื่อออกนอกสถานที่)" style="margin-bottom:10px">`:''}
       <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
         ${canIn?`<button class="btn big ok" data-ap="in">🟢 ลงเวลาเข้างาน</button>`:''}
