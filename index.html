@@ -3207,7 +3207,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v95 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v96 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3298,7 +3298,7 @@ function clockGateFor(empId,ds){
   const logs=att.logs.filter(l=>l.emp_id===me.id&&bkkDay(new Date(l.at))===ds).sort((a,b)=>new Date(a.at)-new Date(b.at)),inn=logs.find(l=>l.kind==='in');
   if(inn){let tot=0,open=null,lastOut=null;logs.forEach(l=>{const t=+new Date(l.at);if(l.kind==='in'){if(open==null)open=t}else if(l.kind==='out'){if(open!=null){tot+=t-open;open=null}lastOut=l}});
     const isToday=ds===bkkDay();if(open!=null&&isToday)tot+=Date.now()-open;
-    return{block:false,inn,out:lastOut,logs,tot,running:open!=null&&isToday,allowed:8}}   // บันทึกงานได้ 8 ชม./วัน (ตามเวลาในระบบ) เมื่อมีการลงเวลาเข้างานแล้ว · ขั้นต่ำ 1 ชม./รายการ
+    return{block:false,inn,out:lastOut,logs,tot,running:open!=null&&isToday,allowed:(open!=null&&!isToday)?8:Math.min(8,Math.floor(tot/3600e3))}}   // บันทึกงานได้ไม่เกินชั่วโมงที่ผ่านไปจริงนับจากลงเวลาเข้างาน (สูงสุด 8) · ขั้นต่ำ 1 ชม./รายการ · วันย้อนหลังที่ลืมลงเวลาออก = 8
   return{block:true,msg:'ยังไม่ได้ลงเวลาเข้างานของวันที่ '+dShort(ds)+' — ไม่สามารถบันทึกชั่วโมงงานได้ ต้องลงเวลาที่ระบบลงเวลา (หรือผ่าน AI-Beacon) ก่อน'}}
 const fmtHMS=ms=>{ms=Math.max(0,Math.floor(ms/1000));const h=Math.floor(ms/3600),m=Math.floor(ms%3600/60),s=ms%60;return h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')};
 function renderClockCard(){
@@ -3325,7 +3325,7 @@ function renderClockCard(){
     const done=el>=TGH,end=new Date(t0+TGH).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'});
     col=done?'var(--cost)':'var(--pri)';ico=done?'✅':'⏳';
     big=!g.running?('ทำงาน '+fmtHMS(el)):(done?'ครบ 8 ชม. แล้ว ✓ (+'+fmtHMS(el-TGH)+')':'เหลืออีก '+fmtHMS(TGH-el));
-    {const t=curSheet(false),used=totals(t).all;sub=`บันทึกงานได้ ${g.allowed} ชม./วัน ขั้นต่ำ 1 ชม./รายการ (ใช้แล้ว ${used} · เหลือ ${Math.max(0,g.allowed-used)}) · `}
+    {const t=curSheet(false),used=totals(t).all;sub=`บันทึกงานได้ตามเวลาที่ผ่านไป ${g.allowed} ชม. ขั้นต่ำ 1 ชม./รายการ (ใช้แล้ว ${used} · เหลือ ${Math.max(0,g.allowed-used)}) · `}
     sub+=`เข้างาน ${hhmm(g.inn.at)} น. (${g.inn.source==='beacon'?'📡 AI-Beacon':'📱 ลงเวลาในแอป'})${!g.running&&g.out?` · ออกงาน ${hhmm(g.out.at)} น.`:` · ครบ 8 ชม. เวลา ${end} น.`}`}
   c.innerHTML=`<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><svg viewBox="0 0 80 80" width="84" height="84"><circle cx="40" cy="40" r="${R}" fill="none" stroke="rgba(120,130,150,.22)" stroke-width="8"/><circle cx="40" cy="40" r="${R}" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(C*ring).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 40 40)"/><text x="40" y="46" text-anchor="middle" font-size="22">${ico}</text></svg>
     <div style="flex:1;min-width:200px"><div class="hint">นาฬิกาจับเวลา 8 ชั่วโมงตามการลงเวลาจริง · ${esc(dShort(ds))}</div><div style="font-size:26px;font-weight:700;color:${col};line-height:1.25">${esc(big)}</div><div class="hint">${esc(sub)}</div></div></div>`;
