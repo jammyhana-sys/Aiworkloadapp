@@ -3233,7 +3233,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v101 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v102 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3315,6 +3315,9 @@ async function loadAttReq(){try{const r=await sb.from('app_settings').select('ke
   const m={};(r.data||[]).forEach(x=>m[x.key]=x.value);const v=m.att_required;attTest=!!(m.att_test&&m.att_test.on===true);
   attReq={on:!!v&&v.on!==false,from:(v&&v.from)||'0000-00-00',loaded:true}}catch(e){attReq.loaded=true}}
 const attBase=(e,ds)=>attTest?{work:true}:baseDay(e,ds);   // โหมดทดลอง: ลงเวลาได้ทุกวัน
+/* พักเที่ยงอัตโนมัติ: ทำงานครบ 4 ชม. → หยุดจับเวลา 1 ชม. (Have Lunch) แล้วเดินต่อจนครบ 8 ชม. · เวลางานสุทธิ = f(เวลาที่เปิดงานสะสม) — ฝั่งฐานข้อมูลใช้สูตรเดียวกัน (hub11) */
+const LUNCH={at:4*3600e3,len:3600e3};
+const lunchEff=raw=>raw<LUNCH.at?raw:raw<LUNCH.at+LUNCH.len?LUNCH.at:raw-LUNCH.len;
 function clockGateFor(empId,ds){
   if(!hubOn()||!attReq.on||!me||empId!==me.id)return{block:false};
   if(ds<attReq.from)return{block:false};
@@ -3324,7 +3327,8 @@ function clockGateFor(empId,ds){
   const logs=att.logs.filter(l=>l.emp_id===me.id&&bkkDay(new Date(l.at))===ds).sort((a,b)=>new Date(a.at)-new Date(b.at)),inn=logs.find(l=>l.kind==='in');
   if(inn){let tot=0,open=null,lastOut=null;logs.forEach(l=>{const t=+new Date(l.at);if(l.kind==='in'){if(open==null)open=t}else if(l.kind==='out'){if(open!=null){tot+=t-open;open=null}lastOut=l}});
     const isToday=ds===bkkDay();if(open!=null&&isToday)tot+=Date.now()-open;
-    return{block:false,inn,out:lastOut,logs,tot,running:open!=null&&isToday,allowed:(open!=null&&!isToday)?8:Math.min(8,Math.floor(tot/3600e3))}}   // บันทึกงานได้ไม่เกินชั่วโมงที่ผ่านไปจริงนับจากลงเวลาเข้างาน (สูงสุด 8) · ขั้นต่ำ 1 ชม./รายการ · วันย้อนหลังที่ลืมลงเวลาออก = 8
+    const raw=tot,run=open!=null&&isToday;tot=lunchEff(raw);
+    return{block:false,inn,out:lastOut,logs,tot,raw,running:run,lunch:run&&raw>=LUNCH.at&&raw<LUNCH.at+LUNCH.len?LUNCH.at+LUNCH.len-raw:0,allowed:(open!=null&&!isToday)?8:Math.min(8,Math.floor(tot/3600e3))}}   // บันทึกงานได้ไม่เกินชั่วโมงที่ผ่านไปจริงนับจากลงเวลาเข้างาน (สูงสุด 8) · ขั้นต่ำ 1 ชม./รายการ · วันย้อนหลังที่ลืมลงเวลาออก = 8
   return{block:true,msg:'ยังไม่ได้ลงเวลาเข้างานของวันที่ '+dShort(ds)+' — ไม่สามารถบันทึกชั่วโมงงานได้ ต้องลงเวลาที่ระบบลงเวลา (หรือผ่าน AI-Beacon) ก่อน'}}
 const fmtHMS=ms=>{ms=Math.max(0,Math.floor(ms/1000));const h=Math.floor(ms/3600),m=Math.floor(ms%3600/60),s=ms%60;return h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')};
 /* นาฬิกาทรายพลิกขึ้น-ลงต่อเนื่องจนกว่าจะครบ 8 ชม. (การ์ดถูกวาดใหม่ทุกวินาที จึงตั้ง delay ติดลบตามเวลาจริงให้แอนิเมชันเดินต่อเนื่อง) */
@@ -3343,20 +3347,23 @@ function renderClockCard(){
   if(empId!==me.id){c.classList.add('hide');return}
   c.classList.remove('hide');
   const TGH=8*3600e3,R=34,C=2*Math.PI*R;
-  let ring=0,big='',sub='',col='var(--mut)',ico='⏱';
+  let ring=0,pcv=0,big='',sub='',col='var(--mut)',ico='⏱';
   if(g.nonwork){big='วันหยุด';sub=g.why||'ไม่ใช่วันทำงานตามปฏิทิน';}
   else if(g.leave){big='ลาเต็มวัน';sub='ไม่ต้องลงเวลา / ไม่ต้องบันทึกงาน';col='var(--cost)'}
   else if(!attReq.on){big='—';sub='ระบบยังไม่บังคับการลงเวลา'}
   else if(g.block){ico='🔒';big=ds>bkkDay()?'ยังไม่ถึงวันนั้น':'ยังไม่ได้ลงเวลา';col='var(--bad)';sub=g.loading?'กำลังตรวจสอบ…':(ds>bkkDay()?'ลงเวลา/บันทึกชั่วโมงงานล่วงหน้าไม่ได้':'ลงเวลาเข้างานก่อน จึงจะบันทึกชั่วโมงงานได้ (ลงเวลาในแอป หรือ AI-Beacon)')}
   else if(!g.inn){big='—';sub='ไม่ใช่ใบงานของตัวเอง หรือยังไม่มีข้อมูลการลงเวลา'}
   else if(g.inn){const t0=new Date(g.inn.at).getTime(),el=g.tot;ring=Math.min(1,el/TGH);
-    const done=el>=TGH,end=new Date(t0+TGH).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'});
-    {const pc=Math.floor(ring*100);col=pc>=100?'#0b8f4d':pc>=71?'#7ccf5a':pc>=31?'#f29b2f':'#e5484d'}   /* สีแบบแบตเตอรี่: 0-30% แดง · 31-70% ส้ม · 71-99% เขียวอ่อน · 100% เขียวเข้ม */
+    const done=el>=TGH,lr=g.running?(g.raw<LUNCH.at?LUNCH.len:g.lunch):0,end=new Date(Date.now()+Math.max(0,TGH-el)+lr).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'});
+    {const pc=pcv=Math.floor(ring*100);col=pc>=100?'#0b8f4d':pc>=71?'#7ccf5a':pc>=31?'#f29b2f':'#e5484d'}   /* สีแบบแบตเตอรี่: 0-30% แดง · 31-70% ส้ม · 71-99% เขียวอ่อน · 100% เขียวเข้ม */
     ico=done?'✅':'⏳';
     big=!g.running?('ทำงาน '+fmtHMS(el)):(done?'ครบ 8 ชม. แล้ว ✓ (+'+fmtHMS(el-TGH)+')':'เหลืออีก '+fmtHMS(TGH-el));
+    if(g.lunch>0){ico='🍱';big='Have Lunch · พักอีก '+fmtHMS(g.lunch)}
     {const t=curSheet(false),used=totals(t).all;sub=`บันทึกงานได้ตามเวลาที่ผ่านไป ${g.allowed} ชม. ขั้นต่ำ 1 ชม./รายการ (ใช้แล้ว ${used} · เหลือ ${Math.max(0,g.allowed-used)}) · `}
+    if(g.lunch>0)sub='หยุดจับเวลา 1 ชม. หลังทำงานครบ 4 ชม. — เวลางานค้างที่ '+fmtHMS(LUNCH.at)+' แล้วเดินต่ออัตโนมัติ · '+sub;
+    else if(g.running&&!done&&g.raw<LUNCH.at)sub+='พักเที่ยง 1 ชม. อัตโนมัติเมื่อทำงานครบ 4 ชม. · ';
     sub+=`เข้างาน ${hhmm(g.inn.at)} น. (${g.inn.source==='beacon'?'📡 AI-Beacon':'📱 ลงเวลาในแอป'})${!g.running&&g.out?` · ออกงาน ${hhmm(g.out.at)} น.`:` · ครบ 8 ชม. เวลา ${end} น.`}`}
-  c.innerHTML=`<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:84px;height:84px;flex:none"><svg viewBox="0 0 80 80" width="84" height="84"><circle cx="40" cy="40" r="${R}" fill="none" stroke="rgba(120,130,150,.22)" stroke-width="8"/><circle cx="40" cy="40" r="${R}" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(C*ring).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 40 40)"/>${g.running&&ico==='⏳'?`<defs><mask id="chgm"><circle cx="40" cy="40" r="${R}" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(C*ring).toFixed(1)} ${C.toFixed(1)}"/></mask></defs><circle class="chg" cx="40" cy="40" r="${R}" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="8" stroke-dasharray="26 ${(C-26).toFixed(1)}" mask="url(#chgm)" transform="rotate(-90 40 40)" style="animation-delay:-${((Date.now()%2200)/1000).toFixed(2)}s"/>`:''}</svg><span ${g.running&&ico==='⏳'?`class="hgflip" data-flip="1" `:''}style="${g.running&&ico==='⏳'?`animation-delay:-${((Date.now()%4000)/1000).toFixed(2)}s;`:''}position:absolute;left:0;top:0;width:84px;height:84px;display:flex;align-items:center;justify-content:center;font-size:26px;line-height:1">${ico}</span></div>
+  c.innerHTML=`<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:84px;height:84px;flex:none"><svg viewBox="0 0 80 80" width="84" height="84" style="overflow:visible"><circle cx="40" cy="40" r="${R}" fill="none" stroke="rgba(120,130,150,.22)" stroke-width="8"/><circle cx="40" cy="40" r="${R}" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(C*ring).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 40 40)"/>${g.running&&ico==='⏳'?`<defs><mask id="chgm"><circle cx="40" cy="40" r="${R}" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(C*ring).toFixed(1)} ${C.toFixed(1)}"/></mask></defs><circle class="chg" cx="40" cy="40" r="${R}" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="8" stroke-dasharray="26 ${(C-26).toFixed(1)}" mask="url(#chgm)" transform="rotate(-90 40 40)" style="animation-delay:-${((Date.now()%2200)/1000).toFixed(2)}s"/>`:''}${ring>0?(()=>{const an=-Math.PI/2+2*Math.PI*ring,tx=40+R*Math.cos(an),ty=40+R*Math.sin(an);return `<circle cx="${tx.toFixed(1)}" cy="${ty.toFixed(1)}" r="9" fill="#fff" stroke="${col}" stroke-width="1.8"/><text x="${tx.toFixed(1)}" y="${(ty+2.6).toFixed(1)}" text-anchor="middle" font-size="7.4" font-weight="700" fill="#1f2937">${pcv}%</text>`})():''}</svg><span ${g.running&&ico==='⏳'?`class="hgflip" data-flip="1" `:''}style="${g.running&&ico==='⏳'?`animation-delay:-${((Date.now()%4000)/1000).toFixed(2)}s;`:''}position:absolute;left:0;top:0;width:84px;height:84px;display:flex;align-items:center;justify-content:center;font-size:26px;line-height:1">${ico}</span></div>
     <div style="flex:1;min-width:200px"><div class="hint">นาฬิกาจับเวลา 8 ชั่วโมงตามการลงเวลาจริง · ${esc(dShort(ds))}</div><div style="font-size:26px;font-weight:700;color:${col};line-height:1.25">${esc(big)}</div><div class="hint">${esc(sub)}</div></div></div>`;
 }
 {const _rl=renderLog;renderLog=function(){_rl.apply(this,arguments);try{renderClockCard()}catch(e){}}}
