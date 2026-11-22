@@ -675,7 +675,7 @@ function baseDay(e,ds){   // วันทำการตามปฏิทิน
 /* วันลาที่อนุมัติแล้ว (ระบบลางาน) → ลาเต็มวัน = ไม่ต้องบันทึกงาน · ลาครึ่งวัน = เป้าหมายวันนั้น 4 ชม. */
 const leaveOn=(empId,ds)=>(db.leave||[]).find(l=>l.empId===empId&&l.status==='Approved'&&ds>=l.start&&ds<=l.end);
 function dayInfo(e,ds){
-  const b=baseDay(e,ds);if(!b.work)return b;
+  const b=attTest?{work:true}:baseDay(e,ds);if(!b.work)return b;   // โหมดทดลอง (att_test): ถือว่าทุกวันเป็นวันทำงาน
   const lr=e&&e.id?leaveOn(e.id,ds):null;
   if(lr){const nm=((db.leaveTypes||[]).find(x=>x.id===lr.type)||{}).name||'ลา';
     if(lr.part==='full')return{work:false,why:'ลา: '+nm+' (อนุมัติแล้ว)',leave:lr};
@@ -3207,7 +3207,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v94 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v95 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
