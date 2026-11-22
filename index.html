@@ -911,8 +911,14 @@ const apBadge=(t,x)=>{const s=entState(t,x),pre=t.status==='Draft'?'<div class="
     :t.status==='Draft'?'<span class="hint">ยังไม่ส่งอนุมัติ</span>':''};
 /* ===== Pre-approval: ส่งอนุมัติรายรายการ (by transaction) ก่อนครบ 8 ชม. · ผ่านลำดับขั้นเดียวกับการอนุมัติปกติ ===== */
 const rejTxt=t=>t.entries.filter(x=>entState(t,x)==='R').map(x=>`${x.cat==='Cost'?x.code:x.sgaId}: ${x.ap.note} (โดย ${x.ap.by}${x.ap.role?' · '+AP_SHORT[x.ap.role]:''})`).join(' ; ');
-function preSend(ids){
-  const t=curSheet(false);if(!t||t.status!=='Draft')return;
+/* สถานะอนุมัติ (ap) ของรายการ ให้ยึดตามระบบกลาง — กันไม่ให้การบันทึกของพนักงานทับสถานะที่ผู้อนุมัติเพิ่งอนุมัติ (ใบ Draft ที่มี Pre-approval) */
+async function mergeSrvAp(t){
+  if(typeof CLOUD==='undefined'||!CLOUD||!t||!t.id||!t.entries.some(x=>x.ap))return;
+  try{const {data}=await sb.from('timesheets').select('entries,status,approved_by,approved_at').eq('id',t.id).maybeSingle();
+    if(!data)return;const m=new Map((data.entries||[]).map(y=>[y.id,y]));
+    t.entries.forEach(x=>{const y=m.get(x.id);if(y&&y.ap&&JSON.stringify(y.ap)!==JSON.stringify(x.ap||null))x.ap=y.ap})}catch(e){}}
+async function preSend(ids){
+  const t=curSheet(false);if(!t||t.status!=='Draft')return;await mergeSrvAp(t);if(t.status!=='Draft')return;
   const now=new Date().toISOString();let n=0;
   t.entries.forEach(x=>{if(ids&&!ids.includes(x.id))return;const s=entState(t,x);if(s==='A'||s==='P')return;x.ap={s:'P',done:[],hist:[],sub:now,pre:true};n++});
   if(!n)return;t.rejectNote=rejTxt(t);save();renderLog()}
@@ -1016,7 +1022,7 @@ $('#add').onclick=async()=>{
   if(cat==='Cost'){x.code=$('#project').value;if(!x.code)return err('กรุณาเลือกโครงการ')}
   else{x.sgaId=$('#sga').value;const s=find(db.sgaTypes,x.sgaId);if(!s)return err('กรุณาเลือกประเภท SG&A');
     if(refsOf(s).length){x.code=$('#ref').value;if(!x.code)return err(`ประเภท ${s.id} ต้องเลือก ${refsOf(s).map(r=>REF_TH[r]).join(' / ')}`)}}
-  const t=curSheet(true);
+  const t=curSheet(true);await mergeSrvAp(t);
   if(t.status!=='Draft')return err('ใบนี้ส่งแล้ว');
   if(cg.allowed!=null){const used=totals(t).all-(editId?((t.entries.find(y=>y.id===editId)||{}).hours||0):0);
     if(used+hours>cg.allowed)return err(`บันทึกได้ไม่เกิน ${cg.allowed} ชม. ตามชั่วโมงที่ได้จากการลงเวลาเข้างาน (ใช้แล้ว ${used} ชม. · เหลือ ${Math.max(0,cg.allowed-used)} ชม.)`)}
@@ -1095,7 +1101,7 @@ function doApprove(t,x){          // อนุมัติ 1 ขั้นขอ�
   if(pre)x.ap.pre=true;
   t.approvedBy=by;t.approvedAt=now;finalizeSheet(t);
 }
-$('#submit').onclick=()=>{const t=curSheet(false);if(!t)return;
+$('#submit').onclick=async()=>{const t=curSheet(false);if(!t)return;await mergeSrvAp(t);
   const nowIso=new Date().toISOString();
   t.entries.forEach(x=>{const s=entState(t,x);if(s!=='A'&&s!=='P')x.ap={s:'P',done:[],hist:[],sub:nowIso}});       // รายการที่อนุมัติแล้ว / ส่ง Pre-approval ไว้แล้ว คงเดิม ที่เหลือเริ่มขั้นแรก
   t.status='Pending';t.submittedAt=nowIso;t.rejectNote='';   // ส่ง final (ครบ 8 ชม.) — รายการ Pre-approval ที่รออยู่เดินต่อตามลำดับเดิม
@@ -3068,7 +3074,7 @@ function byeScreen(){
 /* ===== รีเฟรชข้อมูลอัตโนมัติ + หมดเวลาเมื่อไม่ได้ใช้งานเกิน 2 นาที =====
    • ระหว่างใช้งาน: session ไม่หมดอายุ (โทเคนต่ออายุเอง) และดึงข้อมูลล่าสุดเป็นระยะ (ใบรออนุมัติ / สถานะใบของตัวเอง / สิทธิ์อนุมัติ)
    • ไม่มีการใช้งาน (เมาส์ คีย์บอร์ด สัมผัส เลื่อน) เกิน 2 นาที → บันทึกที่ค้างให้เสร็จ แล้วออกจากระบบอัตโนมัติ */
-const IDLE={ms:120000,warn:100000,refresh:30000};
+const IDLE={ms:120000,warn:100000,refresh:15000};
 let lastAct=Date.now(),lastRefreshAt=0;
 const actNow=()=>{lastAct=Date.now();const w=$('#idleWarn');if(w)w.classList.add('hide')};
 ['mousemove','mousedown','keydown','touchstart','scroll','wheel','click','focusin'].forEach(ev=>window.addEventListener(ev,actNow,{passive:true,capture:true}));
@@ -3094,7 +3100,7 @@ setInterval(()=>{
 },1000);
 async function refreshLite(force){
   if(typeof CLOUD==='undefined'||!CLOUD||!sb||!cur||syncing||cloudBusy)return;
-  if(!force){const ae=document.activeElement;if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)&&!ae.closest('#login'))return}   // กำลังพิมพ์/เลือกอยู่ ไม่รบกวน
+  if(!force){const ae=document.activeElement;if(ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)&&!ae.closest('#login')&&(ae.tagName==='SELECT'?false:!!String(ae.value||'').trim()))return}   // ข้ามเฉพาะตอนมีข้อความที่กำลังพิมพ์ค้างอยู่ (ไม่ให้ช่องวันที่/รายการเลือกบล็อกการอัปเดตสถานะอนุมัติ)   // กำลังพิมพ์/เลือกอยู่ ไม่รบกวน
   try{
     const cut=new Date();cut.setDate(cut.getDate()-45);const cutS=cut.toISOString().slice(0,10),wide=isAdmin||canApprove();
     const dids=me?[me.id,...delegTargets().map(e=>e.id)]:[];
@@ -3227,7 +3233,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v97 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v98 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
