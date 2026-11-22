@@ -2032,9 +2032,39 @@ function filterMS(inp){const q=(inp.value||'').trim().toLowerCase(),card=inp.clo
   card.querySelectorAll('tbody tr').forEach(tr=>{const t=(tr.textContent+' '+[...tr.querySelectorAll('input')].map(x=>x.value).join(' ')).toLowerCase();tr.style.display=!q||t.includes(q)?'':'none'})}
 function applyMS(){document.querySelectorAll('[data-ms]').forEach(inp=>{inp.value=MSQ[inp.dataset.ms]||'';filterMS(inp)})}
 document.addEventListener('input',e=>{const el=e.target;if(el.matches&&el.matches('[data-ms]')){MSQ[el.dataset.ms]=el.value;filterMS(el)}});
+/* ===== ปฏิทินวันทำงาน 12 เดือน (กำหนดวันหยุดโดยคลิกวัน) — ใช้กับ Workload / ลงเวลา / ลางาน ===== */
+let calYear=new Date().getFullYear();
+const TH_MON=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+function calCardHtml(){
+  const y=calYear,pad=n=>String(n).padStart(2,'0'),H=new Map((db.holidays||[]).map(h=>[String(h.id).slice(0,10),h.name])),today=new Date(Date.now()+7*3600e3).toISOString().slice(0,10);
+  let nH=0,nW=0;
+  const months=TH_MON.map((mn,mi)=>{const first=new Date(Date.UTC(y,mi,1)),dim=new Date(Date.UTC(y,mi+1,0)).getUTCDate(),off=first.getUTCDay();let cells='';
+    for(let i=0;i<off;i++)cells+='<i></i>';
+    for(let d=1;d<=dim;d++){const ds=`${y}-${pad(mi+1)}-${pad(d)}`,w=new Date(Date.UTC(y,mi,d)).getUTCDay(),h=H.get(ds);
+      let cls='wk';if(h!==undefined){cls='hol';nH++}else if(w===0||w===6)cls='we';else nW++;
+      cells+=`<button type="button" class="cd ${cls}${ds===today?' td':''}" data-cal="${ds}" title="${h!==undefined?esc(h||'วันหยุด'):(w===0||w===6?'เสาร์-อาทิตย์':'วันทำงาน')}">${d}</button>`}
+    const nm=[...H.keys()].filter(k=>k.startsWith(`${y}-${pad(mi+1)}`)).length;
+    return `<div class="cm"><div class="cmh">${mn}${nm?` <span class="tag st" style="background:#e5484d">${nm} วันหยุด</span>`:''}</div><div class="cg">${['อา','จ','อ','พ','พฤ','ศ','ส'].map(x=>`<b>${x}</b>`).join('')}${cells}</div></div>`}).join('');
+  const hl=[...H.entries()].filter(([k])=>k.startsWith(String(y))).sort().map(([k,n])=>`<span class="tag st" style="background:#e5484d;margin:2px">${k.slice(8)}/${k.slice(5,7)} ${esc(n)}</span>`).join('');
+  return `<div class="card"><h2>ปฏิทินวันทำงาน (ใช้กับ Workload · ลงเวลา · ลางาน)</h2>
+    <style>.cal12{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}.cm{border:1px solid var(--line,#dfe5f1);border-radius:12px;padding:8px;background:var(--card,#fff)}.cmh{font-weight:700;margin-bottom:4px}.cg{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:12px}.cg b{font-weight:600;color:var(--mut);font-size:11px}.cd{min-height:0;padding:4px 0;border:0;border-radius:6px;background:transparent;cursor:pointer;font:inherit;color:inherit}.cd.we{background:rgba(120,130,150,.15);color:var(--mut)}.cd.hol{background:#e5484d;color:#fff;font-weight:700}.cd.td{outline:2px solid #4f6df5}.cd.wk:hover,.cd.we:hover{background:rgba(79,109,245,.25)}</style>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><button class="btn" id="calPrev">◀</button><b style="font-size:18px">ปี ${y+543} (${y})</b><button class="btn" id="calNext">▶</button><button class="btn" id="calNow">ปีนี้</button>
+      <span class="hint">วันทำงาน <b>${nW}</b> วัน · วันหยุดที่กำหนด <b>${nH}</b> วัน · คลิกวันเพื่อ เพิ่ม/แก้ชื่อ/ลบ วันหยุด · เสาร์-อาทิตย์เป็นวันหยุดอัตโนมัติ (พนักงาน Site ติ๊ก "ทำงานวันเสาร์" ที่ข้อมูลพนักงาน)</span></div>
+    <div class="cal12">${months}</div>
+    <div style="margin-top:10px"><b>วันหยุดปี ${y+543}:</b> ${hl||'<span class="hint">ยังไม่มี</span>'}</div></div>`}
+function bindCal(){
+  const re=()=>{save();renderSetup();if(typeof renderLog==='function')renderLog()};
+  const g=id=>$('#'+id);if(!g('calPrev'))return;
+  g('calPrev').onclick=()=>{calYear--;renderSetup()};g('calNext').onclick=()=>{calYear++;renderSetup()};g('calNow').onclick=()=>{calYear=new Date().getFullYear();renderSetup()};
+  $$('[data-cal]').forEach(b=>b.onclick=()=>{if(!isAdmin)return alert('เฉพาะผู้ดูแลระบบแก้ปฏิทินได้');
+    const ds=b.dataset.cal,h=find(db.holidays,ds);
+    if(h){const v=prompt(`วันหยุด ${ds}\nแก้ชื่อวันหยุด (ล้างช่องให้ว่างเพื่อลบวันหยุดนี้)`,h.name);if(v===null)return;
+      if(v.trim()==='')db.holidays=db.holidays.filter(x=>x.id!==ds);else h.name=v.trim();re()}
+    else{const v=prompt(`กำหนด ${ds} เป็นวันหยุด\nชื่อวันหยุด (เช่น วันปีใหม่)`,'');if(!v||!v.trim())return;db.holidays.push({id:ds,name:v.trim()});re()}});
+}
 function renderSetup(){const BU=budgetUsed();
   ['employees','depts','holidays'].forEach(k=>{if(db[k])db[k].sort(byId)});['projects','contracts'].forEach(k=>{if(db[k])db[k].sort(byUpd)});
-  $('#masters').innerHTML=MASTERS.filter(m=>m.key!=='contracts').map(m=>`<div class="card"><h2>${m.title}</h2><input type="search" data-ms="${m.key}" placeholder="🔍 ค้นหา รหัส / ชื่อ …" style="max-width:340px;margin:2px 0 10px">${m.key==='projects'?budSummary():''}<div class="scroll"><table>
+  $('#masters').innerHTML=calCardHtml()+MASTERS.filter(m=>m.key!=='contracts').map(m=>`<div class="card"><h2>${m.title}</h2><input type="search" data-ms="${m.key}" placeholder="🔍 ค้นหา รหัส / ชื่อ …" style="max-width:340px;margin:2px 0 10px">${m.key==='projects'?budSummary():''}<div class="scroll"><table>
     <thead><tr><th>No.</th><th>${m.date?'วันที่':'รหัส'}</th><th>ชื่อ</th>${m.key==='projects'?BUD_HEAD():''}${m.f.map(f=>`<th>${f[1]}</th>`).join('')}${m.stamp?'<th>ผู้นำเข้า/แก้ไข</th><th>อัปเดตล่าสุด</th>':''}<th>ใช้งาน</th><th></th></tr></thead><tbody>
     ${masterRows(m).map(({r,i,k},n)=>`<tr><td class="hint">${n+1}</td><td>${esc(r.id)}</td><td>${esc(r.name)}</td>${m.key==='projects'?budCells(r,k,i,BU):''}${m.f.map(f=>`<td>${fv(r,f)}</td>`).join('')}${m.stamp?`<td>${esc(r.updatedBy||'—')}</td><td class="hint">${fmtTs(r.updatedAt)}</td>`:''}
     <td>${m.date?'':`<input type="checkbox" ${r.active!==false?'checked':''} data-act="${k}:${i}" style="width:auto">`}</td><td><button class="x" data-rm="${k}:${i}">✕</button></td></tr>`).join('')}
@@ -2046,7 +2076,7 @@ function renderSetup(){const BU=budgetUsed();
    +`<div class="card"><h2>ประเภท SG&amp;A (N1–N8)</h2><input type="search" data-ms="sga" placeholder="🔍 ค้นหา รหัส / ชื่อ …" style="max-width:340px;margin:2px 0 10px"><div class="scroll"><table><thead><tr><th>รหัส</th><th>ชื่อที่แสดง</th><th>สี</th><th>ต้องอ้างอิง</th><th>ใช้งาน</th></tr></thead><tbody>
     <tr><td>Cost</td><td><input data-cname value="${esc(costSty().label)}" style="min-height:0;padding:6px 8px"></td><td><input type="color" data-ccolor value="${costSty().color}" style="width:46px;height:34px;padding:2px"></td><td>รหัสโครงการ (assign)</td><td></td></tr>
     ${db.sgaTypes.map((t,i)=>`<tr><td>${t.id}</td><td><input data-tname="${i}" value="${esc(t.name)}" style="min-height:0;padding:6px 8px"><div class="hint">${esc(t.desc)}</div></td><td><input type="color" data-tcolor="${i}" value="${sgaColor(t)}" style="width:46px;height:34px;padding:2px"></td><td>${refsOf(t).map(r=>esc(REF_TH[r])).join('<br>')||'—'}</td><td><input type="checkbox" ${t.active!==false?'checked':''} data-act="sgaTypes:${i}" style="width:auto"></td></tr>`).join('')}
-    </tbody></table></div><div class="hint" style="margin-top:8px"><button class="btn" id="uiReset" style="padding:4px 10px;margin-right:8px">คืนค่าชื่อ/สีเริ่มต้น</button>ชื่อและสีที่แก้ไขมีผลกับวงกลมสรุป รายการเลือกประเภท และไฟล์ส่งออก (รหัส N1–N8 ยังเหมือนเดิม)</div><div class="hint" style="margin-top:8px">ฝ่ายที่เลือก Backlog No. (DP) ได้ใน N3: ${esc(db.backlogDepts.join(', ')||'-')}</div></div>`;applyMS();
+    </tbody></table></div><div class="hint" style="margin-top:8px"><button class="btn" id="uiReset" style="padding:4px 10px;margin-right:8px">คืนค่าชื่อ/สีเริ่มต้น</button>ชื่อและสีที่แก้ไขมีผลกับวงกลมสรุป รายการเลือกประเภท และไฟล์ส่งออก (รหัส N1–N8 ยังเหมือนเดิม)</div><div class="hint" style="margin-top:8px">ฝ่ายที่เลือก Backlog No. (DP) ได้ใน N3: ${esc(db.backlogDepts.join(', ')||'-')}</div></div>`;applyMS();bindCal();
   $$('[data-bud]').forEach(inp=>inp.onchange=()=>{const[k,i,fl]=inp.dataset.bud.split(':'),o=db[k][+i];if(!o)return;const v=Math.max(0,+inp.value||0);if(fl==='h')o.budgetH=v;else o.budgetB=v;save();renderSetup()});
   $$('[data-act]').forEach(c=>c.onchange=()=>{const[k,i]=c.dataset.act.split(':');db[k][i].active=c.checked;save();fillEmp();syncForm();renderLog()});
   $$('[data-rm]').forEach(b=>b.onclick=()=>{const[k,i]=b.dataset.rm.split(':');
@@ -2873,7 +2903,17 @@ if(CLOUD){
     try{await sb.auth.signOut()}catch(_){}
     resetCloud();showLoginView();loginMsg('ตั้งรหัสผ่านใหม่เรียบร้อย — เข้าสู่ระบบด้วยรหัสผ่านใหม่ได้เลย',true);
   };
-  $('#logout').onclick=async()=>{try{await sb.rpc('release_session',{p_device:deviceId()})}catch(_){}try{await sb.auth.signOut()}catch(_){}resetCloud();logoutUi()};
+  $('#logout').onclick=async()=>{try{await sb.rpc('release_session',{p_device:deviceId()})}catch(_){}try{await sb.auth.signOut()}catch(_){}resetCloud();if(window.__idleOut){window.__idleOut=false;logoutUi()}else byeScreen()};
+/* กดออกจากระบบ → ปิดโปรแกรมเลย (PWA/แท็บที่สคริปต์เปิด ปิดได้) ถ้าเบราว์เซอร์/LINE ไม่ยอมให้ปิด แสดงหน้า "ออกจากระบบแล้ว" แทนหน้า login */
+function byeScreen(){
+  $('#pinScreen')&&$('#pinScreen').classList.add('hide');$('#idleWarn')&&$('#idleWarn').classList.add('hide');
+  let b=$('#byeScr');if(!b){b=document.createElement('div');b.id='byeScr';
+    b.style.cssText='position:fixed;inset:0;z-index:99999;background:linear-gradient(135deg,#4f6df5,#7a5cf0);display:flex;align-items:center;justify-content:center;padding:20px;text-align:center;color:#fff';
+    b.innerHTML='<div><div style="font-size:54px">👋</div><h2 style="color:#fff;margin:8px 0">ออกจากระบบแล้ว</h2><div style="opacity:.9;margin-bottom:18px">ปิดหน้านี้ได้เลย · หากต้องการใช้งานอีก เปิดจากไอคอนแอปหรือเมนู LINE</div><button class="btn" id="byeAgain" style="background:#fff;color:#4f6df5">เข้าสู่ระบบอีกครั้ง</button></div>';
+    document.body.appendChild(b);$('#byeAgain').onclick=()=>location.reload()}
+  b.classList.remove('hide');b.style.display='flex';
+  try{window.close()}catch(e){}try{if(window.liff&&liff.closeWindow)liff.closeWindow()}catch(e){}
+}
 
   /* ----- แท็บ บัญชี: เปลี่ยนรหัสผ่านผ่าน Supabase ----- */
   const _acct=renderAcct;
@@ -2974,7 +3014,7 @@ async function idleLogout(){
   if(pinOpen())return;
   try{if(CLOUD&&sb){clearTimeout(cloudT);await syncUp()}}catch(e){}              // บันทึกที่ค้างให้เสร็จก่อนออก
   if(hasPin&&typeof pinGate==='function'){pinGate(true);return}
-  $('#logout').click();
+  window.__idleOut=true;$('#logout').click();
   setTimeout(()=>loginMsg('หมดเวลาการใช้งาน (ไม่มีการใช้งานเกิน '+Math.round(IDLE.ms/60000*10)/10+' นาที) กรุณาเข้าสู่ระบบใหม่'),300);
 }
 setInterval(()=>{
@@ -3054,18 +3094,40 @@ function setMode(m){
   if(m==='home')renderHome();else if(m==='att')renderAtt();else if(m==='leave')renderLeave();
   window.scrollTo(0,0);
 }
-/* แถบเมนูผู้ดูแลในระบบลงเวลา/ลางาน: จัดการสมาชิก · ผู้อนุมัติ · ปฏิทินวันทำงาน (ใช้ข้อมูลชุดเดียวกับ Workload) */
+/* เมนู "ผู้อนุมัติ" ของระบบลางาน/ลงเวลา (Super Admin) — กำหนดแยกจาก Role and permission ของ Workload (ตาราง hub_approvers) */
+let hubApOpen=false;
 function hubBarPaint(m){
   const b=$('#hubBar');if(!b)return;
-  const show=(m==='att'||m==='leave')&&(isSuperAdmin||isAdmin);
-  b.classList.toggle('hide',!show);if(!show){b.innerHTML='';return}
-  const btn=(t,ico,txt,f)=>`<button class="btn" type="button" data-wl="${t}" data-f="${f||''}">${ico} ${txt}</button>`;
+  const show=(m==='att'||m==='leave')&&isSuperAdmin;
+  b.classList.toggle('hide',!show);if(!show){b.innerHTML='';hubApOpen=false;return}
   b.innerHTML=`<div class="card" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 14px"><b style="margin-right:6px">เมนูผู้ดูแล</b>
-    ${isSuperAdmin?btn('mem','👥','จัดการสมาชิก')+btn('mem','✅','ผู้อนุมัติ / Role',m==='leave'?'apPermCard':'apPermCard'):''}
-    ${isAdmin?btn('setup','📅','ปฏิทินวันทำงาน (วันหยุด)'):''}</div>`;
-  b.querySelectorAll('[data-wl]').forEach(x=>x.onclick=()=>{
-    setMode('workload');const t=document.querySelector(`nav button[data-tab=${x.dataset.wl}]`);if(t)t.click();
-    if(x.dataset.f)setTimeout(()=>{const el=$('#'+x.dataset.f);if(el)el.scrollIntoView({behavior:'smooth',block:'start'})},150)});
+    <button class="btn${hubApOpen?' pri':''}" type="button" id="hubApBtn">✅ ผู้อนุมัติ</button></div><div id="hubApPanel"></div>`;
+  $('#hubApBtn').onclick=()=>{hubApOpen=!hubApOpen;hubBarPaint(m);if(hubApOpen)hubApRender(m)};
+  if(hubApOpen)hubApRender(m);
+}
+async function hubApRender(m){
+  const host=$('#hubApPanel');if(!host)return;if(!hubApLoaded)await loadHubAp();
+  const name=m==='leave'?'ลางาน':'ลงเวลา',what=m==='leave'?'อนุมัติ/ไม่อนุมัติคำขอลา':'ดูภาพรวมและประวัติลงเวลาของพนักงานในขอบเขต';
+  const dn=id=>((find(db.depts,id)||{}).name)||'';
+  const sc=a=>a.scope_type==='all'?'<span class="tag st">ทั้งบริษัท</span>':a.scope_type==='dept'?'<span class="tag st">ฝ่าย</span> '+esc(a.scope_key)+' '+esc(dn(a.scope_key)):'<span class="tag st">รายบุคคล</span> '+esc(a.scope_key)+' '+esc((find(db.employees,a.scope_key)||{}).name||'');
+  const rows=hubAp.filter(a=>a.module===m).sort((x,y)=>String(x.emp_id).localeCompare(String(y.emp_id))).map(a=>{const e=find(db.employees,a.emp_id)||{};
+    return `<tr><td>${esc(a.emp_id)} ${esc(e.name||'')}</td><td>${sc(a)}</td><td><button class="x" data-hdel="${esc(a.id)}" title="ลบ">✕</button></td></tr>`}).join('')||'<tr><td colspan="3" class="hint">ยังไม่มีผู้อนุมัติ — มีเพียง Super Admin</td></tr>';
+  host.innerHTML=`<div class="card"><h2>ผู้อนุมัติระบบ${name}</h2>
+    <div class="hint" style="margin-bottom:8px">กำหนดแยกจาก Role and permission ของ Workload · ผู้อนุมัติ${name}: ${what} · ขอบเขต ทั้งบริษัท / รายฝ่าย / รายบุคคล (เพิ่มได้หลายแถวต่อคน) · ไม่อนุมัติของตัวเอง</div>
+    <div class="scroll"><table><thead><tr><th>ผู้อนุมัติ</th><th>ขอบเขต</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <form id="hapForm" class="row" style="margin-top:12px;align-items:end">
+      <div><label>ผู้อนุมัติ</label><select name="emp" required><option value="">— เลือกพนักงาน —</option>${db.employees.filter(e=>e.active!==false).map(e=>`<option value="${esc(e.id)}">${esc(e.id)} ${esc(e.name)}</option>`).join('')}</select></div>
+      <div><label>ขอบเขต</label><select name="type"><option value="all">ทั้งบริษัท</option><option value="dept">รายฝ่าย</option><option value="emp">รายบุคคล</option></select></div>
+      <div id="hapKeyBox" class="hide"><label>เลือก</label><select name="key"></select></div>
+      <div><button class="btn pri">+ เพิ่มผู้อนุมัติ</button></div></form><div class="err" id="hapMsg"></div></div>`;
+  const f=$('#hapForm'),fillKey=()=>{const t=f.type.value,box=$('#hapKeyBox');box.classList.toggle('hide',t==='all');
+    f.key.innerHTML=t==='dept'?db.depts.map(d=>`<option value="${esc(d.id)}">${esc(d.id)} ${esc(d.name)}</option>`).join(''):t==='emp'?db.employees.filter(e=>e.active!==false).map(e=>`<option value="${esc(e.id)}">${esc(e.id)} ${esc(e.name)}</option>`).join(''):''};
+  f.type.onchange=fillKey;fillKey();
+  f.onsubmit=async ev=>{ev.preventDefault();const t=f.type.value,k=t==='all'?'*':f.key.value;if(!f.emp.value||!k)return;
+    const row={id:`${f.emp.value}|${m}|${t}|${k}`,emp_id:f.emp.value,module:m,scope_type:t,scope_key:k};
+    const {error}=await sb.from('hub_approvers').upsert(row);if(error)return $('#hapMsg').textContent='บันทึกไม่สำเร็จ: '+error.message+(/hub_approvers/.test(error.message)?' (ยังไม่ได้รัน supabase_update_hub3.sql)':'');
+    await loadHubAp();hubApRender(m);if(m==='leave'&&lv.loaded)renderLeave()};
+  $$('#hubApPanel [data-hdel]').forEach(x=>x.onclick=async()=>{if(!confirm('ลบผู้อนุมัตินี้?'))return;const {error}=await sb.from('hub_approvers').delete().eq('id',x.dataset.hdel);if(error)return alert(error.message);await loadHubAp();hubApRender(m)});
 }
 $('#homeBtn').onclick=()=>setMode('home');
 document.addEventListener('click',ev=>{const b=ev.target.closest&&ev.target.closest('[data-go]');if(b)setMode(b.dataset.go)});
@@ -3150,7 +3212,7 @@ $('#pinForgotGo').onclick=async()=>{
 $('#pinOut').onclick=async ev=>{ev.preventDefault();
   try{await sb.rpc('release_session',{p_device:deviceId()})}catch(_){}try{await sb.auth.signOut()}catch(_){}
   $('#pinScreen').classList.add('hide');const r=pinResolve;pinResolve=null;if(r)r(false);
-  try{window.__cloud.resetCloud()}catch(_){}logoutUi()};
+  try{window.__cloud.resetCloud()}catch(_){}byeScreen()};
 async function pinGate(lock){   // เรียกหลังล็อกอินสำเร็จ — คืน true เมื่อปลดล็อก/ตั้ง PIN เสร็จ (false = ออกจากระบบ) · lock=true: ล็อกหน้าจอเมื่อหมดเวลา
   if(!hubOn())return true;
   let st;try{const {data,error}=await sb.rpc('pin_status');if(error)throw error;st=data}catch(e){console.warn('PIN ใช้ไม่ได้ (ยังไม่ได้รัน supabase_update_hub.sql):',e.message||e);return true}
@@ -3170,6 +3232,7 @@ const KIND_ICO={in:'🟢',out:'🔴',offsite_start:'🚗',offsite_end:'🏢'};
 const SRC_TH={app:'📱 แอป',beacon:'📡 Beacon',admin:'🛠 ผู้ดูแล'};
 async function attLoad(){
   const since=new Date(Date.now()-45*86400000).toISOString();
+  await loadHubAp();
   const [lg,st]=await Promise.all([sb.from('attendance_logs').select('*').eq('emp_id',me.id).gte('at',since).order('at',{ascending:true}).limit(2000),sb.from('work_sites').select('*').eq('active',true)]);
   if(lg.error)throw lg.error;
   att.logs=lg.data||[];att.sites=st.error?[]:(st.data||[]);att.loaded=true;
@@ -3232,7 +3295,7 @@ async function renderAtt(){
     <div id="attAdmin"></div>`;
   const tick=()=>{const c=$('#attClock');if(c)c.textContent=new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Asia/Bangkok'})};tick();clearInterval(clockTimer);clockTimer=setInterval(tick,1000);
   $$('#mod-att [data-ap]').forEach(b=>b.onclick=()=>attPunch(b.dataset.ap));
-  if(isAdmin)renderAttAdmin();
+  if(isAdmin||attApprover())renderAttAdmin();
 }
 async function renderAttAdmin(){
   const host=$('#attAdmin');if(!host)return;
@@ -3273,12 +3336,19 @@ async function renderAttAdmin(){
 /* ---------- ลางาน (เชื่อมชั่วโมง Workload) ---------- */
 let lv={types:[],reqs:[],loaded:false,msg:'',at:0};
 const APPROVER_ROLES=['mgr','dir','coo','ceo'];
-const leaveApprover=()=>isSuperAdmin||myScopes().some(s=>APPROVER_ROLES.includes(s.role)&&['all','dept','emp'].includes(scTypeOf(s)));
-const leaveScopeOk=empId=>{if(isSuperAdmin)return true;const e=find(db.employees,empId);if(!e)return false;
-  return myScopes().some(s=>APPROVER_ROLES.includes(s.role)&&(scTypeOf(s)==='all'||(scTypeOf(s)==='dept'&&s.key===e.dept)||(scTypeOf(s)==='emp'&&s.key===e.id)))};
+/* ผู้อนุมัติของระบบลางาน/ลงเวลา: ตาราง hub_approvers (แยกจาก Role and permission ของ Workload) */
+let hubAp=[],hubApLoaded=false;
+async function loadHubAp(){try{const r=await sb.from('hub_approvers').select('*');if(!r.error){hubAp=r.data||[];hubApLoaded=true}}catch(e){}}
+const hubMine=m=>hubAp.filter(a=>a.module===m&&me&&a.emp_id===me.id);
+const hubScopeOk=(m,empId)=>{if(isSuperAdmin)return true;const e=find(db.employees,empId);if(!e||(me&&e.id===me.id))return false;
+  return hubMine(m).some(a=>a.scope_type==='all'||(a.scope_type==='dept'&&a.scope_key===e.dept)||(a.scope_type==='emp'&&a.scope_key===e.id))};
+const leaveApprover=()=>isSuperAdmin||hubMine('leave').length>0;
+const attApprover=()=>isSuperAdmin||hubMine('att').length>0;
+const leaveScopeOk=empId=>hubScopeOk('leave',empId);
 const ltOf=id=>lv.types.find(t=>t.id===id)||{id,name:id,color:'#6a7a93'};
 async function loadLeave(){
   const from=new Date(Date.now()-400*86400000).toISOString().slice(0,10);
+  await loadHubAp();
   const [t,r]=await Promise.all([sb.from('leave_types').select('*').order('sort'),sb.from('leave_requests').select('*').gte('end_date',from).order('start_date',{ascending:false}).limit(3000)]);
   if(t.error)throw t.error;if(r.error)throw r.error;
   lv.types=t.data||[];lv.reqs=r.data||[];lv.loaded=true;lv.at=Date.now();
