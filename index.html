@@ -342,6 +342,7 @@ button.btn.ok{background:var(--cost);border-color:var(--cost);color:#fff}button.
     </div>
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn ok" id="submit">ส่งให้ผู้อนุมัติ</button>
+      <button class="btn hide" id="preAll" title="ส่งอนุมัติล่วงหน้า (Pre-approval) ทุกรายการที่ยังไม่ส่ง โดยไม่ต้องรอครบ 8 ชม.">➤ ส่งอนุมัติล่วงหน้าทุกรายการ</button>
       <button class="btn hide" id="reopen">ยกเลิกการส่ง (แก้ไข)</button>
     </div>
     <div class="notice hide" id="rejNote" style="border-left-color:var(--bad)"></div>
@@ -903,10 +904,19 @@ function renderRing(){
     +(left&&target?`<div class="lg"><i style="background:var(--line)"></i><span>คงเหลือ</span><b>${left} ชม.</b><span class="p">${pctTxt(left,denom)}</span></div>`:'')
     +(dash.mode==='day'?'':`<div class="hint" style="margin-top:8px">วันทำการ ${workdays} วัน (เป้า ${target} ชม.) · บันทึกครบ 8 ชม. แล้ว ${complete} วัน</div>`);
 }
-const apBadge=(t,x)=>{const s=entState(t,x);
-  return s==='A'?`<span class="tag cost">✓ อนุมัติ</span>${x.ap&&x.ap.by?`<div class="hint">${esc(x.ap.by)}</div>`:''}`
-    :s==='P'?`<span class="tag sga">รออนุมัติ</span><div class="hint" style="font-size:11.5px">${flowTxt(t,x)}</div>`
-    :s==='R'?`<span class="tag" style="background:var(--bad)">ส่งกลับ</span><div class="hint" style="color:var(--bad)">${esc(x.ap.note||'')}</div>`:''};
+const apBadge=(t,x)=>{const s=entState(t,x),pre=t.status==='Draft'?'<div class="hint" style="font-size:11px">Pre-approval</div>':'';
+  return s==='A'?`<span class="tag cost">✓ อนุมัติ</span>${x.ap&&x.ap.by?`<div class="hint">${esc(x.ap.by)}</div>`:''}${pre}`
+    :s==='P'?`<span class="tag sga">รออนุมัติ</span>${pre}<div class="hint" style="font-size:11.5px">${flowTxt(t,x)}</div>`
+    :s==='R'?`<span class="tag" style="background:var(--bad)">ส่งกลับ</span><div class="hint" style="color:var(--bad)">${esc(x.ap.note||'')}</div>`
+    :t.status==='Draft'?'<span class="hint">ยังไม่ส่งอนุมัติ</span>':''};
+/* ===== Pre-approval: ส่งอนุมัติรายรายการ (by transaction) ก่อนครบ 8 ชม. · ผ่านลำดับขั้นเดียวกับการอนุมัติปกติ ===== */
+const rejTxt=t=>t.entries.filter(x=>entState(t,x)==='R').map(x=>`${x.cat==='Cost'?x.code:x.sgaId}: ${x.ap.note} (โดย ${x.ap.by}${x.ap.role?' · '+AP_SHORT[x.ap.role]:''})`).join(' ; ');
+function preSend(ids){
+  const t=curSheet(false);if(!t||t.status!=='Draft')return;
+  const now=new Date().toISOString();let n=0;
+  t.entries.forEach(x=>{if(ids&&!ids.includes(x.id))return;const s=entState(t,x);if(s==='A'||s==='P')return;x.ap={s:'P',done:[],hist:[],sub:now,pre:true};n++});
+  if(!n)return;t.rejectNote=rejTxt(t);save();renderLog()}
+window.preSend=preSend;
 function renderLog(){
   const e=emp(), t=curSheet(false), tot=totals(t), d=dayInfo(e,$('#date').value), TG=d.work?(d.target||TARGET):TARGET;
   const st=t?t.status:'Draft',locked=!!t&&st!=='Draft';
@@ -925,13 +935,17 @@ function renderLog(){
   $('#remain').textContent=diff>0?`เหลืออีก ${diff} ชม.`:diff<0?`เกิน ${-diff} ชม.`:`ครบ ${TG} ชม. ✓`;
   $('#entries').innerHTML=(t?.entries||[]).map((x,i)=>{
     const lbl=x.cat==='Cost'?`${esc(x.code)} ${esc(entryName(x))}`:`${esc(x.sgaId)}: ${esc(find(db.sgaTypes,x.sgaId)?.name||'')}${x.code?` <span class="hint">(${esc(x.code)} ${esc(entryName(x))})</span>`:''}`;
-    return `<tr><td class="hint">${txNo(t,i)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${typeTag(x.code)}</td><td>${esc(x.note)}${attLinks(x)}${x.rbn?`<div class="hint">✎ บันทึกแทนโดย ${esc(x.rbn)}</div>`:''}</td><td class="n">${x.hours}</td><td>${apBadge(t,x)}</td><td style="white-space:nowrap">${(locked||entState(t,x)==='A')?'':`<button class="x" style="color:var(--pri)" data-edit="${x.id}" title="แก้ไขรายการนี้">✎</button><button class="x" data-del="${x.id}" title="ลบ">✕</button>`}</td></tr>`}).join('')
+    return `<tr><td class="hint">${txNo(t,i)}</td><td><span class="tag ${x.cat==='Cost'?'cost':'sga'}">${esc(x.cat)}</span></td><td>${lbl}</td><td>${typeTag(x.code)}</td><td>${esc(x.note)}${attLinks(x)}${x.rbn?`<div class="hint">✎ บันทึกแทนโดย ${esc(x.rbn)}</div>`:''}</td><td class="n">${x.hours}</td><td>${apBadge(t,x)}</td><td style="white-space:nowrap">${(locked||entState(t,x)==='A')?'':`${[null,'R'].includes(entState(t,x))?`<button class="x" style="color:var(--cost);font-size:12px" data-pre="${x.id}" title="ส่งอนุมัติล่วงหน้า (Pre-approval) เฉพาะรายการนี้">➤ ส่ง</button>`:''}<button class="x" style="color:var(--pri)" data-edit="${x.id}" title="แก้ไขรายการนี้">✎</button><button class="x" data-del="${x.id}" title="ลบ">✕</button>`}</td></tr>`}).join('')
     ||'<tr><td colspan="8" class="hint">ยังไม่มีรายการ</td></tr>';
   $$('[data-edit]').forEach(b=>b.onclick=()=>startEdit(b.dataset.edit));
-  $$('[data-del]').forEach(b=>b.onclick=()=>{if(editId===b.dataset.del)stopEdit();attRemoveFiles((t.entries.find(x=>x.id===b.dataset.del)||{}).att);t.entries=t.entries.filter(x=>x.id!==b.dataset.del);if(!t.entries.length)db.timesheets=db.timesheets.filter(x=>x!==t);save();renderLog()});
+  $$('[data-pre]').forEach(b=>b.onclick=()=>preSend([b.dataset.pre]));
+  {const nUn=t&&st==='Draft'?t.entries.filter(x=>[null,'R'].includes(entState(t,x))).length:0;$('#preAll').classList.toggle('hide',nUn<2)}
+  $$('[data-del]').forEach(b=>b.onclick=()=>{const dx=t.entries.find(x=>x.id===b.dataset.del);if(dx&&entState(t,dx)==='P'&&!confirm('รายการนี้ส่งอนุมัติล่วงหน้าไปแล้ว — ลบจะยกเลิกการอนุมัติที่ผ่านมา ต้องการลบ?'))return;if(editId===b.dataset.del)stopEdit();attRemoveFiles((t.entries.find(x=>x.id===b.dataset.del)||{}).att);t.entries=t.entries.filter(x=>x.id!==b.dataset.del);if(!t.entries.length)db.timesheets=db.timesheets.filter(x=>x!==t);save();renderLog()});
   const ok=d.work&&t&&diff===0&&!locked;
   $('#submit').disabled=!ok;
-  $('#submitHint').textContent=locked?(st==='Pending'?`ส่งให้ผู้อนุมัติเมื่อ ${new Date(t.submittedAt).toLocaleString('th-TH')} — อนุมัติแล้ว ${t.entries.filter(x=>entState(t,x)==='A').length}/${t.entries.length} รายการ (เป็น Submitted เมื่อครบทุกรายการ)`:`อนุมัติแล้วโดย ${t.approvedBy||'-'}${t.approvedAt?' เมื่อ '+new Date(t.approvedAt).toLocaleString('th-TH'):''}`):ok?'':`กรอกไม่ได้ขาด/เกิน — ต้องครบ ${TG} ชั่วโมงพอดีจึงจะส่งได้`;
+  $('#submitHint').textContent=locked?(st==='Pending'?`ส่งให้ผู้อนุมัติเมื่อ ${new Date(t.submittedAt).toLocaleString('th-TH')} — อนุมัติแล้ว ${t.entries.filter(x=>entState(t,x)==='A').length}/${t.entries.length} รายการ (เป็น Submitted เมื่อครบทุกรายการ)`:`อนุมัติแล้วโดย ${t.approvedBy||'-'}${t.approvedAt?' เมื่อ '+new Date(t.approvedAt).toLocaleString('th-TH'):''}`):(ok?'':`กรอกไม่ได้ขาด/เกิน — ต้องครบ ${TG} ชั่วโมงพอดีจึงจะส่งได้`)+(()=>{if(!t)return '';const s=t.entries.map(x=>entState(t,x)),a=s.filter(z=>z==='A').length,p=s.filter(z=>z==='P').length,r=s.filter(z=>z==='R').length;
+      return a+p+r?`${ok?'':' · '}Pre-approval: อนุมัติแล้ว ${a} · รออนุมัติ ${p}${r?' · ส่งกลับ '+r:''} รายการ${ok&&p?' — ครบ '+TG+' ชม. ส่งได้เลย รายการที่รออยู่จะอนุมัติต่อตามลำดับเดิม':''}`:''})();
+  $('#preAll').onclick=()=>preSend();
 }
 /* ===== แนบไฟล์ / ถ่ายภาพ (Supabase Storage: bucket timesheet-files · path = รหัสพนักงาน/ใบงาน/รายการ/ไฟล์) ===== */
 const ATT={max:5,mb:10,bucket:'timesheet-files'};
@@ -981,6 +995,7 @@ let editId=null;
 function stopEdit(){editId=null;attClear();$('#add').textContent='+ เพิ่มรายการ';$('#addTitle').textContent='เพิ่มรายการงาน';$('#editCancel').classList.add('hide');$('#hours').value='';$('#note').value='';$('#err').textContent=''}
 function startEdit(id){
   const t=curSheet(false),x=t&&t.entries.find(y=>y.id===id);if(!x||t.status!=='Draft'||entState(t,x)==='A')return;
+  if(entState(t,x)==='P'&&!confirm('รายการนี้ส่งอนุมัติล่วงหน้าไปแล้ว — แก้ไขจะยกเลิกการอนุมัติที่ผ่านมาและต้องส่งใหม่ ต้องการแก้ไข?'))return;
   editId=id;
   document.querySelector(`.seg button[data-cat="${x.cat}"]`).click();                 // สลับ Cost / SG&A ให้ตรงรายการ
   if(x.cat==='Cost'){$('#project').value=x.code||'';$('#project').dispatchEvent(new Event('change'))}
@@ -1061,11 +1076,12 @@ function canApproveEntry(t,x){
 }
 function finalizeSheet(t){
   const st=t.entries.map(x=>entState(t,x));
+  if(t.status==='Draft'){if(st.includes('R'))t.rejectNote=rejTxt(t);return}   // Pre-approval: ใบยังไม่ส่ง final — ไม่เปลี่ยนสถานะใบ
   if(st.length&&st.every(s=>s==='A')){t.status='Submitted';t.rejectNote=''}
   else if(st.includes('R')){t.status='Draft';t.submittedAt=null;t.rejectNote=t.entries.filter(x=>entState(t,x)==='R').map(x=>`${x.cat==='Cost'?x.code:x.sgaId}: ${x.ap.note} (โดย ${x.ap.by}${x.ap.role?' · '+AP_SHORT[x.ap.role]:''})`).join(' ; ')}
   else t.status='Pending';
 }
-const pendingRows=()=>{const o=[];db.timesheets.filter(t=>t.status==='Pending').forEach(t=>t.entries.forEach(x=>{if(canApproveEntry(t,x))o.push({t,x})}));return o.sort((a,b)=>a.t.date.localeCompare(b.t.date)||a.t.empId.localeCompare(b.t.empId))};
+const pendingRows=()=>{const o=[];db.timesheets.filter(t=>t.status!=='Submitted').forEach(t=>t.entries.forEach(x=>{if(canApproveEntry(t,x))o.push({t,x})}));return o.sort((a,b)=>a.t.date.localeCompare(b.t.date)||a.t.empId.localeCompare(b.t.empId))};
 function setNavBadge(el,label,n){if(!el)return;el.innerHTML=esc(label)+(n?`<span class="nb">${n>99?'99+':n}</span>`:'')}
 function updApprBadge(){const n=canApprove()?pendingRows().length:0;   // วงกลมแดง = จำนวนเอกสารที่ถึงคิวรออนุมัติ
   setNavBadge($('#navAppr'),'อนุมัติ',n);setNavBadge($('#navAstat'),'สถานะอนุมัติ',n)}
@@ -1073,18 +1089,20 @@ const _rl=renderLog;renderLog=function(){_rl();updApprBadge()};
 function doApprove(t,x){          // อนุมัติ 1 ขั้นของรายการ (Super Admin = อนุมัติจบทุกขั้น)
   const now=new Date().toISOString(),by=meName(),hist=(x.ap&&x.ap.hist)||[];
   const sub=x.ap&&x.ap.sub;
+  const pre=!!(x.ap&&x.ap.pre);
   if(isSuperAdmin){x.ap={s:'A',by,at:now,done:doneOf(x),hist:[...hist,{role:'super',by,at:now}],sub};}
   else{const nr=nextRole(t,x);x.ap={s:'P',done:[...doneOf(x),nr],hist:[...hist,{role:nr,by,at:now}],by,at:now,sub};if(!nextRole(t,x))x.ap.s='A'}
+  if(pre)x.ap.pre=true;
   t.approvedBy=by;t.approvedAt=now;finalizeSheet(t);
 }
 $('#submit').onclick=()=>{const t=curSheet(false);if(!t)return;
   const nowIso=new Date().toISOString();
-  t.entries.forEach(x=>{if(entState(t,x)!=='A')x.ap={s:'P',done:[],hist:[],sub:nowIso}});       // รายการที่อนุมัติแล้วคงเดิม ที่เหลือเริ่มขั้นแรกใหม่
-  t.submittedAt=nowIso;t.rejectNote='';
+  t.entries.forEach(x=>{const s=entState(t,x);if(s!=='A'&&s!=='P')x.ap={s:'P',done:[],hist:[],sub:nowIso}});       // รายการที่อนุมัติแล้ว / ส่ง Pre-approval ไว้แล้ว คงเดิม ที่เหลือเริ่มขั้นแรก
+  t.status='Pending';t.submittedAt=nowIso;t.rejectNote='';   // ส่ง final (ครบ 8 ชม.) — รายการ Pre-approval ที่รออยู่เดินต่อตามลำดับเดิม
   t.entries.forEach(x=>{if(x.ap&&x.ap.s==='P'&&chainOf(t,x).length&&!nextRole(t,x))x.ap.s='A'});
   finalizeSheet(t);save();renderLog()};
 $('#reopen').onclick=()=>{const t=curSheet(false);if(!t||t.status!=='Pending'||!confirm('ยกเลิกการส่งเพื่อแก้ไข? (ขั้นที่อนุมัติไปแล้วของรายการที่ยังไม่ครบจะเริ่มใหม่)'))return;
-  t.entries.forEach(x=>{if(x.ap&&x.ap.s==='P')delete x.ap});t.status='Draft';t.submittedAt=null;save();renderLog()};
+  t.entries.forEach(x=>{if(x.ap&&x.ap.s==='P'&&!x.ap.pre)delete x.ap});t.status='Draft';t.submittedAt=null;save();renderLog()};
 async function entryServerState(t,x){if(typeof CLOUD==='undefined'||!CLOUD)return JSON.stringify(doneOf(x));
   try{const {data,error}=await sb.from('timesheets').select('entries,status').eq('id',t.id).maybeSingle();if(error)throw error;if(!data)return null;
     const y=(data.entries||[]).find(z=>z.id===x.id);if(!y)return null;if(!y.ap)return data.status==='Pending'?'[]':null;return y.ap.s==='P'?JSON.stringify(y.ap.done||[]):null}catch(e){return JSON.stringify(doneOf(x))}}
@@ -3080,13 +3098,15 @@ async function refreshLite(force){
   try{
     const cut=new Date();cut.setDate(cut.getDate()-45);const cutS=cut.toISOString().slice(0,10),wide=isAdmin||canApprove();
     const dids=me?[me.id,...delegTargets().map(e=>e.id)]:[];
-    const [perms,scopes,mine,pend,dgs]=await Promise.all([
+    const [perms,scopes,mine,pend,dgs,preP]=await Promise.all([
       fetchAll('approval_perms','role').catch(()=>null),fetchAll('approver_scopes','id').catch(()=>null),
       me?fetchAll('timesheets','id',q=>q.gte('day',cutS).in('emp_id',dids)):Promise.resolve([]),
-      wide?fetchAll('timesheets','id',q=>q.eq('status','Pending')):Promise.resolve([]),fetchAll('entry_delegates','id').catch(()=>null)]);
+      wide?fetchAll('timesheets','id',q=>q.eq('status','Pending')):Promise.resolve([]),fetchAll('entry_delegates','id').catch(()=>null),
+      wide?fetchAll('timesheets','id',q=>q.eq('status','Draft').filter('entries','cs','[{"ap":{"s":"P"}}]')).catch(()=>[]):Promise.resolve([])]);   // Pre-approval: ใบ Draft ที่มีรายการรออนุมัติ
     if(syncing||cloudBusy)return;                                                         // มีการบันทึกเกิดขึ้นระหว่างดึง ข้ามรอบนี้
-    const got=new Map([...mine,...pend].map(r=>[r.id,r]));
-    const stale=db.timesheets.filter(t=>t.status==='Pending'&&!got.has(t.id)).map(t=>t.id);   // ใบที่เคยรออนุมัติแต่ตอนนี้เปลี่ยนสถานะแล้ว
+    const got=new Map([...mine,...pend,...(preP||[])].map(r=>[r.id,r]));
+    const hasP=t=>(t.entries||[]).some(x=>x.ap&&x.ap.s==='P');
+    const stale=db.timesheets.filter(t=>(t.status==='Pending'||hasP(t))&&!got.has(t.id)).map(t=>t.id);   // ใบที่เคยรออนุมัติแต่ตอนนี้เปลี่ยนสถานะแล้ว
     for(let i=0;i<stale.length;i+=100){const rs=await fetchAll('timesheets','id',q=>q.in('id',stale.slice(i,i+100)));rs.forEach(r=>got.set(r.id,r))}
     if(syncing||cloudBusy)return;
     let changed=false;
@@ -3207,7 +3227,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v96 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v97 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
