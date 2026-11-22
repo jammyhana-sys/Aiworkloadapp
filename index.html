@@ -3233,7 +3233,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v106 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v107 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3366,12 +3366,12 @@ function renderClockCard(){
   const run=g.running&&ico==='⏳',onNow=!!g.inn&&!g.block&&!g.nonwork&&attReq.on,key=empId+'|'+ds;if(clkA.key!==key){clkA.key=key;clkA.cur=0}   // เปลี่ยนวัน/คน → นับ 0 ขึ้นไปใหม่
   c.innerHTML=`<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><div style="position:relative;width:84px;height:84px;flex:none"><svg viewBox="0 0 80 80" width="84" height="84" style="overflow:visible"><circle cx="40" cy="40" r="${R}" fill="none" stroke="rgba(120,130,150,.22)" stroke-width="8"/><circle id="clkArc" cx="40" cy="40" r="${R}" fill="none" stroke="${col}" stroke-width="8" stroke-linecap="round" stroke-dasharray="0 ${C.toFixed(1)}" transform="rotate(-90 40 40)"/>${run?`<defs><mask id="chgm"><circle id="clkMk" cx="40" cy="40" r="${R}" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-dasharray="0 ${C.toFixed(1)}"/></mask></defs><circle class="chg" cx="40" cy="40" r="${R}" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="8" stroke-dasharray="26 ${(C-26).toFixed(1)}" mask="url(#chgm)" transform="rotate(-90 40 40)" style="animation-delay:-${((Date.now()%2200)/1000).toFixed(2)}s"/>`:''}<g id="clkTip" style="display:none"><circle id="clkTipC" r="9" fill="#fff" stroke-width="1.8"/><text id="clkTipT" text-anchor="middle" font-size="7.4" font-weight="700" fill="#1f2937"></text></g></svg><span ${run?`class="hgflip" data-flip="1" `:''}style="${run?`animation-delay:-${((Date.now()%4000)/1000).toFixed(2)}s;`:''}position:absolute;left:0;top:0;width:84px;height:84px;display:flex;align-items:center;justify-content:center;font-size:26px;line-height:1">${ico}</span></div>
     <div style="flex:1;min-width:200px"><div class="hint">นาฬิกาจับเวลา 8 ชั่วโมงตามการลงเวลาจริง · ${esc(dShort(ds))}</div><div id="clkBig" style="font-size:26px;font-weight:700;color:${col};line-height:1.25">${esc(big)}</div><div class="hint">${esc(sub)}</div></div></div>`;
-  clkA.tgt=ring;clkA.on=!!g.inn&&!g.block&&!g.nonwork&&attReq.on;clkA.C=C;if(!clkA.on)clkA.cur=ring;
+  clkA.loop=!!g.running;clkA.tgt=ring;clkA.on=!!g.inn&&!g.block&&!g.nonwork&&attReq.on;clkA.C=C;if(!clkA.on)clkA.cur=ring;
   clkPaint();if(!clkA.raf)clkA.raf=requestAnimationFrame(clkTick);
 }
 /* วงแหวน + ตัวเลข % วิ่งไล่ตามค่าจริง (0→%ปัจจุบัน) · สีเปลี่ยนตามช่วง % ระหว่างวิ่ง */
 const battCol=pc=>pc>=100?'#0b8f4d':pc>=71?'#7ccf5a':pc>=31?'#f29b2f':'#e5484d';
-const clkA={cur:0,tgt:0,key:'',raf:0,on:false,C:2*Math.PI*34};
+const clkA={cur:0,num:0,loop:false,tgt:0,key:'',raf:0,on:false,C:2*Math.PI*34};
 function clkPaint(){
   const a=document.getElementById('clkArc');if(!a)return;
   const ring=Math.max(0,Math.min(1,clkA.cur)),C=clkA.C,pc=Math.min(100,Math.floor(ring*100+1e-6)),col=battCol(pc),len=(C*ring).toFixed(1)+' '+C.toFixed(1);
@@ -3380,14 +3380,18 @@ function clkPaint(){
   const tip=document.getElementById('clkTip');
   if(!clkA.on){if(tip)tip.style.display='none';return}
   a.setAttribute('stroke',col);const big=document.getElementById('clkBig');if(big)big.style.color=col;
-  if(tip){if(ring<=0){tip.style.display='none';return}
-    const an=-Math.PI/2+2*Math.PI*ring,tx=(40+34*Math.cos(an)).toFixed(1),ty=(40+34*Math.sin(an)).toFixed(1),c=document.getElementById('clkTipC'),t=document.getElementById('clkTipT');
-    tip.style.display='';c.setAttribute('cx',tx);c.setAttribute('cy',ty);c.setAttribute('stroke',col);t.setAttribute('x',tx);t.setAttribute('y',(+ty+2.6).toFixed(1));t.textContent=pc+'%'}   // เลข % วิ่งตามปลายเส้นชาร์จ 0→100 (จำนวนเต็ม)
+  if(tip){const tr=Math.max(0,Math.min(1,clkA.loop?clkA.num:ring)),tpc=Math.min(100,Math.floor(tr*100+1e-6)),tcol=battCol(tpc);
+    if(tr<=0){tip.style.display='none';return}
+    const an=-Math.PI/2+2*Math.PI*tr,tx=(40+34*Math.cos(an)).toFixed(1),ty=(40+34*Math.sin(an)).toFixed(1),c=document.getElementById('clkTipC'),t=document.getElementById('clkTipT');
+    tip.style.display='';c.setAttribute('cx',tx);c.setAttribute('cy',ty);c.setAttribute('stroke',tcol);t.setAttribute('x',tx);t.setAttribute('y',(+ty+2.6).toFixed(1));t.textContent=tpc+'%'}   // เลข % วิ่งไปตามเส้นชาร์จ 0→ค่าปัจจุบัน วนซ้ำทุก ~5 วินาทีขณะจับเวลา (จำนวนเต็ม)
 }
 function clkTick(){
-  clkA.raf=0;const d=clkA.tgt-clkA.cur;
-  if(Math.abs(d)>0.0004){clkA.cur+=Math.sign(d)*Math.min(Math.abs(d),Math.max(0.0035,Math.abs(d)*0.07));clkPaint();clkA.raf=requestAnimationFrame(clkTick)}
-  else if(clkA.cur!==clkA.tgt){clkA.cur=clkA.tgt;clkPaint()}
+  clkA.raf=0;const d=clkA.tgt-clkA.cur;let busy=false;
+  if(Math.abs(d)>0.0004){clkA.cur+=Math.sign(d)*Math.min(Math.abs(d),Math.max(0.0035,Math.abs(d)*0.07));busy=true}
+  else if(clkA.cur!==clkA.tgt)clkA.cur=clkA.tgt;
+  if(clkA.on&&clkA.loop&&clkA.tgt>0){const k=Math.min(1,((Date.now()%5000)/5000)/0.65);clkA.num=clkA.cur*(1-Math.pow(1-k,3));busy=true}   // ป้าย % วิ่งจาก 0 ไปถึงปลายเส้น แล้วพักสั้น ๆ วนซ้ำ
+  else clkA.num=clkA.cur;
+  clkPaint();if(busy)clkA.raf=requestAnimationFrame(clkTick)
 }
 
 {const _rl=renderLog;renderLog=function(){_rl.apply(this,arguments);try{renderClockCard()}catch(e){}}}
