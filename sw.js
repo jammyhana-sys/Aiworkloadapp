@@ -1,6 +1,6 @@
 // Service worker: ทำให้แอปเปิดได้แม้ไม่มีเน็ต (ข้อมูลบันทึกงานอยู่ใน localStorage อยู่แล้ว)
-const VER = 'timesheet-v119';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+const VER = 'timesheet-v120';
+const SHELL = ['./', './index.html', './install.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VER).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

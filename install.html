@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ติดตั้งไอคอน Work Sync</title>
+<meta name="theme-color" content="#4f6df5">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  :root{--bg:#eef3fb;--card:#fff;--ink:#1f2a44;--mut:#6a7a93;--pri:#4f6df5;--pri2:#7a5cf0;--ok:#14a37f;--line:#e2e8f3}
+  @media (prefers-color-scheme:dark){:root{--bg:#0f1524;--card:#18203a;--ink:#e8edf8;--mut:#9aa9c4;--line:#2a3558}}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Noto Sans Thai","Sarabun",system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);padding:20px 16px 40px;line-height:1.55}
+  .wrap{max-width:460px;margin:0 auto}
+  .card{background:var(--card);border-radius:20px;padding:20px;margin-bottom:14px;box-shadow:0 6px 24px rgba(40,60,120,.08)}
+  .hero{text-align:center}
+  .hero img{width:84px;height:84px;border-radius:20px;box-shadow:0 6px 18px rgba(79,109,245,.35)}
+  h1{font-size:20px;margin:12px 0 4px}
+  h2{font-size:16px;margin:0 0 10px}
+  .mut{color:var(--mut);font-size:14px}
+  .btn{display:block;width:100%;text-align:center;text-decoration:none;border:0;border-radius:14px;padding:14px 16px;font-size:16px;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--pri),var(--pri2));cursor:pointer;font-family:inherit;margin-top:12px}
+  .btn.ok{background:var(--ok)}
+  .btn.ghost{background:transparent;color:var(--pri);border:2px solid var(--pri)}
+  ol{padding-left:22px;margin:8px 0}
+  li{margin:7px 0}
+  .tag{display:inline-block;background:rgba(79,109,245,.12);color:var(--pri);border-radius:8px;padding:1px 8px;font-weight:700;font-size:13px}
+  .warn{background:rgba(242,155,47,.14);border-left:4px solid #f29b2f;border-radius:12px;padding:12px 14px;font-size:14px;margin-bottom:14px}
+  .hide{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card hero">
+    <img src="icon-192.png" alt="Work Sync">
+    <h1>Dynamic Work Sync Platform</h1>
+    <div class="mut">ติดตั้งไอคอนบนหน้าจอมือถือ เปิดแอปได้ในครั้งเดียว</div>
+  </div>
+
+  <!-- เปิดจากแอป LINE: ติดตั้งไอคอนไม่ได้ ต้องเปิดด้วยเบราว์เซอร์ก่อน -->
+  <div id="lineBox" class="hide">
+    <div class="warn"><b>คุณกำลังเปิดในแอป LINE</b> — ติดตั้งไอคอนจากหน้านี้ไม่ได้ ให้เปิดด้วยเบราว์เซอร์ของเครื่อง (Chrome / Safari) ก่อน</div>
+    <a id="extBtn" class="btn" href="#">🌐 เปิดด้วยเบราว์เซอร์</a>
+    <div class="mut" style="margin-top:8px;text-align:center">ถ้ากดแล้วไม่เปิด: แตะ <b>⋮ / ⋯</b> มุมขวาบน แล้วเลือก "เปิดในเบราว์เซอร์"</div>
+  </div>
+
+  <div id="doneBox" class="card hide"><h2>✓ ติดตั้งไอคอนแล้ว</h2><div class="mut">เปิดแอปจากไอคอนบนหน้าจอได้เลย</div><a class="btn ok" href="./">เปิดแอป</a></div>
+
+  <!-- Android (Chrome) -->
+  <div id="android" class="card hide">
+    <h2>📱 Android (Chrome)</h2>
+    <button id="instBtn" class="btn hide">📲 ติดตั้งไอคอนบนหน้าจอ</button>
+    <div id="androidManual">
+      <ol>
+        <li>แตะเมนู <span class="tag">⋮</span> มุมขวาบนของ Chrome</li>
+        <li>เลือก <span class="tag">ติดตั้งแอป</span> หรือ <span class="tag">เพิ่มลงในหน้าจอหลัก</span></li>
+        <li>กด <span class="tag">ติดตั้ง / เพิ่ม</span> ไอคอนจะขึ้นที่หน้าจอ</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- iPhone / iPad (Safari) -->
+  <div id="ios" class="card hide">
+    <h2>🍎 iPhone / iPad (Safari)</h2>
+    <ol>
+      <li>ต้องเปิดด้วย <b>Safari</b> เท่านั้น (ไม่ใช่ Chrome หรือ LINE)</li>
+      <li>แตะปุ่ม <span class="tag">แชร์ ⬆︎</span> (สี่เหลี่ยมมีลูกศรขึ้น) ที่แถบด้านล่าง</li>
+      <li>เลื่อนลงแล้วเลือก <span class="tag">เพิ่มไปยังหน้าจอโฮม</span></li>
+      <li>กด <span class="tag">เพิ่ม</span> ที่มุมขวาบน</li>
+    </ol>
+  </div>
+
+  <!-- คอมพิวเตอร์ / อื่น ๆ -->
+  <div id="other" class="card hide">
+    <h2>💻 คอมพิวเตอร์ / เบราว์เซอร์อื่น</h2>
+    <div class="mut">Chrome / Edge: กดไอคอนติดตั้ง ⊕ ที่ช่องที่อยู่เว็บ หรือเมนู ⋮ → "ติดตั้งแอป" · เปิดหน้านี้บนมือถือเพื่อดูขั้นตอนของเครื่องนั้น</div>
+  </div>
+
+  <a class="btn ghost" href="./">เปิดแอปเลย (ไม่ติดตั้ง)</a>
+</div>
+
+<script>
+(function(){
+  const ua=navigator.userAgent||'',$=id=>document.getElementById(id);
+  const inLine=/Line\//i.test(ua),ios=/iPhone|iPad|iPod/i.test(ua)||(/Macintosh/i.test(ua)&&navigator.maxTouchPoints>1),android=/Android/i.test(ua);
+  const standalone=window.matchMedia&&matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+  if(standalone){$('doneBox').classList.remove('hide');return}
+  if(inLine){$('lineBox').classList.remove('hide');
+    // LINE รองรับพารามิเตอร์ openExternalBrowser=1 เพื่อเปิดลิงก์ด้วยเบราว์เซอร์ของเครื่อง
+    const u=new URL(location.href);u.searchParams.set('openExternalBrowser','1');$('extBtn').href=u.toString()}
+  if(ios)$('ios').classList.remove('hide');
+  else if(android)$('android').classList.remove('hide');
+  else{$('android').classList.remove('hide');$('ios').classList.remove('hide');$('other').classList.remove('hide')}
+  // Android/Chrome: ปุ่มติดตั้งในหน้า (เมื่อเบราว์เซอร์พร้อม)
+  let dp=null;
+  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;$('instBtn').classList.remove('hide');$('androidManual').classList.add('hide')});
+  $('instBtn').onclick=async()=>{if(!dp)return;dp.prompt();try{await dp.userChoice}catch(_){}dp=null;$('instBtn').classList.add('hide');$('androidManual').classList.remove('hide')};
+  window.addEventListener('appinstalled',()=>{$('doneBox').classList.remove('hide');['android','ios','other','lineBox'].forEach(i=>$(i).classList.add('hide'))});
+  if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+})();
+</script>
+</body>
+</html>
