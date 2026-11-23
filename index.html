@@ -2843,11 +2843,13 @@ if(CLOUD){
     ['#rgUser'].forEach(s=>{const i=$(s);i.required=false;i.classList.add('hide');if(i.previousElementSibling)i.previousElementSibling.classList.add('hide')});
     $('#rgEmp').previousElementSibling.textContent='รหัสพนักงาน (Emp.No)';
     $('#rgName').required=true;$('#rgName').classList.remove('hide');$('#rgName').previousElementSibling.classList.remove('hide');
-    const h=$('#regBox .hint');if(h)h.textContent='สมัครสมาชิกด้วยชื่อ รหัสพนักงาน และอีเมลบริษัท — หลังสมัครต้องรอ Admin ตรวจสอบและอนุมัติก่อนจึงเข้าใช้งานได้';
+    const h=$('#regBox .hint');if(h)h.textContent='สมัครสมาชิกด้วยรหัสพนักงานและอีเมลบริษัทที่ลงทะเบียนไว้กับบริษัท (ต้องตรงกับข้อมูลในระบบ) — หลังสมัครต้องรอ Admin ตรวจสอบและอนุมัติก่อนจึงเข้าใช้งานได้';
     $('#rgEmail').previousElementSibling.textContent='อีเมลบริษัท';
     {const fh=$('#fgBox .hint');if(fh)fh.textContent='กรอกอีเมลบริษัทที่ลงทะเบียนไว้ ระบบจะส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ LINE@ ของคุณ (ถ้าผูก LINE ไว้) หรือทางอีเมล';}
   })();
+  const MISMATCH_MSG='รหัสพนักงานและอีเมลไม่ตรงกับข้อมูลในระบบ — ตรวจสอบรหัสพนักงานและอีเมลบริษัทอีกครั้ง (ต้องเป็นอีเมลที่ลงทะเบียนไว้กับบริษัท) หรือติดต่อ Admin';
   function signupErrMsg(er){const m=er.message||'',c=er.code||'';
+    if(/SIGNUP_MISMATCH|Database error saving new user/i.test(m+' '+c))return MISMATCH_MSG;
     if(/already|registered/i.test(m))return 'อีเมลนี้สมัครแล้ว — เข้าสู่ระบบ หรือกด "ลืมรหัสผ่าน?" (ถ้าเข้าไม่ได้ ให้แจ้ง Admin ตรวจในแท็บสมาชิก)';
     if(/rate.?limit|too many|sending.*(confirmation|email)|email.*(send|sent)/i.test(m+' '+c))return 'ส่งอีเมลยืนยันไม่สำเร็จ (โควตาอีเมลของ Supabase เต็ม) — บัญชีอาจถูกสร้างแล้ว ให้แจ้ง Admin ตรวจในแท็บสมาชิก และปิด "Confirm email" ที่ Supabase';
     if(/password|weak/i.test(m+' '+c))return 'รหัสผ่านไม่ผ่านเงื่อนไขของระบบ: '+m;
@@ -2964,6 +2966,9 @@ if(CLOUD){
     if(p1!==p2)return loginMsg('รหัสผ่านทั้งสองช่องไม่ตรงกัน');
     if(!name)return loginMsg('กรุณากรอกชื่อ-นามสกุล');
     if(!empId)return loginMsg('กรุณากรอกรหัสพนักงาน');
+    {const {data:chk,error:ce}=(await sb.rpc('check_signup',{p_emp:empId,p_email:email}))||{error:true};   // รหัสพนักงาน + อีเมล ต้องตรงกับฐานข้อมูล (ยังไม่ได้รัน hub19 = ข้ามการตรวจ)
+      if(!ce){if(chk==='MISMATCH')return loginMsg(MISMATCH_MSG);
+        if(chk==='TAKEN')return loginMsg('รหัสพนักงานนี้สมัครสมาชิกแล้ว — เข้าสู่ระบบ หรือกด "ลืมรหัสผ่าน?" (ถ้าเข้าไม่ได้ ให้แจ้ง Admin)')}}
     const {data,error}=await sb.auth.signUp({email,password:p1,options:{emailRedirectTo:location.origin+location.pathname,data:{emp_id:empId,full_name:name}}});
     if(error){console.error('signUp error',error);return loginMsg(signupErrMsg(error))}
     ['#rgName','#rgEmp','#rgEmail','#rgPass','#rgPass2'].forEach(s=>$(s).value='');
@@ -3284,7 +3289,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v120 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v121 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
