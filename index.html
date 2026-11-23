@@ -3233,7 +3233,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v109 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v110 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3406,9 +3406,11 @@ const SRC_TH={app:'📱 แอป',beacon:'📡 Beacon',admin:'🛠 ผู้ด
 async function attLoad(){
   const since=new Date(Date.now()-45*86400000).toISOString();
   await loadHubAp();
-  const [lg,st]=await Promise.all([sb.from('attendance_logs').select('*').eq('emp_id',me.id).gte('at',since).order('at',{ascending:true}).limit(2000),sb.from('work_sites').select('*').eq('active',true)]);
+  const [lg,st]=await Promise.all([sb.from('attendance_logs').select('*').eq('emp_id',me.id).gte('at',since).order('at',{ascending:true}).limit(2000),sb.rpc('my_work_sites')]);
   if(lg.error)throw lg.error;
-  att.logs=lg.data||[];att.sites=st.error?[]:(st.data||[]);att.loaded=true;
+  let sites=(st&&!st.error)?(st.data||[]):null;   // my_work_sites = จุดที่กำหนดให้พนักงานคนนี้ (hub13) · ยังไม่ได้รัน hub13 → ใช้ทุกจุดเหมือนเดิม
+  if(sites===null){const r=await sb.from('work_sites').select('*').eq('active',true);sites=r.error?[]:(r.data||[])}
+  att.logs=lg.data||[];att.sites=sites;att.loaded=true;
 }
 function getPos(){return new Promise((res,rej)=>{if(!navigator.geolocation)return rej(new Error('อุปกรณ์นี้ไม่รองรับ GPS'));
   navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),
@@ -3542,50 +3544,98 @@ function loadLeaflet(){if(window.L)return Promise.resolve(true);if(_lfl)return _
 function parseLatLng(q){q=String(q||'');
   let m=q.match(/@(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/)||q.match(/!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/)||q.match(/[?&](?:q|ll|query)=(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/)||q.match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
   if(!m)return null;const lat=+m[1],lng=+m[2];return lat>=-90&&lat<=90&&lng>=-180&&lng<=180?{lat,lng}:null}
-function siteSearchInit(){
+function siteSearchInit(sitesAll){
   const f=$('#siteForm'),q=$('#siteQ'),res=$('#siteRes'),mapEl=$('#siteMap'),hint=$('#siteMapHint');if(!f||!q)return;
   let map=null,marker=null,circle=null;
   const radius=()=>parseInt(f.radius.value,10)||150;
-  const setPoint=(lat,lng,label,zoom)=>{f.lat.value=(+lat).toFixed(6);f.lng.value=(+lng).toFixed(6);if(label&&!f.name.value.trim())f.name.value=label;
-    $('#siteMsg').textContent='เลือกพิกัดแล้ว: '+(+lat).toFixed(5)+', '+(+lng).toFixed(5)+' — ตรวจตำแหน่งบนแผนที่ ตั้งชื่อ/รัศมี แล้วกด "+ เพิ่ม"';showMap(lat,lng,zoom)};
-  async function showMap(lat,lng,zoom){
+  const fill=ll=>{f.lat.value=ll.lat.toFixed(6);f.lng.value=ll.lng.toFixed(6);$('#siteMsg').textContent='พิกัดที่เลือก: '+ll.lat.toFixed(5)+', '+ll.lng.toFixed(5)+' — ลากหมุด/แตะแผนที่เพื่อปรับ แล้วตั้งชื่อ/รัศมี และกด "+ เพิ่ม"'};
+  async function ensureMap(lat,lng,zoom){
     mapEl.style.display='';hint.style.display='';
-    if(!(await loadLeaflet())){mapEl.style.display='none';hint.style.display='none';return}
-    if(!map){map=L.map(mapEl,{scrollWheelZoom:false}).setView([lat,lng],zoom||17);
+    if(!(await loadLeaflet())){mapEl.style.display='none';hint.style.display='none';return false}
+    if(!map){map=L.map(mapEl,{scrollWheelZoom:true}).setView([lat,lng],zoom);
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
-      (att.sites||[]).forEach(s=>L.circle([+s.lat,+s.lng],{radius:+s.radius_m||150,color:'#8a94a6',weight:1,fillOpacity:.12}).bindTooltip(s.name).addTo(map));
-      marker=L.marker([lat,lng],{draggable:true}).addTo(map);circle=L.circle([lat,lng],{radius:radius(),color:'#4f6ef7',weight:2,fillOpacity:.15}).addTo(map);
-      const mv=ll=>{marker.setLatLng(ll);circle.setLatLng(ll);f.lat.value=ll.lat.toFixed(6);f.lng.value=ll.lng.toFixed(6)};
-      marker.on('dragend',()=>mv(marker.getLatLng()));map.on('click',e=>mv(e.latlng));
-      f.radius.addEventListener('input',()=>circle&&circle.setRadius(radius()))}
-    else{marker.setLatLng([lat,lng]);circle.setLatLng([lat,lng]);circle.setRadius(radius());map.setView([lat,lng],zoom||map.getZoom())}
-    setTimeout(()=>map.invalidateSize(),150)}
+      (sitesAll||[]).forEach(s=>L.circle([+s.lat,+s.lng],{radius:+s.radius_m||150,color:'#8a94a6',weight:1,fillOpacity:.12}).bindTooltip(s.name).addTo(map));
+      map.on('click',e=>pin(e.latlng,true));
+      f.radius.addEventListener('input',()=>circle&&circle.setRadius(radius()));
+      setTimeout(()=>map.invalidateSize(),200)}
+    return true}
+  function pin(ll,fromUser){   // วางหมุดที่ตำแหน่ง (หมุดลากได้ · แตะแผนที่เพื่อย้ายหมุด)
+    ll=L.latLng(ll.lat,ll.lng);
+    if(!marker){marker=L.marker(ll,{draggable:true}).addTo(map);circle=L.circle(ll,{radius:radius(),color:'#4f6ef7',weight:2,fillOpacity:.15}).addTo(map);
+      marker.on('drag',()=>circle.setLatLng(marker.getLatLng()));marker.on('dragend',()=>fill(marker.getLatLng()))}
+    else{marker.setLatLng(ll);circle.setLatLng(ll)}
+    fill(ll);if(!fromUser)map.setView(ll,Math.max(map.getZoom(),17))}
+  async function show(lat,lng,zoom){if(await ensureMap(lat,lng,zoom||17))pin({lat,lng},false)}
   async function doSearch(){
     const v=q.value.trim();res.innerHTML='';if(!v)return;
-    const ll=parseLatLng(v);if(ll){setPoint(ll.lat,ll.lng,'',17);return}
+    const ll=parseLatLng(v);if(ll){f.name.value=f.name.value;await show(ll.lat,ll.lng,17);return}
     res.innerHTML='<div class="hint">กำลังค้นหา…</div>';
     try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=th&q='+encodeURIComponent(v),{headers:{'Accept':'application/json'}});
       if(!r.ok)throw new Error('HTTP '+r.status);const a=await r.json();
-      if(!a.length){res.innerHTML='<div class="hint">ไม่พบสถานที่ — ลองใส่ชื่อให้เฉพาะเจาะจงขึ้น (เช่น เพิ่มจังหวัด/เขต) หรือวางพิกัด/ลิงก์ Google Maps แทน</div>';return}
-      res.innerHTML=a.map((x,i)=>`<button type="button" class="btn" style="display:block;width:100%;text-align:left;margin-bottom:6px;white-space:normal" data-sr="${i}">📍 ${esc(x.display_name)}<div class="hint">${(+x.lat).toFixed(5)}, ${(+x.lon).toFixed(5)}</div></button>`).join('');
-      [...res.querySelectorAll('[data-sr]')].forEach(b=>b.onclick=()=>{const x=a[+b.dataset.sr];res.innerHTML='';setPoint(x.lat,x.lon,String(x.name||x.display_name).split(',')[0].trim(),17)})}
-    catch(e){res.innerHTML=`<div class="err">ค้นหาไม่สำเร็จ (${esc(e.message)}) — ตรวจอินเทอร์เน็ต หรือวางพิกัด/ลิงก์ Google Maps แทน</div>`}}
+      if(!a.length){res.innerHTML='<div class="hint">ไม่พบสถานที่ — ลองใส่ชื่อให้เฉพาะเจาะจงขึ้น (เช่น เพิ่มจังหวัด/เขต) หรือแตะบนแผนที่เพื่อปักหมุดเอง</div>';await ensureMap(13.7563,100.5018,6);return}
+      const pick=x=>{if(!f.name.value.trim())f.name.value=String(x.name||x.display_name).split(',')[0].trim();show(+x.lat,+x.lon,17)};
+      res.innerHTML='<div class="hint" style="margin-bottom:4px">ผลการค้นหา — แสดงรายการแรกบนแผนที่แล้ว กดรายการอื่นเพื่อเปลี่ยน · ลากหมุดหรือแตะแผนที่เพื่อปักหมุดให้ตรงจุด</div>'
+        +a.map((x,i)=>`<button type="button" class="btn" style="display:block;width:100%;text-align:left;margin-bottom:6px;white-space:normal" data-sr="${i}">📍 ${esc(x.display_name)}<div class="hint">${(+x.lat).toFixed(5)}, ${(+x.lon).toFixed(5)}</div></button>`).join('');
+      [...res.querySelectorAll('[data-sr]')].forEach(b=>b.onclick=()=>pick(a[+b.dataset.sr]));
+      pick(a[0])}   // ปักหมุดรายการแรกให้ทันที เพื่อลากปรับต่อได้เลย
+    catch(e){res.innerHTML=`<div class="err">ค้นหาไม่สำเร็จ (${esc(e.message)}) — ตรวจอินเทอร์เน็ต หรือแตะบนแผนที่เพื่อปักหมุดเอง</div>`}}
   $('#siteSearch').onclick=doSearch;q.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();doSearch()}};
-  const hereBtn=$('#siteHere');if(hereBtn){const old=hereBtn.onclick;hereBtn.onclick=async()=>{await old();const lat=parseFloat(f.lat.value),lng=parseFloat(f.lng.value);if(isFinite(lat)&&isFinite(lng))showMap(lat,lng,18)}}
-  const la=parseFloat(f.lat.value),ln=parseFloat(f.lng.value);if(isFinite(la)&&isFinite(ln))showMap(la,ln)}
+  const hereBtn=$('#siteHere');if(hereBtn){const old=hereBtn.onclick;hereBtn.onclick=async()=>{await old();const lat=parseFloat(f.lat.value),lng=parseFloat(f.lng.value);if(isFinite(lat)&&isFinite(lng))show(lat,lng,18)}}
+  // แผนที่แสดงทันที — แตะเพื่อปักหมุดได้เลยโดยไม่ต้องค้นหา (เริ่มที่จุดแรกที่มี หรือกรุงเทพฯ)
+  const s0=(sitesAll||[])[0];ensureMap(s0?+s0.lat:13.7563,s0?+s0.lng:100.5018,s0?15:6)}
+/* ---------- กำหนดผู้ใช้งานจุดสำนักงาน: ทุกคน / รายฝ่าย / รายคน (ค้นหา รหัส · ชื่อ · ฝ่าย) ---------- */
+let _asgOpen=null;
+function siteAsgSummary(asg,sid){
+  if(asg===null)return '<span class="hint">รัน hub13 ก่อน</span>';
+  const r=asg.filter(a=>a.site_id===sid);if(!r.length)return '<span class="hint">ทุกคน (ยังไม่กำหนด)</span>';
+  if(r.some(a=>a.scope_type==='all'))return '<span class="tag cost">ทุกคน</span>';
+  const d=r.filter(a=>a.scope_type==='dept').length,e=r.filter(a=>a.scope_type==='emp').length;
+  return '<span class="tag sga">'+[d?d+' ฝ่าย':'',e?e+' คน':''].filter(Boolean).join(' · ')+'</span>'}
+function siteAsgInit(sitesAll,asg,refresh){
+  const host=$('#siteAsg');if(!host)return;
+  $$('[data-sasg]').forEach(b=>b.onclick=()=>{_asgOpen=_asgOpen===b.dataset.sasg?null:b.dataset.sasg;draw()});
+  const empOf=id=>(db.employees||[]).find(e=>e.id===id),deptOf=id=>(db.depts||[]).find(d=>d.id===id);
+  const chip=a=>{const t=a.scope_type==='all'?'👥 ทุกคน (ทั้งบริษัท)':a.scope_type==='dept'?'🏢 ฝ่าย '+esc(a.scope_key)+' '+esc((deptOf(a.scope_key)||{}).name||''):'👤 '+esc(a.scope_key)+' '+esc((empOf(a.scope_key)||{}).name||'');
+    return `<span class="tag" style="background:var(--pri);margin:2px 4px 2px 0;display:inline-flex;gap:6px;align-items:center">${t}<b data-adel="${esc(a.id)}" style="cursor:pointer">✕</b></span>`};
+  async function add(sid,type,key){const row={id:sid+'|'+type+'|'+key,site_id:sid,scope_type:type,scope_key:key};
+    const {error}=await sb.from('work_site_assign').upsert(row);if(error)return alert('บันทึกไม่สำเร็จ: '+error.message);await refresh()}
+  function draw(){
+    if(!_asgOpen){host.innerHTML='';return}
+    const s=sitesAll.find(x=>x.id===_asgOpen);if(!s){host.innerHTML='';return}
+    const rows=asg.filter(a=>a.site_id===s.id);
+    host.innerHTML=`<div class="card" style="margin-top:12px;border:1px solid var(--line)"><h3 style="margin:0 0 6px">👥 กำหนดผู้ใช้งานจุด: ${esc(s.name)}</h3>
+      <div class="hint" style="margin-bottom:6px">${rows.length?'พนักงานตามขอบเขตด้านล่างเท่านั้นที่ถูกตรวจพื้นที่ลงเวลากับจุดนี้':'ยังไม่ได้กำหนด — ตอนนี้ <b>ทุกคน</b> ใช้จุดนี้ได้ เพิ่มขอบเขตเพื่อจำกัดเฉพาะบางคน/บางฝ่าย'}</div>
+      <div>${rows.map(chip).join('')||'<span class="hint">—</span>'}</div>
+      <label style="margin-top:10px">ค้นหา รหัสพนักงาน / ชื่อ / ฝ่าย</label><input id="asgQ" placeholder="เช่น 01726 · สมหญิง · 31001 · ออกแบบ" autocomplete="off">
+      <div id="asgRes" style="margin-top:6px"></div>
+      <div style="margin-top:8px"><button class="btn" type="button" id="asgAll">👥 กำหนดให้ทุกคน</button> <button class="btn" type="button" id="asgClear" style="color:var(--bad)">ล้างการกำหนดทั้งหมด (กลับเป็นทุกคนใช้ได้)</button></div></div>`;
+    $$('[data-adel]').forEach(b=>b.onclick=async()=>{const {error}=await sb.from('work_site_assign').delete().eq('id',b.dataset.adel);if(error)return alert(error.message);await refresh()});
+    $('#asgAll').onclick=()=>add(s.id,'all','*');
+    $('#asgClear').onclick=async()=>{if(!confirm('ล้างการกำหนดผู้ใช้งานทั้งหมดของจุดนี้? (ทุกคนจะใช้จุดนี้ได้)'))return;const {error}=await sb.from('work_site_assign').delete().eq('site_id',s.id);if(error)return alert(error.message);await refresh()};
+    const have=new Set(rows.map(a=>a.scope_type+'|'+a.scope_key)),inp=$('#asgQ');
+    const find_=()=>{const t=inp.value.trim().toLowerCase(),out=$('#asgRes');if(!t){out.innerHTML='';return}
+      const ds=(db.depts||[]).filter(d=>(d.id+' '+d.name).toLowerCase().includes(t)&&!have.has('dept|'+d.id)).slice(0,5);
+      const es=(db.employees||[]).filter(e=>e.active!==false&&(e.id+' '+(e.name||'')+' '+(e.nick||'')+' '+e.dept+' '+((deptOf(e.dept)||{}).name||'')).toLowerCase().includes(t)&&!have.has('emp|'+e.id)).slice(0,12);
+      out.innerHTML=ds.map(d=>`<button type="button" class="btn" style="display:block;width:100%;text-align:left;margin-bottom:4px" data-addd="${esc(d.id)}">🏢 ทั้งฝ่าย ${esc(d.id)} ${esc(d.name)} <span class="hint">(${(db.employees||[]).filter(e=>e.dept===d.id&&e.active!==false).length} คน)</span></button>`).join('')
+        +es.map(e=>`<button type="button" class="btn" style="display:block;width:100%;text-align:left;margin-bottom:4px" data-adde="${esc(e.id)}">👤 ${esc(e.id)} ${esc(e.name||'')} <span class="hint">ฝ่าย ${esc(e.dept||'-')} ${esc((deptOf(e.dept)||{}).name||'')}</span></button>`).join('')
+        ||'<div class="hint">ไม่พบ</div>';
+      $$('[data-addd]').forEach(b=>b.onclick=()=>add(s.id,'dept',b.dataset.addd));$$('[data-adde]').forEach(b=>b.onclick=()=>add(s.id,'emp',b.dataset.adde))};
+    inp.oninput=find_;inp.focus()}
+  draw()}
 async function renderAttAdmin(){
   const host=$('#attAdmin');if(!host)return;
   const today=bkkDay(),startIso=new Date(today+'T00:00:00+07:00').toISOString();
-  let logs=[],beacons=[];
+  let logs=[],beacons=[],sitesAll=att.sites,asg=null;
   try{const r=await sb.from('attendance_logs').select('*').gte('at',startIso).order('at',{ascending:true}).limit(3000);logs=r.data||[];
-    if(isSuperAdmin){const b=await sb.from('beacons').select('*').order('hwid');beacons=b.data||[]}}catch(e){}
+    if(isSuperAdmin){const b=await sb.from('beacons').select('*').order('hwid');beacons=b.data||[];
+      const [s1,s2]=await Promise.all([sb.from('work_sites').select('*').order('name'),sb.from('work_site_assign').select('*')]);if(!s1.error)sitesAll=s1.data||[];asg=s2.error?null:(s2.data||[])}}catch(e){}
   const per={};logs.forEach(l=>{(per[l.emp_id]=per[l.emp_id]||[]).push(l)});
   const rows=Object.entries(per).map(([id,L])=>{const e=find(db.employees,id)||{name:id},i=L.find(x=>x.kind==='in'),o=[...L].reverse().find(x=>x.kind==='out'),lastK=L[L.length-1].kind;
     return `<tr><td>${esc(id)} ${esc(e.name||'')}</td><td>${i?hhmm(i.at):'—'} <span class="hint">${i?esc(SRC_TH[i.source]||''):''}</span></td><td>${o?hhmm(o.at):'—'}</td><td>${lastK==='offsite_start'?'🚗 นอกสถานที่':lastK==='out'?'ออกแล้ว':'🟢 อยู่ที่ทำงาน'}</td><td class="hint">${esc((i&&i.site_name)||(i&&i.lat!=null?'นอกพื้นที่':'ไม่มีพิกัด'))}</td></tr>`}).join('')||'<tr><td colspan="5" class="hint">วันนี้ยังไม่มีใครลงเวลา</td></tr>';
   let html=`<div class="card"><h2>ภาพรวมการลงเวลาวันนี้ (ผู้ดูแล)</h2><div class="hint" style="margin-bottom:8px">ลงเวลาแล้ว ${Object.keys(per).length} คน</div><div class="scroll"><table><thead><tr><th>พนักงาน</th><th>เข้า</th><th>ออก</th><th>สถานะ</th><th>สถานที่</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   if(isSuperAdmin){
     html+=`<div class="card"><h2>จุดสำนักงาน / ไซต์งาน (ตรวจว่าลงเวลาในพื้นที่หรือไม่)</h2>
-      <div class="scroll"><table><thead><tr><th>ชื่อ</th><th>พิกัด</th><th class="n">รัศมี (ม.)</th><th></th></tr></thead><tbody>${att.sites.map(s=>`<tr><td>${esc(s.name)}</td><td class="hint">${(+s.lat).toFixed(5)}, ${(+s.lng).toFixed(5)}</td><td class="n">${s.radius_m}</td><td><button class="x" data-sdel="${esc(s.id)}">✕</button></td></tr>`).join('')||'<tr><td colspan="4" class="hint">ยังไม่มีจุดสำนักงาน</td></tr>'}</tbody></table></div>
+      <div class="scroll"><table><thead><tr><th>ชื่อ</th><th>พิกัด</th><th class="n">รัศมี (ม.)</th><th>ผู้ใช้งาน</th><th></th></tr></thead><tbody>${sitesAll.map(s=>`<tr><td>${esc(s.name)}</td><td class="hint">${(+s.lat).toFixed(5)}, ${(+s.lng).toFixed(5)}</td><td class="n">${s.radius_m}</td><td>${siteAsgSummary(asg,s.id)}</td><td style="white-space:nowrap">${asg===null?'':`<button class="btn" style="padding:3px 9px" data-sasg="${esc(s.id)}">👥 กำหนดผู้ใช้</button> `}<button class="x" data-sdel="${esc(s.id)}">✕</button></td></tr>`).join('')||'<tr><td colspan="5" class="hint">ยังไม่มีจุดสำนักงาน</td></tr>'}</tbody></table></div><div id="siteAsg"></div>
       <div style="margin-top:14px"><label>🔍 ค้นหาพิกัด (ชื่อสถานที่ / ที่อยู่ · หรือวางพิกัด เช่น 13.7563, 100.5018 · หรือลิงก์ Google Maps)</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="siteQ" style="flex:1;min-width:220px" placeholder="เช่น ศูนย์ราชการเฉลิมพระเกียรติ แจ้งวัฒนะ"><button class="btn pri" type="button" id="siteSearch">ค้นหา</button></div>
         <div id="siteRes" style="margin-top:8px"></div>
@@ -3597,15 +3647,15 @@ async function renderAttAdmin(){
         <div style="display:flex;gap:8px"><button class="btn" type="button" id="siteHere">📍 ใช้ตำแหน่งปัจจุบัน</button><button class="btn pri">+ เพิ่ม</button></div></form><div class="err" id="siteMsg"></div></div>
       <div class="card" id="attEd"><h2>🛠 แก้ไขบันทึกลงเวลา (Super Admin)</h2></div>
       <div class="card"><h2>AI-Beacon ที่ลงทะเบียน</h2><div class="hint" style="margin-bottom:8px">พนักงานที่ผูก LINE แล้วเดินเข้าใกล้ Beacon ครั้งแรกของวัน ระบบจะลงเวลาเข้างานให้ (ต้องเปิด Bluetooth และตั้ง Beacon ที่ LINE Official Account — ดู README_LINE.md)</div>
-      <div class="scroll"><table><thead><tr><th>HWID</th><th>ชื่อ</th><th>จุดสำนักงาน</th><th></th></tr></thead><tbody>${beacons.map(b=>`<tr><td><code>${esc(b.hwid)}</code></td><td>${esc(b.name)}</td><td>${esc((att.sites.find(s=>s.id===b.site_id)||{}).name||'—')}</td><td><button class="x" data-bdel="${esc(b.hwid)}">✕</button></td></tr>`).join('')||'<tr><td colspan="4" class="hint">ยังไม่มี Beacon</td></tr>'}</tbody></table></div>
+      <div class="scroll"><table><thead><tr><th>HWID</th><th>ชื่อ</th><th>จุดสำนักงาน</th><th></th></tr></thead><tbody>${beacons.map(b=>`<tr><td><code>${esc(b.hwid)}</code></td><td>${esc(b.name)}</td><td>${esc((sitesAll.find(s=>s.id===b.site_id)||{}).name||'—')}</td><td><button class="x" data-bdel="${esc(b.hwid)}">✕</button></td></tr>`).join('')||'<tr><td colspan="4" class="hint">ยังไม่มี Beacon</td></tr>'}</tbody></table></div>
       <form id="beaconForm" class="row" style="margin-top:12px;align-items:end"><div><label>HWID (10 หลัก hex)</label><input name="hwid" required pattern="[0-9a-fA-F]{10}" placeholder="0123456789"></div><div><label>ชื่อ Beacon</label><input name="name" placeholder="ประตูหน้า"></div>
-        <div><label>จุดสำนักงาน</label><select name="site"><option value="">—</option>${att.sites.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select></div><div><button class="btn pri">+ เพิ่ม</button></div></form><div class="err" id="beaconMsg"></div></div>`;
+        <div><label>จุดสำนักงาน</label><select name="site"><option value="">—</option>${sitesAll.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select></div><div><button class="btn pri">+ เพิ่ม</button></div></form><div class="err" id="beaconMsg"></div></div>`;
   }
   host.innerHTML=html;if(!isSuperAdmin)return;
   attEditorInit();
   const reload=async()=>{att.loaded=false;await attLoad();renderAtt()};
   $('#siteHere').onclick=async()=>{try{const p=await getPos(),f=$('#siteForm');f.lat.value=p.lat.toFixed(6);f.lng.value=p.lng.toFixed(6);$('#siteMsg').textContent='ใส่พิกัดปัจจุบันแล้ว (±'+Math.round(p.acc)+' ม.)'}catch(e){$('#siteMsg').textContent=e.message}};
-  siteSearchInit();
+  siteSearchInit(sitesAll);siteAsgInit(sitesAll,asg||[],async()=>{att.loaded=false;await attLoad();renderAttAdmin()});
   $('#siteForm').onsubmit=async ev=>{ev.preventDefault();const f=ev.target,lat=parseFloat(f.lat.value),lng=parseFloat(f.lng.value),rad=parseInt(f.radius.value,10)||150;
     if(!(lat>=-90&&lat<=90&&lng>=-180&&lng<=180))return $('#siteMsg').textContent='พิกัดไม่ถูกต้อง';
     const {error}=await sb.from('work_sites').upsert({id:'S'+Date.now().toString(36),name:f.name.value.trim(),lat,lng,radius_m:rad,active:true});
