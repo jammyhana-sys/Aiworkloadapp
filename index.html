@@ -3289,7 +3289,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v123 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v124 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3515,9 +3515,10 @@ async function attPunch(kind){
   if(kind==='offsite_start'&&!note)return attSetMsg('กรุณาระบุว่าไปที่ไหน/ธุระอะไร ก่อนบันทึกออกนอกสถานที่',true);
   att.busy=true;attSetMsg('กำลังหาตำแหน่ง GPS…');let pos=null;
   try{pos=await getPos()}catch(e){
-    if(kind==='in'||kind==='out'){att.busy=false;return attSetMsg(e.message+' — ต้องเปิด GPS และอนุญาตให้ใช้ตำแหน่ง จึงจะลงเวลาเข้า/ออกงานได้',true)}   // เข้า/ออกงาน: ต้องมีพิกัด
+    if(!attTest){att.busy=false;return attSetMsg(e.message+' — ต้องเปิด GPS และอนุญาตให้ใช้ตำแหน่ง จึงจะลงเวลาได้',true)}   // ทุกประเภท: ต้องมีพิกัด
     if(!confirm(e.message+'\nต้องการบันทึก "'+ATT_KIND[kind]+'" โดยไม่มีพิกัดหรือไม่?\n(ประวัติจะแสดงว่าไม่มีตำแหน่ง)')){att.busy=false;return attSetMsg('ยกเลิกแล้ว')}}
-  if((kind==='in'||kind==='out')&&pos&&att.sites&&att.sites.length&&!attTest){   // ตรวจจุดลงเวลาเบื้องต้นในแอป (ฐานข้อมูลตรวจซ้ำอีกครั้ง)
+  if(pos&&!attTest){   // ตรวจจุดลงเวลาเบื้องต้นในแอป (ฐานข้อมูลตรวจซ้ำอีกครั้ง) · ไม่ใช่จุดที่ตั้งไว้ = ไม่ให้ลงเวลา
+    if(!att.sites||!att.sites.length){att.busy=false;return attSetMsg('ยังไม่ได้กำหนดจุดลงเวลาให้คุณ — ลงเวลาไม่ได้ กรุณาติดต่อ Admin เพื่อกำหนดจุดลงเวลา',true)}
     const n=nearest(pos);if(n&&n.d>n.s.radius_m+Math.min(pos.acc||0,50)){att.busy=false;att.pos=pos;renderAtt();
       return attSetMsg(`อยู่นอกจุดลงเวลาที่กำหนด — ใกล้สุด ${n.s.name} ห่าง ${fmtDist(n.d)} (รัศมี ${n.s.radius_m} ม.) กรุณาไปลงเวลาในพื้นที่`,true)}}
   // ต้องถ่าย selfie ก่อน (ลายน้ำ วัน-เวลา + lat/long อัตโนมัติ) — ไม่ถ่าย = ไม่ลงเวลา
