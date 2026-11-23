@@ -3289,7 +3289,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v126 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v127 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3544,10 +3544,27 @@ function trackStart(){
 function trackStop(){if(trk.id!=null){try{navigator.geolocation.clearWatch(trk.id)}catch(e){}trk.id=null;trk.pts=[];trk.seeded=false;trk.logId=null;myMapEnsure()}if(trk.wl){try{trk.wl.release()}catch(e){}trk.wl=null}}
 setInterval(()=>{try{if(!me||!att.loaded||!hubOn())return trackStop();const L=todayLogs(),l=L[L.length-1];if(l&&l.kind==='offsite_start'){trk.logId=l.id;trackStart();myMapEnsure()}else trackStop()}catch(e){}},4000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&trk.id!=null&&!trk.wl&&navigator.wakeLock)try{navigator.wakeLock.request('screen').then(w=>trk.wl=w).catch(()=>{})}catch(e){}});
-const trackCardHtml=()=>`<div class="card" id="trkCard"><h2>🗺 ติดตามการออกนอกสถานที่ (Live)</h2><div class="hint" style="margin-bottom:8px">ตำแหน่งและเส้นทางของวันนี้ของพนักงานที่ออกไปทำงานนอกสถานที่ (อัปเดตทุก 10 วินาที · พนักงานต้องเปิดแอปค้างไว้)</div><div id="trkList"></div><div id="trkMap" style="height:340px;border-radius:12px;margin-top:10px;overflow:hidden;background:#e6edf5;display:none"></div><div class="hint" id="trkNote" style="margin-top:6px"></div></div>`;
+/* ---------- สรุปการเดินทางหลังกลับ: ระยะทาง + จุดที่อยู่นิ่งเกิน 30 นาที (ฐานข้อมูลคำนวณตอนกด "กลับจากนอกสถานที่" · ในแอปคำนวณสดสำหรับรอบที่ยังไม่จบ) ---------- */
+const trTime=d=>new Date(d).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'});
+const fmtKm=m=>((+m||0)/1000).toFixed((+m||0)<10000?2:1)+' กม.';
+function tripStats(P){   // P = [{t(ms),lat,lng}] เรียงตามเวลา — ขยับ ≥ 20 ม. นับระยะทาง · อยู่ในรัศมี 60 ม. นานเกิน 30 นาที = จุดนิ่ง
+  let dist=0,la=0,ln=0,ca=null,cf=0,ct=0,sl=0,sg=0,cn=0;const stops=[];
+  const closeC=()=>{if(ca&&ct-cf>=30*60000)stops.push({lat:sl/cn,lng:sg/cn,from:new Date(cf).toISOString(),to:new Date(ct).toISOString(),minutes:Math.round((ct-cf)/60000)})};
+  P.forEach((p,i)=>{if(i===0){la=p.lat;ln=p.lng;ca={lat:p.lat,lng:p.lng};cf=ct=p.t;sl=p.lat;sg=p.lng;cn=1;return}
+    const d=hav(la,ln,p.lat,p.lng);if(d>=20){dist+=d;la=p.lat;ln=p.lng}
+    if(hav(ca.lat,ca.lng,p.lat,p.lng)<=60){ct=p.t;sl+=p.lat;sg+=p.lng;cn++}else{closeC();ca={lat:p.lat,lng:p.lng};cf=ct=p.t;sl=p.lat;sg=p.lng;cn=1}});
+  closeC();return{distance_m:Math.round(dist),stops}}
+const stopsHtml=st=>(st&&st.length)?st.map(x=>`<div class="hint">🅿 หยุดนิ่ง <b>${x.minutes} นาที</b> (${trTime(x.from)}–${trTime(x.to)} น.) · <a href="https://www.google.com/maps?q=${(+x.lat).toFixed(6)},${(+x.lng).toFixed(6)}" target="_blank" rel="noopener">ดูตำแหน่ง</a></div>`).join(''):'<div class="hint">ไม่มีจุดที่หยุดนิ่งเกิน 30 นาที</div>';
+async function loadMyTrips(){
+  const el=document.getElementById('myTrips');if(!el||!me)return;
+  const day0=new Date(bkkDay()+'T00:00:00+07:00').toISOString();
+  const r=await sb.from('att_trips').select('*').eq('emp_id',me.id).gte('start_at',day0).order('start_at',{ascending:false});
+  if(r.error||!r.data||!r.data.length){el.innerHTML='';return}
+  el.innerHTML=`<div class="card"><h2>🚗 สรุปการเดินทางวันนี้</h2>${r.data.map(t=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><b>ออก ${trTime(t.start_at)} น. – กลับ ${t.end_at?trTime(t.end_at)+' น.':'…'}</b><div>ระยะทางรวม <b>${fmtKm(t.distance_m)}</b></div>${stopsHtml(t.stops)}</div>`).join('')}</div>`}
+const trackCardHtml=()=>`<div class="card" id="trkCard"><h2>🗺 ติดตามการออกนอกสถานที่ (Live)</h2><div class="hint" style="margin-bottom:8px">ตำแหน่งและเส้นทางของวันนี้ของพนักงานที่ออกไปทำงานนอกสถานที่ (อัปเดตทุก 10 วินาที · พนักงานต้องเปิดแอปค้างไว้)</div><div id="trkList"></div><div id="trkMap" style="height:340px;border-radius:12px;margin-top:10px;overflow:hidden;background:#e6edf5;display:none"></div><div class="hint" id="trkNote" style="margin-top:6px"></div><div id="trkHist" style="margin-top:14px"></div></div>`;
 async function trackAdminInit(){
   const card=$('#trkCard');if(!card)return;
-  let map=null,mk={},pl={},sel=null,fitted=false,lastS=[];
+  let map=null,mk={},pl={},sel=null,fitted=false,lastS=[],stopLayer=null;
   const COL=['#4f6df5','#e5484d','#14a37f','#f29b2f','#9b6bd6','#2bb3c0'],tf=d=>new Date(d).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'});
   const ago=ms=>ms<60000?Math.max(0,Math.round(ms/1000))+' วินาที':ms<3600000?Math.round(ms/60000)+' นาที':(ms/3600000).toFixed(1)+' ชม.';
   const nameOf=e=>(find(db.employees,e)||{}).name||e;
@@ -3563,6 +3580,8 @@ async function trackAdminInit(){
       if(mk[k]){if(live)glide(mk[k],last);else mk[k].setLatLng(last)}
       else mk[k]=L.marker(last,{icon:L.divIcon({className:'',html:live?`<div class="trkdot" style="background:${col}"></div><div class="trklb">${esc(nameOf(s.emp))}</div>`:`<div style="width:12px;height:12px;border-radius:50%;background:#8a94a6;border:2px solid #fff"></div>`,iconSize:[18,18],iconAnchor:[9,9]})}).addTo(map);
       if(!sel||sel===k)all=all.concat(s.line)});
+    if(!stopLayer)stopLayer=L.layerGroup().addTo(map);stopLayer.clearLayers();
+    S.forEach(s=>{if(!s.trip||(!s.end&&sel!==s.id))return;s.trip.stops.forEach(st=>L.marker([st.lat,st.lng],{icon:L.divIcon({className:'',html:'<div style="background:#f29b2f;color:#fff;border:2px solid #fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.4)">P</div>',iconSize:[22,22],iconAnchor:[11,11]})}).bindTooltip(`${nameOf(s.emp)} หยุดนิ่ง ${st.minutes} นาที (${tf(st.from)}–${tf(st.to)} น.)`).addTo(stopLayer))});
     Object.keys(pl).forEach(k=>{if(!keep.has(k)){map.removeLayer(pl[k]);delete pl[k]}});Object.keys(mk).forEach(k=>{if(!keep.has(k)){map.removeLayer(mk[k]);delete mk[k]}});
     if(all.length&&(!fitted)){map.fitBounds(L.latLngBounds(all).pad(.25),{maxZoom:17});fitted=true}}
   function drawList(S){
@@ -3573,7 +3592,8 @@ async function trackAdminInit(){
         <i style="width:12px;height:12px;border-radius:50%;background:${COL[i%COL.length]};margin-top:6px;flex:none"></i>
         <div style="flex:1;min-width:0"><b>${esc(nameOf(s.emp))}</b> <span class="tag" style="background:${live?'var(--cost)':'var(--mut)'}">${live?'🟢 กำลังออกนอกสถานที่':'⏹ กลับแล้ว '+tf(s.end.at)+' น.'}</span>
         <div class="hint">ออกเมื่อ ${tf(s.start.at)} น.${s.start.note?' · '+esc(s.start.note):''}</div>
-        <div class="hint">${live?(s.pts.length?`อัปเดตตำแหน่งล่าสุด ${ago(now-new Date(s.lastAt))} ที่แล้ว · ${s.pts.length} จุด`:'รอรับตำแหน่งแรกจากเครื่องพนักงาน…'):`เส้นทาง ${s.pts.length} จุด`}</div></div></div>`}).join('');
+        <div class="hint">${live?(s.pts.length?`อัปเดตตำแหน่งล่าสุด ${ago(now-new Date(s.lastAt))} ที่แล้ว · ${s.pts.length} จุด`:'รอรับตำแหน่งแรกจากเครื่องพนักงาน…'):`เส้นทาง ${s.pts.length} จุด`}</div>
+        <div class="hint">🚗 ระยะทาง${live?'ถึงตอนนี้':'รวม'} <b>${fmtKm(s.trip?s.trip.distance_m:0)}</b> · 🅿 หยุดนิ่งเกิน 30 นาที <b>${s.trip?s.trip.stops.length:0}</b> จุด</div>${(s.trip&&s.trip.stops.length&&(sel===s.id||!live))?stopsHtml(s.trip.stops):''}</div></div>`}).join('');
     el.querySelectorAll('[data-trk]').forEach(d=>d.onclick=()=>{sel=sel===d.dataset.trk?null:d.dataset.trk;const s=lastS.find(x=>x.id===sel)||null;
       if(map){const pts=s?s.line:lastS.flatMap(x=>x.line);if(pts.length)map.fitBounds(L.latLngBounds(pts).pad(.25),{maxZoom:17})}drawList(lastS)})}
   async function pull(){
@@ -3585,7 +3605,20 @@ async function trackAdminInit(){
     const S=[];Object.entries(by).forEach(([emp,L2])=>{let cur=null;L2.forEach(l=>{if(l.kind==='offsite_start'){cur={id:l.id,emp,start:l,end:null};S.push(cur)}else if(cur&&(l.kind==='offsite_end'||l.kind==='out')){cur.end=l;cur=null}})});
     const byLog={};tk.data.forEach(t=>(byLog[t.log_id]=byLog[t.log_id]||[]).push(t));
     S.forEach(s=>{s.pts=byLog[s.id]||[];const a=[];if(s.start.lat!=null)a.push([+s.start.lat,+s.start.lng]);s.pts.forEach(t=>a.push([+t.lat,+t.lng]));if(s.end&&s.end.lat!=null)a.push([+s.end.lat,+s.end.lng]);s.line=a;s.lastAt=s.pts.length?s.pts[s.pts.length-1].at:s.start.at});
+    let tr={data:[]};if(S.length){try{tr=await sb.from('att_trips').select('*').in('log_id',S.map(s=>s.id))}catch(e){}}
+    const trBy={};((tr&&tr.data)||[]).forEach(x=>trBy[x.log_id]=x);
+    S.forEach(s=>{const row=trBy[s.id];if(row&&s.end){s.trip={distance_m:row.distance_m,stops:row.stops||[]};return}
+      const P=[];if(s.start.lat!=null)P.push({t:+new Date(s.start.at),lat:+s.start.lat,lng:+s.start.lng});s.pts.forEach(t=>P.push({t:+new Date(t.at),lat:+t.lat,lng:+t.lng}));if(s.end&&s.end.lat!=null)P.push({t:+new Date(s.end.at),lat:+s.end.lat,lng:+s.end.lng});
+      s.trip=P.length?tripStats(P):{distance_m:0,stops:[]}});
     lastS=S;drawList(S);await drawMap(S);return true}
+  async function hist(){
+    const el=$('#trkHist');if(!el||!document.body.contains(card))return;
+    const from=new Date(Date.now()-30*86400000).toISOString();
+    const r=await sb.from('att_trips').select('*').gte('start_at',from).order('start_at',{ascending:false}).limit(200);
+    if(r.error){el.innerHTML='';return}
+    if(!r.data.length){el.innerHTML='<h3 style="margin:0 0 6px;font-size:15px">🚗 ประวัติการเดินทาง 30 วัน</h3><div class="hint">ยังไม่มีข้อมูล</div>';return}
+    el.innerHTML=`<h3 style="margin:0 0 6px;font-size:15px">🚗 ประวัติการเดินทาง 30 วัน (ระยะทาง · จุดนิ่งเกิน 30 นาที)</h3><div class="scroll"><table><thead><tr><th>วันที่</th><th>พนักงาน</th><th>ออก–กลับ</th><th class="n">ระยะทาง</th><th>จุดนิ่ง >30 นาที</th></tr></thead><tbody>${r.data.map(t=>`<tr><td>${esc(dShort(bkkDay(new Date(t.start_at))))}</td><td>${esc(nameOf(t.emp_id))}</td><td>${trTime(t.start_at)}–${t.end_at?trTime(t.end_at):'…'}</td><td class="n">${fmtKm(t.distance_m)}</td><td>${(t.stops||[]).length?(t.stops||[]).map(x=>`🅿 ${x.minutes} นาที (${trTime(x.from)}) <a href="https://www.google.com/maps?q=${(+x.lat).toFixed(6)},${(+x.lng).toFixed(6)}" target="_blank" rel="noopener">แผนที่</a>`).join('<br>'):'<span class="hint">—</span>'}</td></tr>`).join('')}</tbody></table></div>`}
+  hist();const hl=setInterval(()=>{if(!document.body.contains(card))return clearInterval(hl);hist()},60000)
   const loop=async()=>{try{if(!(await pull()))return}catch(e){console.warn('track',e)}setTimeout(loop,10000)};loop()}
 async function attPunch(kind){
   if(att.busy)return;const note=($('#attNote')?$('#attNote').value:'').trim();
@@ -3657,10 +3690,10 @@ async function renderAtt(){
         ${canOut?`<button class="btn big bad" data-ap="out">🔴 ลงเวลาออกงาน</button>`:''}</div>
       <div class="err" id="attMsg" style="min-height:22px;margin-top:10px;color:var(--mut)">${esc(att.msg)}</div>
       <div class="hint">ระบบบันทึกพิกัด GPS และเปรียบเทียบกับจุดสำนักงาน · เมื่อเข้าใกล้ AI-Beacon ที่ลงทะเบียนไว้ จะลงเวลาเข้างานให้อัตโนมัติ</div></div>
-    <div class="card"><h2>บันทึกของวันนี้</h2>${tl.length?tl.map(l=>`<div class="lg"><span>${KIND_ICO[l.kind]} ${esc(ATT_KIND[l.kind])}${l.note?` — ${esc(l.note)}`:''}</span><b>${hhmm(l.at)} น.</b><span class="p" style="min-width:120px">${esc(SRC_TH[l.source]||'')}${l.site_name?' · '+esc(l.site_name):''}${l.edited_at?' · ✎แก้ไขแล้ว':''}${l.photo_path?` <a href="#" data-att="${esc(l.photo_path)}" title="ดูรูป selfie" style="text-decoration:none">📷</a>`:''}</span>${isSuperAdmin?`<span style="white-space:nowrap"><button class="x" style="color:var(--pri)" data-aled="${esc(l.id)}" title="แก้ไข / ใส่หมายเหตุ">✎</button> <button class="x" data-aldel="${esc(l.id)}" title="ลบ">✕</button></span>`:''}</div>`).join(''):'<div class="hint">ยังไม่มีรายการ</div>'}</div>
+    <div id="myTrips"></div><div class="card"><h2>บันทึกของวันนี้</h2>${tl.length?tl.map(l=>`<div class="lg"><span>${KIND_ICO[l.kind]} ${esc(ATT_KIND[l.kind])}${l.note?` — ${esc(l.note)}`:''}</span><b>${hhmm(l.at)} น.</b><span class="p" style="min-width:120px">${esc(SRC_TH[l.source]||'')}${l.site_name?' · '+esc(l.site_name):''}${l.edited_at?' · ✎แก้ไขแล้ว':''}${l.photo_path?` <a href="#" data-att="${esc(l.photo_path)}" title="ดูรูป selfie" style="text-decoration:none">📷</a>`:''}</span>${isSuperAdmin?`<span style="white-space:nowrap"><button class="x" style="color:var(--pri)" data-aled="${esc(l.id)}" title="แก้ไข / ใส่หมายเหตุ">✎</button> <button class="x" data-aldel="${esc(l.id)}" title="ลบ">✕</button></span>`:''}</div>`).join(''):'<div class="hint">ยังไม่มีรายการ</div>'}</div>
     <div class="card"><h2>ประวัติ 14 วันล่าสุด</h2><div class="scroll"><table><thead><tr><th>วันที่</th><th>เข้า</th><th>ออก</th><th class="n">ชม.อยู่ที่ทำงาน</th><th>ออกนอก</th><th>สถานที่</th></tr></thead><tbody>${hist}</tbody></table></div></div>
     <div id="attBackfill"></div><div id="attAdmin"></div>`;
-  setTimeout(()=>{try{myMapEnsure()}catch(e){}},30);
+  setTimeout(()=>{try{myMapEnsure()}catch(e){}try{loadMyTrips()}catch(e){}},30);
   const tick=()=>{const c=$('#attClock');if(c)c.textContent=new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Asia/Bangkok'})};tick();clearInterval(clockTimer);clockTimer=setInterval(tick,1000);
   $$('#mod-att [data-ap]').forEach(b=>b.onclick=()=>attPunch(b.dataset.ap));
   $$('#mod-att [data-aled]').forEach(b=>b.onclick=()=>attEditModal(att.logs.find(x=>x.id===b.dataset.aled)));
