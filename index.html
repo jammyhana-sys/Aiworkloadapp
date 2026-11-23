@@ -947,9 +947,10 @@ function renderLog(){
   $$('[data-pre]').forEach(b=>b.onclick=()=>preSend([b.dataset.pre]));
   {const nUn=t&&st==='Draft'?t.entries.filter(x=>[null,'R'].includes(entState(t,x))).length:0;$('#preAll').classList.toggle('hide',nUn<2)}
   $$('[data-del]').forEach(b=>b.onclick=()=>{const dx=t.entries.find(x=>x.id===b.dataset.del);if(dx&&entState(t,dx)==='P'&&!confirm('รายการนี้ส่งอนุมัติล่วงหน้าไปแล้ว — ลบจะยกเลิกการอนุมัติที่ผ่านมา ต้องการลบ?'))return;if(editId===b.dataset.del)stopEdit();attRemoveFiles((t.entries.find(x=>x.id===b.dataset.del)||{}).att);t.entries=t.entries.filter(x=>x.id!==b.dataset.del);if(!t.entries.length)db.timesheets=db.timesheets.filter(x=>x!==t);save();renderLog()});
-  const ok=d.work&&t&&diff===0&&!locked;
+  const cgo=clockGateFor($('#emp').value,$('#date').value),needOut=!!(cgo&&cgo.needOut);
+  const ok=d.work&&t&&diff===0&&!locked&&!needOut;
   $('#submit').disabled=!ok;
-  $('#submitHint').textContent=locked?(st==='Pending'?`ส่งให้ผู้อนุมัติเมื่อ ${new Date(t.submittedAt).toLocaleString('th-TH')} — อนุมัติแล้ว ${t.entries.filter(x=>entState(t,x)==='A').length}/${t.entries.length} รายการ (เป็น Submitted เมื่อครบทุกรายการ)`:`อนุมัติแล้วโดย ${t.approvedBy||'-'}${t.approvedAt?' เมื่อ '+new Date(t.approvedAt).toLocaleString('th-TH'):''}`):(ok?'':`กรอกไม่ได้ขาด/เกิน — ต้องครบ ${TG} ชั่วโมงพอดีจึงจะส่งได้`)+(()=>{if(!t)return '';const s=t.entries.map(x=>entState(t,x)),a=s.filter(z=>z==='A').length,p=s.filter(z=>z==='P').length,r=s.filter(z=>z==='R').length;
+  $('#submitHint').textContent=locked?(st==='Pending'?`ส่งให้ผู้อนุมัติเมื่อ ${new Date(t.submittedAt).toLocaleString('th-TH')} — อนุมัติแล้ว ${t.entries.filter(x=>entState(t,x)==='A').length}/${t.entries.length} รายการ (เป็น Submitted เมื่อครบทุกรายการ)`:`อนุมัติแล้วโดย ${t.approvedBy||'-'}${t.approvedAt?' เมื่อ '+new Date(t.approvedAt).toLocaleString('th-TH'):''}`):(ok?'':(needOut?'⛔ ครบ 8 ชม. แล้ว — ต้องลงเวลาออกงานพร้อมเหตุผลก่อน จึงจะส่ง final ได้':`กรอกไม่ได้ขาด/เกิน — ต้องครบ ${TG} ชั่วโมงพอดีจึงจะส่งได้`))+(()=>{if(!t)return '';const s=t.entries.map(x=>entState(t,x)),a=s.filter(z=>z==='A').length,p=s.filter(z=>z==='P').length,r=s.filter(z=>z==='R').length;
       return a+p+r?`${ok?'':' · '}Pre-approval: อนุมัติแล้ว ${a} · รออนุมัติ ${p}${r?' · ส่งกลับ '+r:''} รายการ${ok&&p?' — ครบ '+TG+' ชม. ส่งได้เลย รายการที่รออยู่จะอนุมัติต่อตามลำดับเดิม':''}`:''})();
   $('#preAll').onclick=()=>preSend();
 }
@@ -1115,7 +1116,9 @@ function mergeByProject(t){
     if(x.att&&x.att.length)g.att=[...(g.att||[]),...x.att.filter(a=>!(g.att||[]).some(b=>b.p===a.p))];
     if(!g.rb&&x.rb){g.rb=x.rb;g.rbn=x.rbn}});
   t.entries=out}
-$('#submit').onclick=async()=>{const t=curSheet(false);if(!t)return;await mergeSrvAp(t);
+$('#submit').onclick=async()=>{const t=curSheet(false);if(!t)return;
+  {const g=clockGateFor(t.empId,t.date);if(g&&g.needOut)return alert('ทำงานครบ 8 ชั่วโมงแล้วแต่ยังไม่ได้ลงเวลาออกงาน\nกรุณาไปที่เมนูลงเวลา → ลงเวลาออกงานพร้อมระบุเหตุผล แล้วจึงส่งรายการบันทึกงาน')}
+  await mergeSrvAp(t);
   {const mp=mergePlan(t),pre=t.entries.filter(x=>['A','P'].includes(entState(t,x))).length;
     if(mp.length||pre){const msg=['ส่ง final:'];
       if(mp.length)msg.push(`• รวมรายการของโปรเจกต์เดียวกันเป็น 1 รายการ (${mp.reduce((a,x)=>a+x.length,0)} รายการ → ${mp.length} รายการ) พร้อมรวมไฟล์แนบ/รูปถ่ายทั้งหมด`);
@@ -3253,7 +3256,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v112 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v113 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3348,7 +3351,7 @@ function clockGateFor(empId,ds){
   if(inn){let tot=0,open=null,lastOut=null;logs.forEach(l=>{const t=+new Date(l.at);if(l.kind==='in'){if(open==null)open=t}else if(l.kind==='out'){if(open!=null){tot+=t-open;open=null}lastOut=l}});
     const isToday=ds===bkkDay();if(open!=null&&isToday)tot+=Date.now()-open;
     const raw=tot,run=open!=null&&isToday;tot=lunchEff(raw);
-    return{block:false,inn,out:lastOut,logs,tot,raw,running:run,lunch:run&&raw>=LUNCH.at&&raw<LUNCH.at+LUNCH.len?LUNCH.at+LUNCH.len-raw:0,allowed:(open!=null&&!isToday)?8:Math.min(8,Math.floor(tot/3600e3))}}   // บันทึกงานได้ไม่เกินชั่วโมงที่ผ่านไปจริงนับจากลงเวลาเข้างาน (สูงสุด 8) · ขั้นต่ำ 1 ชม./รายการ · วันย้อนหลังที่ลืมลงเวลาออก = 8
+    return{block:false,inn,out:lastOut,logs,tot,raw,running:run,needOut:run&&tot>=8*3600e3,lunch:run&&raw>=LUNCH.at&&raw<LUNCH.at+LUNCH.len?LUNCH.at+LUNCH.len-raw:0,allowed:(open!=null&&!isToday)?8:Math.min(8,Math.floor(tot/3600e3))}}   // บันทึกงานได้ไม่เกินชั่วโมงที่ผ่านไปจริงนับจากลงเวลาเข้างาน (สูงสุด 8) · ขั้นต่ำ 1 ชม./รายการ · วันย้อนหลังที่ลืมลงเวลาออก = 8
   return{block:true,msg:'ยังไม่ได้ลงเวลาเข้างานของวันที่ '+dShort(ds)+' — ไม่สามารถบันทึกชั่วโมงงานได้ ต้องลงเวลาที่ระบบลงเวลา (หรือผ่าน AI-Beacon) ก่อน'}}
 const fmtHMS=ms=>{ms=Math.max(0,Math.floor(ms/1000));const h=Math.floor(ms/3600),m=Math.floor(ms%3600/60),s=ms%60;return h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')};
 /* นาฬิกาทรายพลิกขึ้น-ลงต่อเนื่องจนกว่าจะครบ 8 ชม. (การ์ดถูกวาดใหม่ทุกวินาที จึงตั้ง delay ติดลบตามเวลาจริงให้แอนิเมชันเดินต่อเนื่อง) */
@@ -3363,7 +3366,8 @@ function renderClockCard(){
   const add=$('#add');const lock=!!g.block;
   if(add){add.disabled=lock;add.title=lock?'ต้องลงเวลาเข้างานก่อน':''}
   let w=$('#clockWarn');if(!w){w=document.createElement('div');w.id='clockWarn';w.className='err';w.style.margin='8px 0';$('#err').insertAdjacentElement('beforebegin',w)}
-  w.textContent=lock?'🔒 '+g.msg:'';
+  w.textContent=lock?'🔒 '+g.msg:(g.needOut?'⛔ ทำงานครบ 8 ชม. แล้วแต่ยังไม่ได้ลงเวลาออกงาน — ส่งรายการบันทึกงาน (final) ไม่ได้ จนกว่าจะไปลงเวลาออกงานพร้อมระบุเหตุผล (เมนูลงเวลา)':'');
+  {const sbt=$('#submit');if(sbt){if(g.needOut){sbt.disabled=true;sbt.dataset.nout='1'}else if(sbt.dataset.nout==='1'){delete sbt.dataset.nout;renderLog()}}}
   if(empId!==me.id){c.classList.add('hide');return}
   c.classList.remove('hide');
   const TGH=8*3600e3,R=34,C=2*Math.PI*R;
@@ -3442,6 +3446,7 @@ function todayLogs(){const day=bkkDay();return att.logs.filter(l=>bkkDay(new Dat
 async function attPunch(kind){
   if(att.busy)return;const note=($('#attNote')?$('#attNote').value:'').trim();
   if((kind==='in'||kind==='offsite_start')&&!attBase(me,bkkDay()).work)return attSetMsg('วันนี้ไม่ใช่วันทำงานตามปฏิทิน จึงลงเวลาไม่ได้',true);
+  if(kind==='out'){const g=clockGateFor(me.id,bkkDay());if(g&&g.needOut&&!note){const n=$('#attNote');if(n)n.focus();return attSetMsg('ทำงานครบ 8 ชั่วโมงแล้ว — กรุณาระบุเหตุผลที่ลงเวลาออกงานในช่องหมายเหตุ ก่อนกด "ลงเวลาออกงาน"',true)}}
   if(kind==='offsite_start'&&!note)return attSetMsg('กรุณาระบุว่าไปที่ไหน/ธุระอะไร ก่อนบันทึกออกนอกสถานที่',true);
   att.busy=true;attSetMsg('กำลังหาตำแหน่ง GPS…');let pos=null;
   try{pos=await getPos()}catch(e){if(!confirm(e.message+'\nต้องการบันทึก "'+ATT_KIND[kind]+'" โดยไม่มีพิกัดหรือไม่?\n(ประวัติจะแสดงว่าไม่มีตำแหน่ง)')){att.busy=false;return attSetMsg('ยกเลิกแล้ว')}}
@@ -3465,6 +3470,7 @@ async function renderAtt(){
   if(!attReq.loaded&&!att.reqBusy){att.reqBusy=true;loadAttReq().then(()=>{att.reqBusy=false;if(appMode==='att')renderAtt()})}
   const wd=attBase(me,bkkDay());   // ลงเวลาเฉพาะวันทำงานตามปฏิทิน (โหมดทดลอง: ทุกวัน) (ตั้งค่าข้อมูล › วันหยุด / ทำงานวันเสาร์)
   const canIn=wd.work&&(!lk||lk==='out'),canOff=wd.work&&(lk==='in'||lk==='offsite_end'),canBack=lk==='offsite_start',canOut=lk==='in'||lk==='offsite_end';
+  const needOutUi=!!(clockGateFor(me.id,bkkDay()).needOut)&&canOut;
   const posTxt=(()=>{if(!att.pos)return 'ตำแหน่งจะถูกบันทึกเมื่อกดลงเวลา (ต้องอนุญาตให้ใช้ GPS)';const n=nearest(att.pos);
     return n?(n.d<=n.s.radius_m?`📍 อยู่ในพื้นที่ ${esc(n.s.name)} (ห่าง ${fmtDist(n.d)})`:`📍 นอกพื้นที่ — ใกล้สุด ${esc(n.s.name)} ห่าง ${fmtDist(n.d)}`):'📍 ยังไม่ได้ตั้งจุดสำนักงาน (ผู้ดูแลกำหนดได้ด้านล่าง)'})();
   // ประวัติ 14 วัน
@@ -3478,7 +3484,8 @@ async function renderAtt(){
       <div style="font-weight:700;color:${stCol};font-size:17px">${esc(stTxt)}</div>
       ${wd.work?'':`<div class="err" style="margin:8px 0;padding:10px;border-radius:10px;background:rgba(242,155,47,.12);color:var(--sga)">🗓 วันนี้ไม่ใช่วันทำงานตามปฏิทินของระบบ — ${esc(wd.why)}<br>ระบบเปิดให้ลงเวลาเฉพาะวันทำงานเท่านั้น</div>`}
       <div class="hint" style="margin:6px 0 12px">${posTxt}</div>
-      ${canOff?`<input id="attNote" placeholder="ออกไปที่ไหน / ธุระอะไร (จำเป็นเมื่อออกนอกสถานที่)" style="margin-bottom:10px">`:''}
+      ${needOutUi?`<div class="err" style="margin:6px 0;padding:10px;border-radius:10px;background:rgba(229,72,77,.1);color:var(--bad);text-align:left">⛔ ทำงานครบ 8 ชั่วโมงแล้ว — กรุณา <b>ลงเวลาออกงาน</b> และระบุเหตุผล (เช่น เลิกงานปกติ / ทำงานล่วงเวลา / ลืมลงเวลาออก) จึงจะส่งรายการบันทึกงาน (final) ได้</div>`:''}
+      ${canOff||needOutUi?`<input id="attNote" placeholder="${needOutUi?'เหตุผลที่ลงเวลาออกงานหลังครบ 8 ชม. (จำเป็น)':'ออกไปที่ไหน / ธุระอะไร (จำเป็นเมื่อออกนอกสถานที่)'}" style="margin-bottom:10px">`:''}
       <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
         ${canIn?`<button class="btn big ok" data-ap="in">🟢 ลงเวลาเข้างาน</button>`:''}
         ${canOff?`<button class="btn big warn" data-ap="offsite_start">🚗 ออกไปทำงานนอกสถานที่</button>`:''}
