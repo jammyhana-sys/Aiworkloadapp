@@ -3233,7 +3233,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v107 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v108 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3608,21 +3608,21 @@ async function renderLeave(){
   const used=id=>mine.filter(r=>r.type_id===id&&r.status==='Approved'&&r.start_date.slice(0,4)===yr).reduce((a,r)=>a+ +r.days,0);
   const pend=id=>mine.filter(r=>r.type_id===id&&r.status==='Pending'&&r.start_date.slice(0,4)===yr).reduce((a,r)=>a+ +r.days,0);
   const bal=types.map(t=>`<div class="kpi" style="--kc:${t.color}"><div class="l">${esc(t.name)}</div><div class="v">${t.quota_days==null?'∞':fmtN(t.quota_days-used(t.id)-pend(t.id))}</div><div class="s">${t.quota_days==null?'ไม่จำกัด · ':'คงเหลือ จาก '+fmtN(t.quota_days)+' วัน · '}ใช้ ${fmtN(used(t.id))}${pend(t.id)?` · รออนุมัติ ${fmtN(pend(t.id))}`:''}</div></div>`).join('');
-  const tds=bkkDay();
-  const list=mine.slice(0,30).map(r=>{const t=ltOf(r.type_id),s=LV_ST[r.status]||['',''],cancel=r.status==='Pending'||(r.status==='Approved'&&r.start_date>tds);
-    return `<tr><td>${esc(dShort(r.start_date))}${r.end_date!==r.start_date?' – '+esc(dShort(r.end_date)):''}${r.part!=='full'?` <span class="hint">(${r.part==='am'?'ครึ่งเช้า':'ครึ่งบ่าย'})</span>`:''}</td><td><span class="tag" style="background:${t.color}">${esc(t.name)}</span></td><td class="n">${fmtN(r.days)}</td><td><span class="tag" style="background:${s[1]}">${s[0]}</span>${r.decide_note?`<div class="hint">${esc(r.decide_note)}</div>`:''}</td><td class="hint">${esc(trunc(r.reason||'',40))}</td><td>${cancel?`<button class="x" data-lcancel="${r.id}" title="ยกเลิก">✕</button>`:''}</td></tr>`}).join('')||'<tr><td colspan="6" class="hint">ยังไม่มีรายการลา</td></tr>';
+  const tds=bkkDay(),ed=lv.edit?mine.find(r=>r.id===lv.edit&&(r.status==='Pending'||r.status==='Approved')):null;if(lv.edit&&!ed)lv.edit=null;
+  const list=mine.slice(0,30).map(r=>{const t=ltOf(r.type_id),s=LV_ST[r.status]||['',''],cancel=r.status==='Pending'||(r.status==='Approved'&&r.end_date>=tds);   // แก้ไข/ยกเลิกได้ ถ้ารออนุมัติ หรืออนุมัติแล้วและยังไม่พ้นวันลา
+    return `<tr><td>${esc(dShort(r.start_date))}${r.end_date!==r.start_date?' – '+esc(dShort(r.end_date)):''}${r.part!=='full'?` <span class="hint">(${r.part==='am'?'ครึ่งเช้า':'ครึ่งบ่าย'})</span>`:''}</td><td><span class="tag" style="background:${t.color}">${esc(t.name)}</span></td><td class="n">${fmtN(r.days)}</td><td><span class="tag" style="background:${s[1]}">${s[0]}</span>${r.decide_note?`<div class="hint">${esc(r.decide_note)}</div>`:''}</td><td class="hint">${esc(trunc(r.reason||'',40))}</td><td style="white-space:nowrap">${cancel?`<button class="btn" style="padding:3px 9px" data-ledit="${r.id}" title="แก้ไขรายการลานี้">✎ แก้ไข</button> <button class="btn" style="padding:3px 9px;color:var(--bad)" data-lcancel="${r.id}" title="ยกเลิกรายการลานี้">✕ ยกเลิก</button>`:''}</td></tr>`}).join('')||'<tr><td colspan="6" class="hint">ยังไม่มีรายการลา</td></tr>';
   const todo=leaveApprover()?lv.reqs.filter(r=>r.status==='Pending'&&leaveScopeOk(r.emp_id)&&(r.emp_id!==me.id||isSuperAdmin)):[];
   const apprCard=leaveApprover()?`<div class="card"><h2>รออนุมัติการลา ${todo.length?`<span class="tag sga">${todo.length}</span>`:''}</h2>
     <div class="scroll"><table><thead><tr><th>พนักงาน</th><th>วันที่ลา</th><th>ประเภท</th><th class="n">วัน</th><th>เหตุผล</th><th></th></tr></thead><tbody>${todo.map(r=>{const e=find(db.employees,r.emp_id)||{name:r.emp_id},t=ltOf(r.type_id);
       return `<tr><td>${esc(r.emp_id)} ${esc(e.name||'')}<div class="hint">ฝ่าย ${esc(e.dept||'-')}</div></td><td>${esc(dShort(r.start_date))}${r.end_date!==r.start_date?' – '+esc(dShort(r.end_date)):''}${r.part!=='full'?` <span class="hint">(${r.part==='am'?'ครึ่งเช้า':'ครึ่งบ่าย'})</span>`:''}</td><td><span class="tag" style="background:${t.color}">${esc(t.name)}</span></td><td class="n">${fmtN(r.days)}</td><td class="hint">${esc(trunc(r.reason||'',50))}</td><td style="white-space:nowrap"><button class="btn ok" style="padding:4px 10px" data-ldec="${r.id}|1">อนุมัติ</button> <button class="btn" style="padding:4px 10px;color:var(--bad)" data-ldec="${r.id}|0">ไม่อนุมัติ</button></td></tr>`}).join('')||'<tr><td colspan="6" class="hint">ไม่มีรายการรออนุมัติ</td></tr>'}</tbody></table></div></div>`:'';
   el.innerHTML=`<div class="card"><h2>สิทธิ์วันลาปี ${+yr+543}</h2><div class="kpis" style="margin-top:8px">${bal||'<div class="hint">ยังไม่ได้ตั้งค่าประเภทการลา</div>'}</div></div>
-    <div class="card"><h2>ขอลา</h2><form id="lvForm"><div class="row">
-      <div><label>ประเภทการลา</label><select name="type">${types.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}</select></div>
-      <div><label>ตั้งแต่วันที่</label><input type="date" name="s" value="${tds}" required></div><div><label>ถึงวันที่</label><input type="date" name="t" value="${tds}" required></div>
-      <div id="lvPartBox"><label>ช่วงเวลา</label><select name="part"><option value="full">เต็มวัน</option><option value="am">ครึ่งวันเช้า</option><option value="pm">ครึ่งวันบ่าย</option></select></div></div>
-      <div style="margin-top:10px"><label>เหตุผล / รายละเอียด</label><input name="reason" placeholder="เช่น ไปพบแพทย์"></div>
+    <div class="card" id="lvFormCard"><h2>${ed?'แก้ไขรายการลา':'ขอลา'}</h2><form id="lvForm"><div class="row">
+      <div><label>ประเภทการลา</label><select name="type">${types.map(t=>`<option value="${esc(t.id)}"${ed&&ed.type_id===t.id?' selected':''}>${esc(t.name)}</option>`).join('')}</select></div>
+      <div><label>ตั้งแต่วันที่</label><input type="date" name="s" value="${ed?ed.start_date:tds}" required></div><div><label>ถึงวันที่</label><input type="date" name="t" value="${ed?ed.end_date:tds}" required></div>
+      <div id="lvPartBox"><label>ช่วงเวลา</label><select name="part"><option value="full">เต็มวัน</option><option value="am"${ed&&ed.part==='am'?' selected':''}>ครึ่งวันเช้า</option><option value="pm"${ed&&ed.part==='pm'?' selected':''}>ครึ่งวันบ่าย</option></select></div></div>
+      <div style="margin-top:10px"><label>เหตุผล / รายละเอียด</label><input name="reason" placeholder="เช่น ไปพบแพทย์" value="${ed?esc(ed.reason||''):''}"></div>
       <div class="hint" id="lvCalc" style="margin:8px 0"></div><div class="err" id="lvMsg" style="color:${/^✓/.test(lv.msg)?'var(--cost)':'var(--bad)'}">${esc(lv.msg)}</div>
-      <button class="btn pri">ส่งคำขอลา</button><span class="hint" style="margin-left:10px">วันลาที่อนุมัติแล้ว จะไม่ต้องบันทึกชั่วโมงงานในวันนั้น และเป้าหมายชั่วโมงในรายงานจะลดลงตามจริง</span></form></div>
+      <button class="btn pri">${ed?'💾 บันทึกการแก้ไข':'ส่งคำขอลา'}</button>${ed?'<button type="button" class="btn" id="lvEditCancel" style="margin-left:8px">ยกเลิกการแก้ไข</button>':''}${ed&&ed.status==='Approved'?'<div class="hint" style="margin-top:6px;color:var(--sga)">รายการนี้อนุมัติแล้ว — เมื่อแก้ไขจะกลับเป็น "รออนุมัติ" และต้องให้ผู้อนุมัติอนุมัติใหม่</div>':''}<span class="hint" style="margin-left:10px">วันลาที่อนุมัติแล้ว จะไม่ต้องบันทึกชั่วโมงงานในวันนั้น และเป้าหมายชั่วโมงในรายงานจะลดลงตามจริง</span></form></div>
     ${apprCard}
     <div class="card"><h2>รายการลาของฉัน</h2><div class="scroll"><table><thead><tr><th>วันที่</th><th>ประเภท</th><th class="n">วัน</th><th>สถานะ</th><th>เหตุผล</th><th></th></tr></thead><tbody>${list}</tbody></table></div></div>
     <div id="lvAdmin"></div>`;
@@ -3630,10 +3630,16 @@ async function renderLeave(){
     if(f.t.value<f.s.value)f.t.value=f.s.value;const n=calcDays(me,f.s.value,f.t.value,f.part.value);
     $('#lvCalc').innerHTML=n?`จำนวนวันทำการที่จะหักสิทธิ์: <b>${fmtN(n)} วัน</b> (ไม่นับเสาร์-อาทิตย์/วันหยุด)`:'<span style="color:var(--bad)">ช่วงที่เลือกไม่มีวันทำการ</span>'};
   ['s','t','part'].forEach(k=>f[k].onchange=upd);upd();
-  f.onsubmit=async ev=>{ev.preventDefault();lv.msg='';const {error}=await sb.rpc('leave_submit',{p_type:f.type.value,p_start:f.s.value,p_end:f.t.value,p_part:f.part.value,p_reason:f.reason.value.trim()});
+  f.onsubmit=async ev=>{ev.preventDefault();lv.msg='';
+    const {error}=ed?await sb.rpc('leave_update',{p_id:ed.id,p_type:f.type.value,p_start:f.s.value,p_end:f.t.value,p_part:f.part.value,p_reason:f.reason.value.trim()})
+                    :await sb.rpc('leave_submit',{p_type:f.type.value,p_start:f.s.value,p_end:f.t.value,p_part:f.part.value,p_reason:f.reason.value.trim()});
     if(error){lv.msg=rpcMsg(error);return renderLeave()}
-    lv.msg='✓ ส่งคำขอลาแล้ว — รอผู้อนุมัติ';await loadLeave();renderLeave()};
-  $$('[data-lcancel]').forEach(b=>b.onclick=async()=>{if(!confirm('ยกเลิกรายการลานี้?'))return;const {error}=await sb.rpc('leave_cancel',{p_id:b.dataset.lcancel});if(error){lv.msg=rpcMsg(error)}else lv.msg='✓ ยกเลิกแล้ว';await loadLeave();renderLeave()});
+    lv.msg=ed?'✓ แก้ไขรายการลาแล้ว — รอผู้อนุมัติ':'✓ ส่งคำขอลาแล้ว — รอผู้อนุมัติ';lv.edit=null;await loadLeave();renderLeave()};
+  {const ec=$('#lvEditCancel');if(ec)ec.onclick=()=>{lv.edit=null;lv.msg='';renderLeave()}}
+  $$('[data-ledit]').forEach(b=>b.onclick=()=>{const r=mine.find(x=>x.id===b.dataset.ledit);if(!r)return;
+    if(r.status==='Approved'&&!confirm('รายการนี้อนุมัติแล้ว — แก้ไขแล้วต้องรอผู้อนุมัติอนุมัติใหม่ ต้องการแก้ไข?'))return;
+    lv.edit=r.id;lv.msg='';renderLeave();const c=$('#lvFormCard');if(c)c.scrollIntoView({behavior:'smooth',block:'start'})});
+  $$('[data-lcancel]').forEach(b=>b.onclick=async()=>{if(!confirm('ยกเลิกรายการลานี้?'))return;const {error}=await sb.rpc('leave_cancel',{p_id:b.dataset.lcancel});if(error){lv.msg=rpcMsg(error)}else{lv.msg='✓ ยกเลิกแล้ว';if(lv.edit===b.dataset.lcancel)lv.edit=null}await loadLeave();renderLeave()});
   $$('[data-ldec]').forEach(b=>b.onclick=async()=>{const [id,ok]=b.dataset.ldec.split('|');let note='';
     if(ok==='0'){note=(prompt('เหตุผลที่ไม่อนุมัติ (พนักงานจะเห็นข้อความนี้)')||'').trim();if(!note)return}
     const {error}=await sb.rpc('leave_decide',{p_id:id,p_approve:ok==='1',p_note:note});if(error)alert(rpcMsg(error));await loadLeave();renderLeave()});
