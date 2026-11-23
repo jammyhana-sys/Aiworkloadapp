@@ -1879,3 +1879,844 @@ begin
   return null;     -- ยังไม่ลงเวลาเข้างาน = บันทึกไม่ได้
 end $$;
 
+
+
+-- v96: ชั่วโมงที่บันทึกงานได้ = ชั่วโมงเต็มที่ผ่านไปจริงนับจากลงเวลาเข้างาน (สูงสุด 8 ชม./วัน) · ขั้นต่ำ 1 ชม./รายการ (ยกเลิกกติกา 8 ชม. ทันทีของ hub8)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub8.sql) — รันซ้ำได้
+-- รวมทุกช่วง (เข้า→ออก) ของวันนั้น · ช่วงที่ยังไม่ออก: วันนี้นับถึงตอนนี้ · วันย้อนหลังที่ลืมลงเวลาออก = 8 ชม.
+
+create or replace function public.att_hours_for(p_emp text, p_day date) returns integer
+language plpgsql stable security definer set search_path = public as $$
+declare r record; v_open timestamptz; v_tot numeric := 0; v_any boolean := false; v_today boolean := (p_day = (now() at time zone 'Asia/Bangkok')::date);
+begin
+  for r in select kind, at from public.attendance_logs
+            where emp_id = p_emp and kind in ('in', 'out') and (at at time zone 'Asia/Bangkok')::date = p_day order by at loop
+    if r.kind = 'in' then
+      v_any := true; if v_open is null then v_open := r.at; end if;
+    elsif v_open is not null then
+      v_tot := v_tot + extract(epoch from (r.at - v_open)); v_open := null;
+    end if;
+  end loop;
+  if not v_any then return null; end if;
+  if v_open is not null then
+    if v_today then v_tot := v_tot + extract(epoch from (clock_timestamp() - v_open)); else return 8; end if;
+  end if;
+  return greatest(0, least(8, floor(v_tot / 3600)))::int;
+end $$;
+revoke all on function public.att_hours_for(text, date) from public, anon;
+grant execute on function public.att_hours_for(text, date) to authenticated, service_role;
+
+
+-- v98: Pre-approval (ส่งอนุมัติรายรายการก่อนครบ 8 ชม.) ใช้งานผ่าน LINE ได้ — แจ้งเตือน / กดอนุมัติ / รายการรออนุมัติ / สถานะ
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_line_approval.sql และ hub9) — รันซ้ำได้ · ไม่ต้อง deploy Edge Function ใหม่
+-- หลักการ: ใบงานที่ "เปิดให้อนุมัติ" = Pending หรือ Draft ที่มีรายการ ap.s = 'P' (ส่ง Pre-approval ไว้)
+--          รายการที่รออนุมัติ = ap.s = 'P' หรือ (ไม่มี ap และใบเป็น Pending) — รายการใน Draft ที่ยังไม่ส่งจะไม่ถูกนับ
+--          การอนุมัติผ่าน LINE ไม่เปลี่ยนสถานะใบที่ยังเป็น Draft (ใบเป็น Submitted ได้เมื่อพนักงานส่ง final และทุกรายการอนุมัติครบ)
+
+create or replace function public.ap_sheet_open(p_status text, p_entries jsonb) returns boolean
+language sql immutable as $$
+  select p_status = 'Pending' or (p_status = 'Draft' and p_entries @> '[{"ap":{"s":"P"}}]'::jsonb)
+$$;
+create or replace function public.ap_ent_p(p_status text, p_e jsonb) returns boolean
+language sql immutable as $$
+  select coalesce(p_e->'ap'->>'s', '') = 'P' or (p_e->'ap' is null and p_status = 'Pending')
+$$;
+
+drop function if exists public.ap_queue(text);
+create or replace function public.ap_queue(p_sheet text)
+returns table (line_user_id text, role text, sub text, n int, hours numeric, labels text, owner_id text, owner_name text, day date, owner_dept text)
+language plpgsql security definer set search_path = public as $$
+#variable_conflict use_column
+declare t public.timesheets%rowtype;
+begin
+  perform pg_advisory_xact_lock(hashtext('ap_queue|' || p_sheet));
+  select * into t from public.timesheets where id = p_sheet and public.ap_sheet_open(status, entries);
+  if t.id is null then return; end if;
+
+  return query
+  with ent as (
+    select a.x as e, a.i as idx, a.x->>'id' as eid, public.ap_next(t.emp_id, a.x) as nr, coalesce(a.x->'ap'->>'sub', '') as sb
+      from jsonb_array_elements(t.entries) with ordinality as a(x, i)
+     where public.ap_ent_p(t.status, a.x)
+  ),
+  cand as (
+    select distinct ent.e, ent.idx, ent.eid, ent.nr, ent.sb, s.emp_id as approver
+      from ent join public.approver_scopes s
+        on s.role = ent.nr and s.emp_id <> t.emp_id and public.ap_scope_ok(s, t.emp_id, ent.e->>'code')
+     where ent.nr is not null
+  ),
+  fresh as (
+    select c.*, em.line_user_id as lu
+      from cand c join public.employees em
+        on em.id = c.approver and em.active and em.approved and em.line_user_id is not null
+     where (c.e->>'rb') is distinct from c.approver
+       and not exists (select 1 from public.ap_notified nt
+                        where nt.key = p_sheet || '|' || c.eid || '|' || c.nr || '|' || c.sb || '|' || c.approver)
+  ),
+  ins as (
+    insert into public.ap_notified (key)
+    select distinct p_sheet || '|' || f.eid || '|' || f.nr || '|' || f.sb || '|' || f.approver from fresh f
+    on conflict do nothing
+    returning key
+  )
+  select f.lu, f.nr, f.sb, count(*)::int,
+         coalesce(sum((f.e->>'hours')::numeric), 0),
+         string_agg(t.emp_id || '-' || to_char(t.day, 'DDMMYY') || '-' || lpad(f.idx::text, 2, '0') || ' · '
+                    || coalesce(f.e->>'code', f.e->>'sgaId', '-') || coalesce(' ' || nullif(public.ap_code_name(f.e->>'code'), ''), '')
+                    || ' · ' || coalesce(f.e->>'hours', '0') || ' ชม.', E'\n' order by f.idx),
+         t.emp_id, (select em.name from public.employees em where em.id = t.emp_id), t.day,
+         (select trim(coalesce(em.dept, '') || ' ' || coalesce(d.name, '')) from public.employees em
+            left join public.departments d on d.id = em.dept where em.id = t.emp_id)
+    from fresh f
+   group by f.lu, f.nr, f.sb;
+end $$;
+
+create or replace function public.line_approve(p_line_user text, p_sheet text, p_role text, p_sub text, p_dry boolean default false)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  me public.employees%rowtype; t public.timesheets%rowtype;
+  x jsonb; ne jsonb; ap jsonb; arr jsonb := '[]'::jsonb;
+  n int := 0; k int := 0; hrs numeric := 0; labels text := ''; all_a boolean; owner_name text; owner_dept text;
+  now_ text := to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+begin
+  select * into me from public.employees where line_user_id = p_line_user and active and approved;
+  if me.id is null then return jsonb_build_object('ok', false, 'msg', 'ไม่พบบัญชีที่ผูกกับ LINE นี้ในระบบ'); end if;
+
+  select * into t from public.timesheets where id = p_sheet for update;
+  if t.id is null or not public.ap_sheet_open(t.status, t.entries) then
+    return jsonb_build_object('ok', false, 'msg', 'ใบงานนี้ไม่ได้อยู่ในสถานะรออนุมัติแล้ว (อาจมีการอนุมัติ/ส่งกลับ/แก้ไขไปแล้ว)');
+  end if;
+  if t.emp_id = me.id then return jsonb_build_object('ok', false, 'msg', 'อนุมัติรายการของตัวเองไม่ได้'); end if;
+  select em.name, trim(coalesce(em.dept, '') || ' ' || coalesce(d.name, '')) into owner_name, owner_dept
+    from public.employees em left join public.departments d on d.id = em.dept where em.id = t.emp_id;
+
+  for x in select value from jsonb_array_elements(t.entries) loop
+    ne := x; k := k + 1;
+    if public.ap_ent_p(t.status, x)
+       and (coalesce(p_sub, '') = '' or coalesce(x->'ap'->>'sub', '') = p_sub)
+       and public.ap_next(t.emp_id, x) = p_role
+       and (x->>'rb') is distinct from me.id
+       and exists (select 1 from public.approver_scopes s
+                    where s.emp_id = me.id and s.role = p_role and public.ap_scope_ok(s, t.emp_id, x->>'code')) then
+      n := n + 1; hrs := hrs + coalesce((x->>'hours')::numeric, 0);
+      labels := labels || case when labels = '' then '' else E'\n' end
+                || t.emp_id || '-' || to_char(t.day, 'DDMMYY') || '-' || lpad(k::text, 2, '0') || ' · '
+                || coalesce(x->>'code', x->>'sgaId', '-') || coalesce(' ' || nullif(public.ap_code_name(x->>'code'), ''), '')
+                || ' · ' || coalesce(x->>'hours', '0') || ' ชม.';
+      if not p_dry then
+        ap := coalesce(x->'ap', '{}'::jsonb);
+        ne := jsonb_set(x, '{ap}',
+              jsonb_build_object('s', 'P',
+                                 'done', coalesce(ap->'done', '[]'::jsonb) || to_jsonb(p_role),
+                                 'hist', coalesce(ap->'hist', '[]'::jsonb) || jsonb_build_array(jsonb_build_object('role', p_role, 'by', me.name, 'at', now_)),
+                                 'by', me.name, 'at', now_)
+              || case when ap->'sub' is not null then jsonb_build_object('sub', ap->'sub') else '{}'::jsonb end, true);
+        if public.ap_next(t.emp_id, ne) is null then ne := jsonb_set(ne, '{ap,s}', '"A"'::jsonb); end if;
+      end if;
+    end if;
+    arr := arr || jsonb_build_array(ne);
+  end loop;
+
+  if n = 0 then
+    return jsonb_build_object('ok', false, 'msg', 'ไม่มีรายการที่คุณอนุมัติได้ในใบนี้ (ไม่ใช่คิวของคุณ หรือมีคนอนุมัติ/พนักงานแก้ไขไปแล้ว)');
+  end if;
+  if p_dry then
+    return jsonb_build_object('ok', true, 'n', n, 'hours', hrs, 'labels', labels, 'owner_id', t.emp_id, 'owner', owner_name, 'dept', owner_dept, 'day', t.day, 'finished', false);
+  end if;
+
+  select bool_and(coalesce(y->'ap'->>'s', 'P') = 'A') into all_a from jsonb_array_elements(arr) y;
+  update public.timesheets
+     set entries = arr,
+         status = case when t.status = 'Draft' then 'Draft' when all_a then 'Submitted' else 'Pending' end,
+         approved_by = me.name, approved_at = now(),
+         reject_note = case when all_a and t.status <> 'Draft' then '' else reject_note end
+   where id = t.id;
+  return jsonb_build_object('ok', true, 'n', n, 'hours', hrs, 'labels', labels, 'owner_id', t.emp_id, 'owner', owner_name, 'dept', owner_dept, 'day', t.day, 'finished', (all_a and t.status <> 'Draft'));
+end $$;
+
+create or replace function public.ap_digest()
+returns table (line_user_id text, approver_id text, approver_name text, n_new int, n_all int, hours numeric, sheets int, groups jsonb)
+language plpgsql security definer set search_path = public as $$
+#variable_conflict use_column
+begin
+  perform pg_advisory_xact_lock(hashtext('ap_digest'));
+  return query
+  with ent as (
+    select t.id as sid, t.emp_id as oid, t.day as dd, a.x as e, a.i as idx, a.x->>'id' as eid,
+           public.ap_next(t.emp_id, a.x) as nr, coalesce(a.x->'ap'->>'sub', '') as sb
+      from public.timesheets t, jsonb_array_elements(t.entries) with ordinality as a(x, i)
+     where public.ap_sheet_open(t.status, t.entries) and public.ap_ent_p(t.status, a.x)
+  ),
+  cand as (
+    select distinct ent.sid, ent.oid, ent.dd, ent.e, ent.idx, ent.eid, ent.nr, ent.sb, s.emp_id as approver
+      from ent join public.approver_scopes s
+        on s.role = ent.nr and s.emp_id <> ent.oid and public.ap_scope_ok(s, ent.oid, ent.e->>'code')
+     where ent.nr is not null and (ent.e->>'rb') is distinct from s.emp_id
+  ),
+  due as (
+    select c.*, em.line_user_id as lu, em.name as aname,
+           exists (select 1 from public.ap_notified nt
+                    where nt.key = c.sid || '|' || c.eid || '|' || c.nr || '|' || c.sb || '|' || c.approver) as seen
+      from cand c join public.employees em
+        on em.id = c.approver and em.active and em.approved and em.line_user_id is not null
+  ),
+  targets as (select d.approver from due d group by d.approver having bool_or(not d.seen)),
+  ins as (
+    insert into public.ap_notified (key)
+    select distinct d.sid || '|' || d.eid || '|' || d.nr || '|' || d.sb || '|' || d.approver
+      from due d where d.approver in (select approver from targets) and not d.seen
+    on conflict do nothing
+    returning key
+  ),
+  grp as (
+    select d.approver, d.lu, d.aname, d.sid, d.oid, d.dd,
+           (select em.name from public.employees em where em.id = d.oid) as oname,
+           (select trim(coalesce(em.dept, '') || ' ' || coalesce(dp.name, '')) from public.employees em
+              left join public.departments dp on dp.id = em.dept where em.id = d.oid) as odept,
+           count(*) as n, count(*) filter (where not d.seen) as nn, sum((d.e->>'hours')::numeric) as h,
+           jsonb_agg(jsonb_build_object(
+             'tx', d.oid || '-' || to_char(d.dd, 'DDMMYY') || '-' || lpad(d.idx::text, 2, '0'),
+             'code', coalesce(d.e->>'code', d.e->>'sgaId', '-'),
+             'name', public.ap_code_name(d.e->>'code'),
+             'h', d.e->>'hours', 'new', not d.seen) order by d.idx) as items
+      from due d where d.approver in (select approver from targets)
+     group by d.approver, d.lu, d.aname, d.sid, d.oid, d.dd
+  )
+  select g.lu, g.approver, g.aname, sum(g.nn)::int, sum(g.n)::int, sum(g.h), count(*)::int,
+         jsonb_agg(jsonb_build_object('sheet', g.sid, 'owner_id', g.oid, 'owner', g.oname, 'dept', g.odept, 'day', g.dd, 'items', g.items)
+                   order by g.dd, g.oid)
+    from grp g
+   where (select count(*) from ins) >= 0
+   group by g.lu, g.approver, g.aname;
+end $$;
+
+create or replace function public.ap_apply_sheet(p_me_id text, p_me_name text, p_sheet text, p_dry boolean)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  t public.timesheets%rowtype; x jsonb; ne jsonb; ap jsonb; arr jsonb := '[]'::jsonb; labels jsonb := '[]'::jsonb;
+  n int := 0; k int := 0; hrs numeric := 0; all_a boolean; nr text; oname text;
+  now_ text := to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+begin
+  if p_dry then
+    select * into t from public.timesheets where id = p_sheet and public.ap_sheet_open(status, entries);
+  else
+    select * into t from public.timesheets where id = p_sheet and public.ap_sheet_open(status, entries) for update;
+  end if;
+  if t.id is null or t.emp_id = p_me_id then return jsonb_build_object('n', 0); end if;
+  select name into oname from public.employees where id = t.emp_id;
+
+  for x in select value from jsonb_array_elements(t.entries) loop
+    ne := x; k := k + 1;
+    if public.ap_ent_p(t.status, x) then
+      nr := public.ap_next(t.emp_id, x);
+      if nr is not null and (x->>'rb') is distinct from p_me_id
+         and exists (select 1 from public.approver_scopes s
+                      where s.emp_id = p_me_id and s.role = nr and public.ap_scope_ok(s, t.emp_id, x->>'code')) then
+        n := n + 1; hrs := hrs + coalesce((x->>'hours')::numeric, 0);
+        labels := labels || jsonb_build_array(
+          t.emp_id || '-' || to_char(t.day, 'DDMMYY') || '-' || lpad(k::text, 2, '0') || ' · '
+          || coalesce(x->>'code', x->>'sgaId', '-') || coalesce(' ' || nullif(public.ap_code_name(x->>'code'), ''), '')
+          || ' · ' || coalesce(x->>'hours', '0') || ' ชม.');
+        if not p_dry then
+          ap := coalesce(x->'ap', '{}'::jsonb);
+          ne := jsonb_set(x, '{ap}',
+                jsonb_build_object('s', 'P',
+                                   'done', coalesce(ap->'done', '[]'::jsonb) || to_jsonb(nr),
+                                   'hist', coalesce(ap->'hist', '[]'::jsonb) || jsonb_build_array(jsonb_build_object('role', nr, 'by', p_me_name, 'at', now_)),
+                                   'by', p_me_name, 'at', now_)
+                || case when ap->'sub' is not null then jsonb_build_object('sub', ap->'sub') else '{}'::jsonb end, true);
+          if public.ap_next(t.emp_id, ne) is null then ne := jsonb_set(ne, '{ap,s}', '"A"'::jsonb); end if;
+        end if;
+      end if;
+    end if;
+    arr := arr || jsonb_build_array(ne);
+  end loop;
+
+  if n = 0 or p_dry then
+    return jsonb_build_object('n', n, 'hours', hrs, 'labels', labels, 'owner_id', t.emp_id, 'owner', oname, 'finished', false);
+  end if;
+  select bool_and(coalesce(y->'ap'->>'s', 'P') = 'A') into all_a from jsonb_array_elements(arr) y;
+  update public.timesheets
+     set entries = arr, status = case when t.status = 'Draft' then 'Draft' when all_a then 'Submitted' else 'Pending' end,
+         approved_by = p_me_name, approved_at = now(),
+         reject_note = case when all_a and t.status <> 'Draft' then '' else reject_note end
+   where id = t.id;
+  return jsonb_build_object('n', n, 'hours', hrs, 'labels', labels, 'owner_id', t.emp_id, 'owner', oname, 'finished', (all_a and t.status <> 'Draft'));
+end $$;
+
+create or replace function public.line_approve_all(p_line_user text, p_expect int default null, p_dry boolean default false)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  me public.employees%rowtype; sid text; r jsonb;
+  n int := 0; hrs numeric := 0; sheets int := 0; fin int := 0; labels jsonb := '[]'::jsonb; owners text[] := '{}';
+begin
+  select * into me from public.employees where line_user_id = p_line_user and active and approved;
+  if me.id is null then return jsonb_build_object('ok', false, 'msg', 'ไม่พบบัญชีที่ผูกกับ LINE นี้ในระบบ'); end if;
+
+  for sid in select t.id from public.timesheets t where public.ap_sheet_open(t.status, t.entries) and t.emp_id <> me.id order by t.id loop
+    r := public.ap_apply_sheet(me.id, me.name, sid, true);
+    if (r->>'n')::int > 0 then
+      n := n + (r->>'n')::int; hrs := hrs + (r->>'hours')::numeric; sheets := sheets + 1;
+      owners := array_append(owners, r->>'owner_id');
+      if jsonb_array_length(labels) < 30 then labels := labels || (r->'labels'); end if;
+    end if;
+  end loop;
+  if n = 0 then return jsonb_build_object('ok', false, 'msg', 'ไม่มีรายการที่รออนุมัติของคุณแล้ว (อาจมีคนอนุมัติ/ส่งกลับ/แก้ไขไปแล้ว)'); end if;
+
+  if p_dry then
+    return jsonb_build_object('ok', true, 'n', n, 'hours', hrs, 'sheets', sheets,
+                              'people', (select count(distinct o) from unnest(owners) o), 'labels', labels);
+  end if;
+  if p_expect is not null and p_expect <> n then
+    return jsonb_build_object('ok', false, 'n', n,
+      'msg', 'จำนวนรายการรออนุมัติเปลี่ยนจาก ' || p_expect || ' เป็น ' || n || ' รายการ (มีรายการใหม่เข้ามา หรือมีผู้อื่นอนุมัติแล้ว) — ยังไม่ได้อนุมัติ กรุณากดปุ่ม "อนุมัติทั้งหมด" ในการ์ดอีกครั้งเพื่อดูจำนวนล่าสุด');
+  end if;
+
+  n := 0; hrs := 0; sheets := 0;
+  for sid in select t.id from public.timesheets t where public.ap_sheet_open(t.status, t.entries) and t.emp_id <> me.id order by t.id loop
+    r := public.ap_apply_sheet(me.id, me.name, sid, false);
+    if (r->>'n')::int > 0 then
+      n := n + (r->>'n')::int; hrs := hrs + (r->>'hours')::numeric; sheets := sheets + 1;
+      if (r->>'finished')::boolean then fin := fin + 1; end if;
+    end if;
+  end loop;
+  return jsonb_build_object('ok', true, 'n', n, 'hours', hrs, 'sheets', sheets, 'finished_sheets', fin);
+end $$;
+
+create or replace function public.ap_my_pending(p_line_user text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+#variable_conflict use_column
+declare me public.employees%rowtype; res jsonb;
+begin
+  select * into me from public.employees where line_user_id = p_line_user and active and approved;
+  if me.id is null then return jsonb_build_object('ok', false, 'msg', 'ไม่พบบัญชีที่ผูกกับ LINE นี้ในระบบ — ผูกบัญชีในแอปก่อน'); end if;
+  with ent as (
+    select t.id as sid, t.emp_id as oid, t.day as dd, a.x as e, a.i as idx, public.ap_next(t.emp_id, a.x) as nr
+      from public.timesheets t, jsonb_array_elements(t.entries) with ordinality as a(x, i)
+     where public.ap_sheet_open(t.status, t.entries) and t.emp_id <> me.id and public.ap_ent_p(t.status, a.x)
+  ),
+  due as (
+    select distinct ent.* from ent
+     where ent.nr is not null and (ent.e->>'rb') is distinct from me.id
+       and exists (select 1 from public.approver_scopes s
+                    where s.emp_id = me.id and s.role = ent.nr and public.ap_scope_ok(s, ent.oid, ent.e->>'code'))
+  ),
+  grp as (
+    select d.sid, d.oid, d.dd,
+           (select em.name from public.employees em where em.id = d.oid) as oname,
+           (select trim(coalesce(em.dept, '') || ' ' || coalesce(dp.name, '')) from public.employees em
+              left join public.departments dp on dp.id = em.dept where em.id = d.oid) as odept,
+           count(*) as n, sum((d.e->>'hours')::numeric) as h,
+           jsonb_agg(jsonb_build_object(
+             'tx', d.oid || '-' || to_char(d.dd, 'DDMMYY') || '-' || lpad(d.idx::text, 2, '0'),
+             'code', coalesce(d.e->>'code', d.e->>'sgaId', '-'), 'name', public.ap_code_name(d.e->>'code'),
+             'h', d.e->>'hours', 'new', false) order by d.idx) as items
+      from due d group by d.sid, d.oid, d.dd
+  )
+  select jsonb_build_object('ok', true, 'n_all', coalesce(sum(g.n), 0)::int, 'n_new', coalesce(sum(g.n), 0)::int,
+                            'hours', coalesce(sum(g.h), 0), 'sheets', count(*)::int,
+                            'groups', coalesce(jsonb_agg(jsonb_build_object('sheet', g.sid, 'owner_id', g.oid, 'owner', g.oname,
+                                       'dept', g.odept, 'day', g.dd, 'items', g.items) order by g.dd, g.oid), '[]'::jsonb))
+    into res from grp g;
+  return res;
+end $$;
+
+create or replace function public.ap_my_status(p_line_user text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me public.employees%rowtype; today date := (now() at time zone 'Asia/Bangkok')::date; res jsonb;
+begin
+  select * into me from public.employees where line_user_id = p_line_user and active and approved;
+  if me.id is null then return jsonb_build_object('ok', false, 'msg', 'ไม่พบบัญชีที่ผูกกับ LINE นี้ในระบบ — ผูกบัญชีในแอปก่อน'); end if;
+  select jsonb_build_object(
+    'ok', true, 'name', me.name, 'dept', me.dept, 'today', today,
+    'today_hours', coalesce((select sum((x->>'hours')::numeric) from public.timesheets t, jsonb_array_elements(t.entries) x
+                              where t.emp_id = me.id and t.day = today), 0),
+    'today_status', (select t.status from public.timesheets t where t.emp_id = me.id and t.day = today),
+    'month_hours', coalesce((select sum((x->>'hours')::numeric) from public.timesheets t, jsonb_array_elements(t.entries) x
+                              where t.emp_id = me.id and date_trunc('month', t.day) = date_trunc('month', today)), 0),
+    'pending_entries', coalesce((select count(*) from public.timesheets t, jsonb_array_elements(t.entries) x
+                                  where t.emp_id = me.id and public.ap_ent_p(t.status, x)), 0),
+    'approved_entries', coalesce((select count(*) from public.timesheets t, jsonb_array_elements(t.entries) x
+                                   where t.emp_id = me.id and t.day >= today - 30
+                                     and (x->'ap'->>'s' = 'A' or (x->'ap' is null and t.status = 'Submitted'))), 0),
+    'rejected_sheets', coalesce((select jsonb_agg(jsonb_build_object('day', t.day, 'note', t.reject_note) order by t.day desc)
+                                  from public.timesheets t where t.emp_id = me.id and t.status = 'Draft' and coalesce(t.reject_note, '') <> ''), '[]'::jsonb),
+    'draft_days', coalesce((select count(*) from public.timesheets t where t.emp_id = me.id and t.status = 'Draft'
+                             and t.day >= today - 14 and jsonb_array_length(t.entries) > 0), 0))
+    into res;
+  return res;
+end $$;
+
+create or replace function public.notify_line_ts() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_url text; v_sec text; v_kind text;
+begin
+  begin
+    select value into v_url from public.private_config where key = 'line_notify_url';
+    select value into v_sec from public.private_config where key = 'line_notify_secret';
+    if v_url is null or v_sec is null then return new; end if;
+    if new.status = 'Pending' and (tg_op = 'INSERT' or old.status is distinct from 'Pending' or old.entries is distinct from new.entries) then
+      v_kind := 'approval_queue';
+    elsif new.status = 'Draft' and new.entries @> '[{"ap":{"s":"P"}}]'::jsonb and (tg_op = 'INSERT' or old.entries is distinct from new.entries) then
+      v_kind := 'approval_queue';    -- Pre-approval: รายการที่ส่งอนุมัติล่วงหน้า (ใบยังเป็น Draft)
+    elsif tg_op = 'UPDATE' and old.status = 'Pending' and new.status = 'Submitted' then
+      v_kind := 'sheet_approved';
+    elsif tg_op = 'UPDATE' and old.status = 'Pending' and new.status = 'Draft' and coalesce(new.reject_note, '') <> '' then
+      v_kind := 'sheet_rejected';
+    elsif tg_op = 'UPDATE' and old.status = 'Draft' and new.status = 'Draft' and coalesce(new.reject_note, '') <> '' and new.reject_note is distinct from old.reject_note then
+      v_kind := 'sheet_rejected';    -- Pre-approval: ผู้อนุมัติส่งกลับรายการ
+    end if;
+    if v_kind is not null then
+      perform net.http_post(
+        url     := v_url,
+        headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', v_sec),
+        body    := jsonb_build_object('kind', v_kind, 'sheet_id', new.id, 'emp_id', new.emp_id));
+    end if;
+  exception when others then
+    null;   -- ห้ามให้การแจ้งเตือนทำให้การบันทึก/อนุมัติล้มเหลว
+  end;
+  return new;
+end $$;
+
+drop trigger if exists line_notify_ts on public.timesheets;
+create trigger line_notify_ts after insert or update on public.timesheets
+  for each row execute function public.notify_line_ts();
+
+grant execute on function public.ap_queue(text)                                     to service_role;
+grant execute on function public.line_approve(text, text, text, text, boolean)      to service_role;
+grant execute on function public.ap_digest()                                        to service_role;
+grant execute on function public.line_approve_all(text, int, boolean)               to service_role;
+grant execute on function public.ap_my_pending(text)                                to service_role;
+grant execute on function public.ap_my_status(text)                                 to service_role;
+
+
+-- v102: พักเที่ยงอัตโนมัติ — ทำงานครบ 4 ชม. หยุดจับเวลา 1 ชม. (Have Lunch) แล้วเดินต่อจนครบ 8 ชม. (เวลางานสุทธิ = เวลาเปิดงานสะสม ถ้า <4 ชม.; = 4 ชม. ช่วง 4-5 ชม.; = สะสม-1 ชม. เมื่อ ≥5 ชม.)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub10.sql) — รันซ้ำได้
+-- รวมทุกช่วง (เข้า→ออก) ของวันนั้น · ช่วงที่ยังไม่ออก: วันนี้นับถึงตอนนี้ · วันย้อนหลังที่ลืมลงเวลาออก = 8 ชม.
+
+create or replace function public.att_hours_for(p_emp text, p_day date) returns integer
+language plpgsql stable security definer set search_path = public as $$
+declare r record; v_open timestamptz; v_tot numeric := 0; v_any boolean := false; v_today boolean := (p_day = (now() at time zone 'Asia/Bangkok')::date);
+begin
+  for r in select kind, at from public.attendance_logs
+            where emp_id = p_emp and kind in ('in', 'out') and (at at time zone 'Asia/Bangkok')::date = p_day order by at loop
+    if r.kind = 'in' then
+      v_any := true; if v_open is null then v_open := r.at; end if;
+    elsif v_open is not null then
+      v_tot := v_tot + extract(epoch from (r.at - v_open)); v_open := null;
+    end if;
+  end loop;
+  if not v_any then return null; end if;
+  if v_open is not null then
+    if v_today then v_tot := v_tot + extract(epoch from (clock_timestamp() - v_open)); else return 8; end if;
+  end if;
+  if v_tot >= 18000 then v_tot := v_tot - 3600; elsif v_tot >= 14400 then v_tot := 14400; end if;   -- พักเที่ยง 1 ชม. หลังทำงานครบ 4 ชม.
+  return greatest(0, least(8, floor(v_tot / 3600)))::int;
+end $$;
+revoke all on function public.att_hours_for(text, date) from public, anon;
+grant execute on function public.att_hours_for(text, date) to authenticated, service_role;
+
+
+-- v108: รายการลาของฉัน — ปุ่ม "แก้ไข" และ "ยกเลิก"
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub.sql / hub3) — รันซ้ำได้
+-- กติกา: ผู้ลาแก้ไข/ยกเลิกได้เฉพาะรายการของตัวเอง สถานะรออนุมัติ หรืออนุมัติแล้ว และยังไม่พ้นวันลา (วันสิ้นสุดลา ≥ วันนี้)
+--        แก้ไขรายการที่อนุมัติแล้ว → กลับเป็น "รออนุมัติ" (ต้องให้ผู้อนุมัติอนุมัติใหม่)
+
+create or replace function public.leave_update(p_id uuid, p_type text, p_start date, p_end date, p_part text default 'full', p_reason text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare e public.employees%rowtype; lt public.leave_types%rowtype; o public.leave_requests%rowtype; r public.leave_requests%rowtype;
+        d date; v_days numeric := 0; v_used numeric; v_part text := coalesce(p_part, 'full'); v_today date := (now() at time zone 'Asia/Bangkok')::date;
+begin
+  select * into e from public.employees where id = public.my_emp_id();
+  if e.id is null then raise exception 'NO_EMPLOYEE'; end if;
+  select * into o from public.leave_requests where id = p_id and emp_id = e.id for update;
+  if o.id is null then raise exception 'NOT_FOUND:ไม่พบรายการลา'; end if;
+  if o.status not in ('Pending', 'Approved') or o.end_date < v_today then
+    raise exception 'NOT_ALLOWED:แก้ไขได้เฉพาะรายการที่รออนุมัติ หรืออนุมัติแล้วและยังไม่พ้นวันลา';
+  end if;
+  select * into lt from public.leave_types where id = p_type and active;
+  if lt.id is null then raise exception 'BAD_TYPE:ไม่พบประเภทการลา'; end if;
+  if p_start is null or p_end is null or p_end < p_start then raise exception 'BAD_DATE:ช่วงวันที่ไม่ถูกต้อง'; end if;
+  if p_end < v_today then raise exception 'BAD_DATE:ไม่สามารถแก้ไขเป็นวันที่ผ่านมาแล้ว'; end if;
+  if v_part <> 'full' and p_start <> p_end then raise exception 'BAD_DATE:ลาครึ่งวันเลือกได้เฉพาะลาวันเดียว'; end if;
+  for d in select generate_series(p_start::timestamp, p_end::timestamp, interval '1 day')::date loop
+    if extract(dow from d) = 0 then continue; end if;
+    if extract(dow from d) = 6 and not e.work_sat then continue; end if;
+    if exists (select 1 from public.holidays h where h.day = d) then continue; end if;
+    v_days := v_days + 1;
+  end loop;
+  if v_days = 0 then raise exception 'NO_WORKDAY:ช่วงที่เลือกไม่มีวันทำการ (เสาร์-อาทิตย์/วันหยุด)'; end if;
+  if v_part <> 'full' then v_days := 0.5; end if;
+  if exists (select 1 from public.leave_requests x where x.emp_id = e.id and x.id <> p_id and x.status in ('Pending', 'Approved')
+               and x.start_date <= p_end and x.end_date >= p_start
+               and not (x.part <> 'full' and v_part <> 'full' and x.part <> v_part)) then
+    raise exception 'OVERLAP:มีรายการลาที่ซ้อนกับช่วงวันนี้อยู่แล้ว';
+  end if;
+  if lt.quota_days is not null then
+    select coalesce(sum(days), 0) into v_used from public.leave_requests x
+     where x.emp_id = e.id and x.id <> p_id and x.type_id = lt.id and x.status in ('Pending', 'Approved') and extract(year from x.start_date) = extract(year from p_start);
+    if v_used + v_days > lt.quota_days then raise exception 'QUOTA:วันลา% เกินสิทธิ์ (ใช้/รออนุมัติ % จาก % วัน)', lt.name, v_used, lt.quota_days; end if;
+  end if;
+  update public.leave_requests
+     set type_id = lt.id, start_date = p_start, end_date = p_end, part = v_part, days = v_days, reason = left(coalesce(p_reason, ''), 500),
+         status = 'Pending', decided_by = null, decided_at = null,
+         decide_note = case when o.status = 'Approved' then 'แก้ไขโดยผู้ลา — รออนุมัติใหม่' else '' end
+   where id = p_id returning * into r;
+  return to_jsonb(r);
+end $$;
+
+-- ยกเลิก: รออนุมัติ หรืออนุมัติแล้วที่ยังไม่พ้นวันลา (รวมวันลาที่เป็นวันนี้)
+create or replace function public.leave_cancel(p_id uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := public.my_emp_id(); r public.leave_requests%rowtype;
+begin
+  select * into r from public.leave_requests where id = p_id and emp_id = v_emp for update;
+  if r.id is null then raise exception 'NOT_FOUND:ไม่พบรายการลา'; end if;
+  if r.status = 'Pending' or (r.status = 'Approved' and r.end_date >= (now() at time zone 'Asia/Bangkok')::date) then
+    update public.leave_requests set status = 'Cancelled', decided_at = now(), decide_note = 'ยกเลิกโดยผู้ลา' where id = p_id returning * into r;
+    return to_jsonb(r);
+  end if;
+  raise exception 'NOT_ALLOWED:ยกเลิกได้เฉพาะรายการที่รออนุมัติ หรือที่อนุมัติแล้วและยังไม่พ้นวันลา';
+end $$;
+
+revoke all on function public.leave_update(uuid, text, date, date, text, text) from public, anon;
+grant execute on function public.leave_update(uuid, text, date, date, text, text) to authenticated;
+
+
+-- v110: กำหนดผู้ใช้งานจุดสำนักงาน (work_sites) — ทุกคน / รายฝ่าย / รายคน
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub.sql / hub2) — รันซ้ำได้
+-- กติกา: จุดที่ "ไม่มีการกำหนด" = ทุกคนใช้ได้ (เหมือนเดิม) · เมื่อกำหนดแล้ว เฉพาะพนักงานที่ตรงกับขอบเขต (ทุกคน / ฝ่าย / รายคน) จะถูกตรวจพื้นที่ลงเวลากับจุดนี้
+
+create table if not exists public.work_site_assign (
+  id         text primary key,                                   -- site_id|scope_type|scope_key
+  site_id    text not null references public.work_sites(id) on delete cascade,
+  scope_type text not null check (scope_type in ('all', 'dept', 'emp')),
+  scope_key  text not null default '*'
+);
+alter table public.work_site_assign enable row level security;
+revoke all on public.work_site_assign from anon;
+drop policy if exists wsa_super on public.work_site_assign;
+create policy wsa_super on public.work_site_assign for all to authenticated
+  using (public.is_super_admin()) with check (public.is_super_admin());
+
+create or replace function public.site_applies(p_emp text, p_site text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select not exists (select 1 from public.work_site_assign a where a.site_id = p_site)
+      or exists (select 1 from public.work_site_assign a join public.employees e on e.id = p_emp
+                  where a.site_id = p_site
+                    and (a.scope_type = 'all' or (a.scope_type = 'emp' and a.scope_key = e.id) or (a.scope_type = 'dept' and a.scope_key = e.dept)))
+$$;
+
+-- จุดที่ใช้ได้กับฉัน (ใช้ในหน้าลงเวลา)
+create or replace function public.my_work_sites() returns setof public.work_sites
+language sql stable security definer set search_path = public as $$
+  select w.* from public.work_sites w where w.active and public.site_applies(public.my_emp_id(), w.id)
+$$;
+revoke all on function public.site_applies(text, text), public.my_work_sites() from public, anon;
+grant execute on function public.site_applies(text, text), public.my_work_sites() to authenticated, service_role;
+
+-- ลงเวลา: เทียบ GPS เฉพาะจุดที่กำหนดให้พนักงานคนนั้น
+create or replace function public.att_punch(p_kind text, p_lat double precision default null, p_lng double precision default null,
+                                            p_acc real default null, p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := public.my_emp_id(); v_last text; v_day date := (now() at time zone 'Asia/Bangkok')::date; r public.attendance_logs%rowtype;
+  v_sid text; v_sname text; v_d double precision; v_rad int;
+begin
+  if v_emp is null then raise exception 'NO_EMPLOYEE'; end if;
+  if p_kind not in ('in', 'out', 'offsite_start', 'offsite_end') then raise exception 'BAD_KIND'; end if;
+  if p_kind in ('in', 'offsite_start') and not public.is_work_day(v_emp, v_day) then
+    raise exception 'NOT_WORK_DAY:วันนี้ไม่ใช่วันทำงานตามปฏิทินของระบบ จึงลงเวลาไม่ได้';
+  end if;
+  select kind into v_last from public.attendance_logs where emp_id = v_emp and (at at time zone 'Asia/Bangkok')::date = v_day order by at desc limit 1;
+  if p_kind = 'in'            and v_last is not null and v_last <> 'out'                      then raise exception 'INVALID_SEQUENCE:ลงเวลาเข้างานไปแล้ว'; end if;
+  if p_kind = 'out'           and (v_last is null or v_last = 'out')                          then raise exception 'INVALID_SEQUENCE:ยังไม่ได้ลงเวลาเข้างาน'; end if;
+  if p_kind = 'out'           and v_last = 'offsite_start'                                    then raise exception 'INVALID_SEQUENCE:กรุณาบันทึกกลับจากนอกสถานที่ก่อน'; end if;
+  if p_kind = 'offsite_start' and (v_last is null or v_last in ('out', 'offsite_start'))      then raise exception 'INVALID_SEQUENCE:ต้องลงเวลาเข้างานก่อน และไม่อยู่ระหว่างออกนอกสถานที่'; end if;
+  if p_kind = 'offsite_end'   and (v_last is distinct from 'offsite_start')                   then raise exception 'INVALID_SEQUENCE:ยังไม่ได้บันทึกออกไปทำงานนอกสถานที่'; end if;
+  if exists (select 1 from public.attendance_logs where emp_id = v_emp and kind = p_kind and at > now() - interval '30 seconds') then raise exception 'INVALID_SEQUENCE:บันทึกซ้ำเร็วเกินไป'; end if;
+  if p_lat is not null and p_lng is not null then
+    select w.id, w.name, public.geo_dist_m(p_lat, p_lng, w.lat, w.lng), w.radius_m into v_sid, v_sname, v_d, v_rad
+      from public.work_sites w where w.active and public.site_applies(v_emp, w.id) order by 3 limit 1;
+  end if;
+  insert into public.attendance_logs (emp_id, kind, at, lat, lng, accuracy_m, site_id, site_name, dist_m, source, note)
+  values (v_emp, p_kind, clock_timestamp(), p_lat, p_lng, p_acc,
+          case when v_sid is not null and v_d <= v_rad then v_sid end,
+          case when v_sid is not null and v_d <= v_rad then v_sname else '' end,
+          case when v_sid is not null then round(v_d)::int end, 'app', left(coalesce(p_note, ''), 300))
+  returning * into r;
+  return to_jsonb(r);
+end $$;
+revoke all on function public.att_punch(text, double precision, double precision, real, text) from public, anon;
+grant execute on function public.att_punch(text, double precision, double precision, real, text) to authenticated;
+
+
+-- v113: ครบ 8 ชม. แล้วยังไม่ลงเวลาออกงาน → ห้ามส่งรายการ final จนกว่าจะลงเวลาออก + ใส่เหตุผล · แจ้งเตือน LINE เมื่อเกิน 8 ชม. 30 นาที
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub13.sql) — รันซ้ำได้
+-- เวลาทำงานสุทธิ (net) = เวลาเปิดงานสะสม หักพักเที่ยง (ครบ 4 ชม. หยุด 1 ชม.) · 100% = 8 ชม. สุทธิ · แจ้งเตือน LINE เมื่อสุทธิ ≥ 8 ชม. 30 นาที (ส่งครั้งเดียวต่อวัน)
+-- ต้อง deploy Edge Function line-notify.ts (function "hyper-api") ใหม่ จึงจะส่ง LINE ได้ · pg_cron เรียกทุก 10 นาที
+
+create or replace function public.att_net_state(p_emp text, p_day date) returns table (any_in boolean, is_open boolean, net_secs numeric)
+language plpgsql stable security definer set search_path = public as $$
+declare r record; v_open timestamptz; v_tot numeric := 0; v_any boolean := false; v_today boolean := (p_day = (now() at time zone 'Asia/Bangkok')::date);
+begin
+  for r in select kind, at from public.attendance_logs
+            where emp_id = p_emp and kind in ('in', 'out') and (at at time zone 'Asia/Bangkok')::date = p_day order by at loop
+    if r.kind = 'in' then
+      v_any := true; if v_open is null then v_open := r.at; end if;
+    elsif v_open is not null then
+      v_tot := v_tot + extract(epoch from (r.at - v_open)); v_open := null;
+    end if;
+  end loop;
+  if v_open is not null and v_today then v_tot := v_tot + extract(epoch from (clock_timestamp() - v_open)); end if;
+  if v_tot >= 18000 then v_tot := v_tot - 3600; elsif v_tot >= 14400 then v_tot := 14400; end if;   -- พักเที่ยง 1 ชม. หลังครบ 4 ชม.
+  return query select v_any, v_open is not null, v_tot;
+end $$;
+revoke all on function public.att_net_state(text, date) from public, anon;
+grant execute on function public.att_net_state(text, date) to authenticated, service_role;
+
+-- ห้ามส่งใบงานเป็น final (Draft → Pending) ของวันนี้ ถ้าทำงานครบ 8 ชม. แล้วแต่ยังไม่ลงเวลาออกงาน
+create or replace function public.ts_final_out_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare s record;
+begin
+  if new.status <> 'Pending' or (tg_op = 'UPDATE' and old.status = 'Pending') then return new; end if;
+  if auth.uid() is null or (public.is_super_admin() and new.emp_id is distinct from public.my_emp_id()) then return new; end if;
+  if new.day <> (now() at time zone 'Asia/Bangkok')::date then return new; end if;
+  if not public.att_required_for(new.emp_id, new.day) then return new; end if;
+  select * into s from public.att_net_state(new.emp_id, new.day);
+  if s.any_in and s.is_open and s.net_secs >= 28800 then
+    raise exception 'CLOCK_OUT_REQUIRED:ทำงานครบ 8 ชั่วโมงแล้วแต่ยังไม่ได้ลงเวลาออกงาน — กรุณาลงเวลาออกงานพร้อมระบุเหตุผล แล้วจึงส่งรายการบันทึกงาน';
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_ts_final_out_guard on public.timesheets;
+create trigger trg_ts_final_out_guard before insert or update on public.timesheets for each row execute function public.ts_final_out_guard();
+
+-- พนักงานที่ทำงานสุทธิ ≥ 8 ชม. 30 นาที แต่ยังไม่ลงเวลาออก (แจ้งครั้งเดียวต่อวัน) — ใช้โดย Edge Function (service_role)
+create table if not exists public.att_out_notified (
+  emp_id text not null, day date not null, at timestamptz not null default now(), primary key (emp_id, day)
+);
+alter table public.att_out_notified enable row level security;
+revoke all on public.att_out_notified from anon, authenticated;
+
+create or replace function public.att_overdue_out() returns table (emp_id text, name text, line_user_id text, in_at timestamptz, net_secs numeric)
+language plpgsql security definer set search_path = public as $$
+declare e record; s record; v_day date := (now() at time zone 'Asia/Bangkok')::date; v_in timestamptz;
+begin
+  perform pg_advisory_xact_lock(hashtext('att_overdue_out'));
+  for e in select m.id, m.name, m.line_user_id from public.employees m
+            where m.active and m.approved and m.line_user_id is not null
+              and exists (select 1 from public.attendance_logs a where a.emp_id = m.id and a.kind = 'in' and (a.at at time zone 'Asia/Bangkok')::date = v_day)
+              and not exists (select 1 from public.att_out_notified n where n.emp_id = m.id and n.day = v_day) loop
+    select * into s from public.att_net_state(e.id, v_day);
+    if s.is_open and s.net_secs >= 30600 then
+      select min(a.at) into v_in from public.attendance_logs a where a.emp_id = e.id and a.kind = 'in' and (a.at at time zone 'Asia/Bangkok')::date = v_day;
+      insert into public.att_out_notified (emp_id, day) values (e.id, v_day) on conflict do nothing;
+      emp_id := e.id; name := e.name; line_user_id := e.line_user_id; in_at := v_in; net_secs := s.net_secs;
+      return next;
+    end if;
+  end loop;
+end $$;
+revoke all on function public.att_overdue_out() from public, anon, authenticated;
+grant execute on function public.att_overdue_out() to service_role;
+
+-- ตั้งเวลาเรียกทุก 10 นาที (ต้องเปิด pg_cron และตั้ง private_config line_notify_url / line_notify_secret ไว้แล้ว เหมือนการแจ้งเตือนใบงาน)
+do $do$
+begin
+  begin perform cron.unschedule('att-out-overdue'); exception when others then null; end;
+  perform cron.schedule('att-out-overdue', '*/10 * * * *', $cron$
+    select net.http_post(
+      url     := (select value from public.private_config where key = 'line_notify_url'),
+      headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', (select value from public.private_config where key = 'line_notify_secret')),
+      body    := jsonb_build_object('kind', 'clockout_overdue'));
+  $cron$);
+exception when others then
+  raise notice 'ตั้ง pg_cron ไม่สำเร็จ (%): เปิด Database > Extensions > pg_cron แล้วรันไฟล์นี้ซ้ำ', sqlerrm;
+end $do$;
+
+-- ลงเวลา: ออกงานหลังครบ 8 ชม. ต้องระบุเหตุผลในหมายเหตุ
+create or replace function public.att_punch(p_kind text, p_lat double precision default null, p_lng double precision default null,
+                                            p_acc real default null, p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := public.my_emp_id(); v_last text; v_day date := (now() at time zone 'Asia/Bangkok')::date; r public.attendance_logs%rowtype;
+  v_sid text; v_sname text; v_d double precision; v_rad int; v_st record;
+begin
+  if v_emp is null then raise exception 'NO_EMPLOYEE'; end if;
+  if p_kind not in ('in', 'out', 'offsite_start', 'offsite_end') then raise exception 'BAD_KIND'; end if;
+  if p_kind in ('in', 'offsite_start') and not public.is_work_day(v_emp, v_day) then
+    raise exception 'NOT_WORK_DAY:วันนี้ไม่ใช่วันทำงานตามปฏิทินของระบบ จึงลงเวลาไม่ได้';
+  end if;
+  select kind into v_last from public.attendance_logs where emp_id = v_emp and (at at time zone 'Asia/Bangkok')::date = v_day order by at desc limit 1;
+  if p_kind = 'in'            and v_last is not null and v_last <> 'out'                      then raise exception 'INVALID_SEQUENCE:ลงเวลาเข้างานไปแล้ว'; end if;
+  if p_kind = 'out'           and (v_last is null or v_last = 'out')                          then raise exception 'INVALID_SEQUENCE:ยังไม่ได้ลงเวลาเข้างาน'; end if;
+  if p_kind = 'out'           and v_last = 'offsite_start'                                    then raise exception 'INVALID_SEQUENCE:กรุณาบันทึกกลับจากนอกสถานที่ก่อน'; end if;
+  if p_kind = 'offsite_start' and (v_last is null or v_last in ('out', 'offsite_start'))      then raise exception 'INVALID_SEQUENCE:ต้องลงเวลาเข้างานก่อน และไม่อยู่ระหว่างออกนอกสถานที่'; end if;
+  if p_kind = 'offsite_end'   and (v_last is distinct from 'offsite_start')                   then raise exception 'INVALID_SEQUENCE:ยังไม่ได้บันทึกออกไปทำงานนอกสถานที่'; end if;
+  if exists (select 1 from public.attendance_logs where emp_id = v_emp and kind = p_kind and at > now() - interval '30 seconds') then raise exception 'INVALID_SEQUENCE:บันทึกซ้ำเร็วเกินไป'; end if;
+  -- ลงเวลาออกงานหลังทำงานครบ 8 ชม. ต้องระบุเหตุผล
+  if p_kind = 'out' and coalesce(trim(p_note), '') = '' then
+    select * into v_st from public.att_net_state(v_emp, v_day);
+    if v_st.is_open and v_st.net_secs >= 28800 then
+      raise exception 'REASON_REQUIRED:ทำงานครบ 8 ชั่วโมงแล้ว — กรุณาระบุเหตุผลที่ลงเวลาออกงาน (ช่องหมายเหตุ)';
+    end if;
+  end if;
+  if p_lat is not null and p_lng is not null then
+    select w.id, w.name, public.geo_dist_m(p_lat, p_lng, w.lat, w.lng), w.radius_m into v_sid, v_sname, v_d, v_rad
+      from public.work_sites w where w.active and public.site_applies(v_emp, w.id) order by 3 limit 1;
+  end if;
+  insert into public.attendance_logs (emp_id, kind, at, lat, lng, accuracy_m, site_id, site_name, dist_m, source, note)
+  values (v_emp, p_kind, clock_timestamp(), p_lat, p_lng, p_acc,
+          case when v_sid is not null and v_d <= v_rad then v_sid end,
+          case when v_sid is not null and v_d <= v_rad then v_sname else '' end,
+          case when v_sid is not null then round(v_d)::int end, 'app', left(coalesce(p_note, ''), 300))
+  returning * into r;
+  return to_jsonb(r);
+end $$;
+revoke all on function public.att_punch(text, double precision, double precision, real, text) from public, anon;
+grant execute on function public.att_punch(text, double precision, double precision, real, text) to authenticated;
+
+
+-- v114: ผู้ที่เพิ่มเพื่อนใหม่ยังไม่เห็น Rich menu จนกว่าจะผูกบัญชี LINE สำเร็จ
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (ต้องมี private_config line_notify_url / line_notify_secret และ pg_net เหมือนการแจ้งเตือนอื่น) — รันซ้ำได้
+-- หลักการ: เลิกใช้ Rich menu "เริ่มต้นของทุกคน" → ใส่เมนูให้รายคนเมื่อผูกบัญชีสำเร็จ / เอาออกเมื่อยกเลิกการผูก (Edge Function line-notify kind = richmenu_sync)
+-- ต้อง deploy line-notify.ts (function "hyper-api") ใหม่ แล้วสั่งสลับเมนูหนึ่งครั้งเพื่อ "ยกเลิกเมนูเริ่มต้น + ใส่เมนูให้คนที่ผูกอยู่แล้ว":
+--   select net.http_post(url := (select value from public.private_config where key='line_notify_url'),
+--          headers := jsonb_build_object('Content-Type','application/json','x-webhook-secret',(select value from public.private_config where key='line_notify_secret')),
+--          body := jsonb_build_object('kind','richmenu','mode','day'));   -- ตอนกลางคืนใช้ 'night'
+
+create or replace function public.notify_line_menu() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_url text; v_sec text;
+begin
+  begin
+    select value into v_url from public.private_config where key = 'line_notify_url';
+    select value into v_sec from public.private_config where key = 'line_notify_secret';
+    if v_url is null or v_sec is null then return new; end if;
+    if old.line_user_id is not null and old.line_user_id is distinct from new.line_user_id then
+      perform net.http_post(url := v_url, headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', v_sec),
+                            body := jsonb_build_object('kind', 'richmenu_sync', 'line_user', old.line_user_id));   -- ยกเลิกการผูก/สลับเจ้าของ: ตรวจซ้ำที่ปลายทาง
+    end if;
+    if new.line_user_id is not null and new.line_user_id is distinct from old.line_user_id then
+      perform net.http_post(url := v_url, headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', v_sec),
+                            body := jsonb_build_object('kind', 'richmenu_sync', 'line_user', new.line_user_id));   -- ผูกสำเร็จ: ใส่ Rich menu
+    end if;
+  exception when others then
+    null;   -- ห้ามให้การแจ้ง LINE ทำให้การผูกบัญชีล้มเหลว
+  end;
+  return new;
+end $$;
+
+drop trigger if exists employees_line_menu on public.employees;
+create trigger employees_line_menu after update of line_user_id on public.employees
+  for each row execute function public.notify_line_menu();
+
+-- v115: ผู้สมัครใหม่ผูกบัญชี LINE ไม่ได้จนกว่า Admin จะอนุมัติ (approved = true)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_line.sql) — รันซ้ำได้
+-- และต้อง deploy line-webhook.ts (function "clever-task") ใหม่ เพื่อให้ข้อความต้อนรับ/ตอบกลับไม่แนบลิงก์ผูกบัญชี
+
+create or replace function public.request_line_link() returns text
+language plpgsql security definer set search_path = public as $$
+declare v_emp text; v_code text;
+begin
+  select id into v_emp from public.employees where user_id = auth.uid() and active and approved;
+  if v_emp is null then raise exception 'NOT_APPROVED:บัญชียังไม่ได้รับอนุมัติจาก Admin — ผูก LINE ได้หลังได้รับอนุมัติ'; end if;
+  loop
+    v_code := lpad((floor(random() * 1000000))::int::text, 6, '0');
+    exit when not exists (select 1 from public.line_link_codes where code = v_code and exp > now());
+  end loop;
+  insert into public.line_link_codes (emp_id, code, exp) values (v_emp, v_code, now() + interval '10 minutes')
+  on conflict (emp_id) do update set code = excluded.code, exp = excluded.exp;
+  return v_code;
+end $$;
+
+create or replace function public.link_line_by_code(p_code text, p_line_user text) returns text
+language plpgsql security definer set search_path = public as $$
+declare v_emp text; v_name text; v_ok boolean;
+begin
+  select emp_id into v_emp from public.line_link_codes where code = p_code and exp > now();
+  if v_emp is null then return null; end if;
+  select approved and active into v_ok from public.employees where id = v_emp;
+  if v_ok is not true then
+    delete from public.line_link_codes where emp_id = v_emp;
+    return '!NOT_APPROVED';   -- ยังไม่ได้รับอนุมัติ: ไม่ผูกบัญชี
+  end if;
+  update public.employees set line_user_id = null where line_user_id = p_line_user and id <> v_emp;   -- 1 LINE ต่อ 1 พนักงาน
+  update public.employees set line_user_id = p_line_user where id = v_emp returning name into v_name;
+  delete from public.line_link_codes where emp_id = v_emp;
+  return v_name;
+end $$;
+
+revoke all on function public.request_line_link() from public, anon;
+revoke all on function public.link_line_by_code(text, text) from public, anon, authenticated;
+grant execute on function public.request_line_link() to authenticated;
+grant execute on function public.link_line_by_code(text, text) to service_role;
+
+-- v117: ผู้สมัครใหม่เปิดลิงก์ LIFF ใน LINE → ระบบจำ LINE ไว้ (line_pending_id) → Admin อนุมัติ → ผูก LINE ให้อัตโนมัติ + Rich menu + แจ้งผลทาง LINE
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub15.sql และ hub16) — รันซ้ำได้
+-- ต้อง deploy Edge Function ใหม่ 3 ตัว: bright-handler (line-login.ts), clever-task (line-webhook.ts), hyper-api (line-notify.ts)
+
+alter table public.employees add column if not exists line_pending_id text;
+
+-- ก่อนบันทึกการอนุมัติ (approved: false → true): ถ้ามี LINE ที่จำไว้และยังไม่ได้ผูก → ผูกให้ทันที (1 LINE ต่อ 1 พนักงาน)
+-- trigger line_notify (แจ้ง "อนุมัติแล้ว") และ employees_line_menu (ใส่ Rich menu) ทำงานต่อโดยอัตโนมัติ
+create or replace function public.employees_autolink_line() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.approved is true and old.approved is not true and new.line_pending_id is not null and new.line_user_id is null then
+    update public.employees set line_user_id = null where line_user_id = new.line_pending_id and id <> new.id;
+    new.line_user_id := new.line_pending_id;
+    new.line_pending_id := null;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists employees_autolink_line on public.employees;
+create trigger employees_autolink_line before update on public.employees
+  for each row execute function public.employees_autolink_line();
+
+-- v119: ลงเวลาเข้างานได้ "วันละครั้งเดียว" — ออกงานแล้วลงเข้างานซ้ำไม่ได้ (ลืมลงเวลา/แก้ไข ให้ Super Admin ใช้เมนูแก้ไขบันทึกลงเวลา)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub14.sql) — รันซ้ำได้
+-- (ลงเวลาด้วย AI-Beacon นับเฉพาะครั้งแรกของวันอยู่แล้ว)
+
+create or replace function public.att_punch(p_kind text, p_lat double precision default null, p_lng double precision default null,
+                                            p_acc real default null, p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := public.my_emp_id(); v_last text; v_day date := (now() at time zone 'Asia/Bangkok')::date; r public.attendance_logs%rowtype;
+  v_sid text; v_sname text; v_d double precision; v_rad int; v_st record;
+begin
+  if v_emp is null then raise exception 'NO_EMPLOYEE'; end if;
+  if p_kind not in ('in', 'out', 'offsite_start', 'offsite_end') then raise exception 'BAD_KIND'; end if;
+  if p_kind in ('in', 'offsite_start') and not public.is_work_day(v_emp, v_day) then
+    raise exception 'NOT_WORK_DAY:วันนี้ไม่ใช่วันทำงานตามปฏิทินของระบบ จึงลงเวลาไม่ได้';
+  end if;
+  select kind into v_last from public.attendance_logs where emp_id = v_emp and (at at time zone 'Asia/Bangkok')::date = v_day order by at desc limit 1;
+  if p_kind = 'in' and v_last is not null then raise exception 'INVALID_SEQUENCE:ลงเวลาเข้างานได้วันละครั้งเท่านั้น (วันนี้ลงเวลาไปแล้ว) — หากต้องแก้ไขให้ติดต่อ Admin'; end if;
+  if p_kind = 'out'           and (v_last is null or v_last = 'out')                          then raise exception 'INVALID_SEQUENCE:ยังไม่ได้ลงเวลาเข้างาน'; end if;
+  if p_kind = 'out'           and v_last = 'offsite_start'                                    then raise exception 'INVALID_SEQUENCE:กรุณาบันทึกกลับจากนอกสถานที่ก่อน'; end if;
+  if p_kind = 'offsite_start' and (v_last is null or v_last in ('out', 'offsite_start'))      then raise exception 'INVALID_SEQUENCE:ต้องลงเวลาเข้างานก่อน และไม่อยู่ระหว่างออกนอกสถานที่'; end if;
+  if p_kind = 'offsite_end'   and (v_last is distinct from 'offsite_start')                   then raise exception 'INVALID_SEQUENCE:ยังไม่ได้บันทึกออกไปทำงานนอกสถานที่'; end if;
+  if exists (select 1 from public.attendance_logs where emp_id = v_emp and kind = p_kind and at > now() - interval '30 seconds') then raise exception 'INVALID_SEQUENCE:บันทึกซ้ำเร็วเกินไป'; end if;
+  -- ลงเวลาออกงานหลังทำงานครบ 8 ชม. ต้องระบุเหตุผล
+  if p_kind = 'out' and coalesce(trim(p_note), '') = '' then
+    select * into v_st from public.att_net_state(v_emp, v_day);
+    if v_st.is_open and v_st.net_secs >= 28800 then
+      raise exception 'REASON_REQUIRED:ทำงานครบ 8 ชั่วโมงแล้ว — กรุณาระบุเหตุผลที่ลงเวลาออกงาน (ช่องหมายเหตุ)';
+    end if;
+  end if;
+  if p_lat is not null and p_lng is not null then
+    select w.id, w.name, public.geo_dist_m(p_lat, p_lng, w.lat, w.lng), w.radius_m into v_sid, v_sname, v_d, v_rad
+      from public.work_sites w where w.active and public.site_applies(v_emp, w.id) order by 3 limit 1;
+  end if;
+  insert into public.attendance_logs (emp_id, kind, at, lat, lng, accuracy_m, site_id, site_name, dist_m, source, note)
+  values (v_emp, p_kind, clock_timestamp(), p_lat, p_lng, p_acc,
+          case when v_sid is not null and v_d <= v_rad then v_sid end,
+          case when v_sid is not null and v_d <= v_rad then v_sname else '' end,
+          case when v_sid is not null then round(v_d)::int end, 'app', left(coalesce(p_note, ''), 300))
+  returning * into r;
+  return to_jsonb(r);
+end $$;
+revoke all on function public.att_punch(text, double precision, double precision, real, text) from public, anon;
+grant execute on function public.att_punch(text, double precision, double precision, real, text) to authenticated;
