@@ -3284,7 +3284,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v118 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v119 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3473,6 +3473,7 @@ const fmtDist=d=>d<1000?Math.round(d)+' ม.':(d/1000).toFixed(1)+' กม.';
 function todayLogs(){const day=bkkDay();return att.logs.filter(l=>bkkDay(new Date(l.at))===day)}
 async function attPunch(kind){
   if(att.busy)return;const note=($('#attNote')?$('#attNote').value:'').trim();
+  if(kind==='in'&&todayLogs().some(l=>l.kind==='in'))return attSetMsg('ลงเวลาเข้างานได้วันละครั้งเท่านั้น (วันนี้ลงเวลาไปแล้ว) — หากต้องแก้ไขให้ติดต่อ Admin',true);
   if((kind==='in'||kind==='offsite_start')&&!attBase(me,bkkDay()).work)return attSetMsg('วันนี้ไม่ใช่วันทำงานตามปฏิทิน จึงลงเวลาไม่ได้',true);
   if(kind==='out'){const g=clockGateFor(me.id,bkkDay());if(g&&g.needOut&&!note){const n=$('#attNote');if(n)n.focus();return attSetMsg('ทำงานครบ 8 ชั่วโมงแล้ว — กรุณาระบุเหตุผลที่ลงเวลาออกงานในช่องหมายเหตุ ก่อนกด "ลงเวลาออกงาน"',true)}}
   if(kind==='offsite_start'&&!note)return attSetMsg('กรุณาระบุว่าไปที่ไหน/ธุระอะไร ก่อนบันทึกออกนอกสถานที่',true);
@@ -3497,7 +3498,7 @@ async function renderAtt(){
   const stCol=!lk?'var(--mut)':lk==='out'?'var(--bad)':lk==='offsite_start'?'var(--sga)':'var(--cost)';
   if(!attReq.loaded&&!att.reqBusy){att.reqBusy=true;loadAttReq().then(()=>{att.reqBusy=false;if(appMode==='att')renderAtt()})}
   const wd=attBase(me,bkkDay());   // ลงเวลาเฉพาะวันทำงานตามปฏิทิน (โหมดทดลอง: ทุกวัน) (ตั้งค่าข้อมูล › วันหยุด / ทำงานวันเสาร์)
-  const canIn=wd.work&&(!lk||lk==='out'),canOff=wd.work&&(lk==='in'||lk==='offsite_end'),canBack=lk==='offsite_start',canOut=lk==='in'||lk==='offsite_end';
+  const canIn=wd.work&&!first,canOff=wd.work&&(lk==='in'||lk==='offsite_end'),canBack=lk==='offsite_start',canOut=lk==='in'||lk==='offsite_end';
   const needOutUi=!!(clockGateFor(me.id,bkkDay()).needOut)&&canOut;
   const posTxt=(()=>{if(!att.pos)return 'ตำแหน่งจะถูกบันทึกเมื่อกดลงเวลา (ต้องอนุญาตให้ใช้ GPS)';const n=nearest(att.pos);
     return n?(n.d<=n.s.radius_m?`📍 อยู่ในพื้นที่ ${esc(n.s.name)} (ห่าง ${fmtDist(n.d)})`:`📍 นอกพื้นที่ — ใกล้สุด ${esc(n.s.name)} ห่าง ${fmtDist(n.d)}`):'📍 ยังไม่ได้ตั้งจุดสำนักงาน (ผู้ดูแลกำหนดได้ด้านล่าง)'})();
@@ -3516,6 +3517,7 @@ async function renderAtt(){
       ${canOff||needOutUi?`<input id="attNote" placeholder="${needOutUi?'เหตุผลที่ลงเวลาออกงานหลังครบ 8 ชม. (จำเป็น)':'ออกไปที่ไหน / ธุระอะไร (จำเป็นเมื่อออกนอกสถานที่)'}" style="margin-bottom:10px">`:''}
       <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
         ${canIn?`<button class="btn big ok" data-ap="in">🟢 ลงเวลาเข้างาน</button>`:''}
+        ${first&&lk==='out'?`<div class="hint" style="width:100%">ลงเวลาเข้างานได้วันละครั้งเท่านั้น — วันนี้ออกงานแล้ว หากลืมลงเวลาหรือต้องการแก้ไข ให้ติดต่อ Admin</div>`:''}
         ${canOff?`<button class="btn big warn" data-ap="offsite_start">🚗 ออกไปทำงานนอกสถานที่</button>`:''}
         ${canBack?`<button class="btn big ok" data-ap="offsite_end">🏢 กลับจากนอกสถานที่</button>`:''}
         ${canOut?`<button class="btn big bad" data-ap="out">🔴 ลงเวลาออกงาน</button>`:''}</div>
