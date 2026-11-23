@@ -1101,9 +1101,29 @@ function doApprove(t,x){          // อนุมัติ 1 ขั้นขอ�
   if(pre)x.ap.pre=true;
   t.approvedBy=by;t.approvedAt=now;finalizeSheet(t);
 }
+/* ส่ง final: รวมรายการของโปรเจกต์เดียวกัน (Cost: รหัสเดียวกัน · SG&A: ประเภท+อ้างอิงเดียวกัน) เป็น 1 รายการ — ชั่วโมงรวมกัน หมายเหตุต่อกัน ไฟล์แนบ/รูปถ่ายรวมมาทั้งหมด
+   รวมทุกรายการ รวมที่เคยอนุมัติ/ส่ง Pre-approval ไว้ — การ Pre-approval ที่ผ่านมาถูกยกเลิก และเริ่มอนุมัติใหม่ทั้งหมดตอนส่ง final */
+const mergeKey=x=>x.cat+'|'+(x.code||'')+'|'+(x.sgaId||'');
+function mergePlan(t){const g={};t.entries.forEach(x=>{(g[mergeKey(x)]=g[mergeKey(x)]||[]).push(x)});return Object.values(g).filter(a=>a.length>1)}
+function mergeByProject(t){
+  const seen=new Map(),out=[];
+  t.entries.forEach(x=>{
+    const k=mergeKey(x),g=seen.get(k);
+    if(!g){const c={...x};delete c.ap;seen.set(k,c);out.push(c);return}
+    g.hours+=x.hours;
+    const ns=[...new Set([g.note,x.note].map(z=>String(z||'').trim()).filter(Boolean).flatMap(z=>z.split(' / ')))];g.note=ns.join(' / ');
+    if(x.att&&x.att.length)g.att=[...(g.att||[]),...x.att.filter(a=>!(g.att||[]).some(b=>b.p===a.p))];
+    if(!g.rb&&x.rb){g.rb=x.rb;g.rbn=x.rbn}});
+  t.entries=out}
 $('#submit').onclick=async()=>{const t=curSheet(false);if(!t)return;await mergeSrvAp(t);
+  {const mp=mergePlan(t),pre=t.entries.filter(x=>['A','P'].includes(entState(t,x))).length;
+    if(mp.length||pre){const msg=['ส่ง final:'];
+      if(mp.length)msg.push(`• รวมรายการของโปรเจกต์เดียวกันเป็น 1 รายการ (${mp.reduce((a,x)=>a+x.length,0)} รายการ → ${mp.length} รายการ) พร้อมรวมไฟล์แนบ/รูปถ่ายทั้งหมด`);
+      if(pre)msg.push(`• ยกเลิก Pre-approval ที่ผ่านมา (${pre} รายการ) และเริ่มอนุมัติใหม่ทั้งหมดตามลำดับขั้น`);
+      if(!confirm(msg.join('\n')+'\n\nต้องการส่งหรือไม่?'))return;
+      mergeByProject(t)}}
   const nowIso=new Date().toISOString();
-  t.entries.forEach(x=>{const s=entState(t,x);if(s!=='A'&&s!=='P')x.ap={s:'P',done:[],hist:[],sub:nowIso}});       // รายการที่อนุมัติแล้ว / ส่ง Pre-approval ไว้แล้ว คงเดิม ที่เหลือเริ่มขั้นแรก
+  t.entries.forEach(x=>{x.ap={s:'P',done:[],hist:[],sub:nowIso}});       // ส่ง final: ทุกรายการเริ่มอนุมัติขั้นแรกใหม่ (ยกเลิก Pre-approval เดิม)
   t.status='Pending';t.submittedAt=nowIso;t.rejectNote='';   // ส่ง final (ครบ 8 ชม.) — รายการ Pre-approval ที่รออยู่เดินต่อตามลำดับเดิม
   t.entries.forEach(x=>{if(x.ap&&x.ap.s==='P'&&chainOf(t,x).length&&!nextRole(t,x))x.ap.s='A'});
   finalizeSheet(t);save();renderLog()};
@@ -3233,7 +3253,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v110 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v112 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
