@@ -2900,7 +2900,12 @@ if(CLOUD){
   }
   function showPending(){
     loginMsg('');showMode('pending');
-    $('#pendLine').innerHTML='<div class="hint">ยังผูกบัญชี LINE ไม่ได้ — ต้องรอ Admin อนุมัติบัญชีก่อน เมื่อได้รับอนุมัติแล้วหน้านี้จะพาไปขั้นตอนผูกบัญชีให้อัตโนมัติ (กด "ตรวจสอบสถานะ" หรือรอสักครู่)</div>';
+    const pl=$('#pendLine'),hintLine=t=>pl.innerHTML=`<div class="hint">${t}</div>`;
+    hintLine('ยังผูกบัญชี LINE ไม่ได้ — ต้องรอ Admin อนุมัติบัญชีก่อน เมื่อได้รับอนุมัติ ระบบจะผูก LINE ให้และแจ้งผลทาง LINE (หน้านี้ตรวจสถานะให้อัตโนมัติ)');
+    if(window.lineRegister)window.lineRegister().then(st=>{
+      if(st==='pending')hintLine('✓ ระบบจำ LINE ของคุณแล้ว — เมื่อ Admin อนุมัติ ระบบจะผูก LINE ให้อัตโนมัติและแจ้งผลทาง LINE');
+      else if(st==='linked')pendRefresh(false);
+      else hintLine('ให้ระบบรู้จัก LINE ของคุณ: เปิดแอปนี้จากลิงก์ในแชต LINE@ ของบริษัท (ลิงก์ลงทะเบียน) — เมื่อ Admin อนุมัติ ระบบจะผูก LINE ให้และแจ้งผลทาง LINE โดยไม่ต้องพิมพ์รหัส')});
     clearInterval(pendTimer);pendTimer=setInterval(()=>pendRefresh(false),20000);
   }
   $('#pendCheck').onclick=()=>pendRefresh(true);
@@ -2910,6 +2915,7 @@ if(CLOUD){
   async function lineGate(){
     try{const {data,error}=await sb.from('employees').select('line_user_id').eq('id',me.id).limit(1);if(error)throw error;me.lineLinked=!!(data&&data[0]&&data[0].line_user_id)}catch(e){console.warn('ตรวจการผูก LINE ไม่ได้',e.message||e);return true}
     if(me.lineLinked)return true;
+    if(window.lineRegister&&(await window.lineRegister())==='linked'){me.lineLinked=true;return true}   // เปิดจาก LINE (LIFF): ผูกให้ทันทีโดยไม่ต้องใช้รหัส
     let g=$('#lineGate');if(g)g.remove();g=document.createElement('div');g.id='lineGate';
     g.style.cssText='position:fixed;inset:0;z-index:9000;background:linear-gradient(135deg,#4f6df5,#7a5cf0);overflow:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center';
     g.innerHTML=`<div class="card" style="max-width:520px;width:100%;margin-top:6vh"><h2 style="margin-top:0">🔗 ผูกบัญชี LINE ก่อนเข้าใช้งาน</h2>
@@ -3009,6 +3015,19 @@ async function liffAutoLogin(){
     return error?dbg('สร้างเซสชันไม่สำเร็จ: '+error.message):(data&&data.session)||null;
   }catch(e){console.warn('liffAutoLogin',e);return dbg('ผิดพลาด: '+(e.message||e))}
 }
+/* ผู้สมัครใหม่/ผู้ที่ยังไม่ผูก เปิดแอปจากลิงก์ LIFF ใน LINE: ส่ง ID token + session ให้ Edge Function (bright-handler, action=register_line)
+   → ยังไม่อนุมัติ: จำ LINE ไว้ ('pending') แล้วผูกให้อัตโนมัติเมื่ออนุมัติ · อนุมัติแล้ว: ผูกทันที ('linked') · เปิดนอก LINE: คืน null */
+async function lineRegister(){
+  try{
+    if(!LIFF_ID||!(await liffP)||!liff.isInClient())return null;
+    if(!liff.isLoggedIn()){liff.login();return null}
+    const idt=liff.getIDToken();if(!idt)return null;
+    const {data:s}=await sb.auth.getSession();if(!s||!s.session)return null;
+    const r=await fetch(CONFIG.supabaseUrl+'/functions/v1/bright-handler',{method:'POST',headers:{'Content-Type':'application/json',apikey:CONFIG.supabaseKey,Authorization:'Bearer '+s.session.access_token},body:JSON.stringify({action:'register_line',id_token:idt})});
+    const j=await r.json().catch(()=>({}));return r.ok?(j.state||null):null;
+  }catch(e){console.warn('lineRegister',e);return null}
+}
+window.lineRegister=lineRegister;
 window.liffAutoLogin=liffAutoLogin;   // ให้ cloudInit (อยู่นอกบล็อกนี้) เรียกใช้ได้
 function byeScreen(){
   $('#pinScreen')&&$('#pinScreen').classList.add('hide');$('#idleWarn')&&$('#idleWarn').classList.add('hide');
@@ -3263,7 +3282,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v116 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div><div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v117 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
