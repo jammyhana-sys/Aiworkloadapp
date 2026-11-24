@@ -3289,7 +3289,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v133 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v134 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3546,7 +3546,7 @@ const carIcon=(color,label,badge)=>L.divIcon({className:'',html:`<div style="pos
 /* ตัวเลขบนหัวรถ = จำนวน comment งานที่พนักงานบันทึกในรอบนี้ (1, 2, 3 …) ย้ายตำแหน่งตามทิศหัวรถ */
 function applyCar(m){const el=m.getElement&&m.getElement();if(!el)return;const d=m._deg||0,w=el.querySelector('[data-car]'),b=el.querySelector('[data-badge]');if(w)w.style.transform=`rotate(${d}deg)`;if(b){const r=d*Math.PI/180;b.style.transform=`translate(-50%,-50%) translate(${(Math.sin(r)*30).toFixed(1)}px,${(-Math.cos(r)*30).toFixed(1)}px)`}}
 function setCarBadge(m,color,label,badge){if(!m)return;const b=badge||'';if(m._badge===b&&m._col===color)return;m._badge=b;m._col=color;m.setIcon(carIcon(color,label,b));applyCar(m)}
-const noteIcon=(n,c)=>L.divIcon({className:'',html:`<div style="background:${c};color:#fff;border:2px solid #fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;box-shadow:0 1px 4px rgba(0,0,0,.5)">${n}</div>`,iconSize:[24,24],iconAnchor:[12,12]});
+const noteIcon=(n,c)=>L.divIcon({className:'',html:`<div title="#${n}" style="background:${c};border:2px solid #fff;border-radius:50%;width:12px;height:12px;box-shadow:0 1px 3px rgba(0,0,0,.55)"></div>`,iconSize:[12,12],iconAnchor:[6,6]});   // จุดเล็กไม่มีตัวเลข (ตัวเลขแสดงเฉพาะบนหัวรถ วงเดียว) · แตะ/วางเมาส์ดู comment
 const bearingDeg=(a,b)=>{const t=x=>x*Math.PI/180,y=Math.sin(t(b[1]-a[1]))*Math.cos(t(b[0])),x=Math.cos(t(a[0]))*Math.sin(t(b[0]))-Math.sin(t(a[0]))*Math.cos(t(b[0]))*Math.cos(t(b[1]-a[1]));return (Math.atan2(y,x)*180/Math.PI+360)%360};
 function carTurn(m,from,to){if(Math.abs(from[0]-to[0])+Math.abs(from[1]-to[1])<0.00002)return;m._deg=Math.round(bearingDeg(from,to));applyCar(m)}
 function trkGlide(m,to){const f0=m.getLatLng(),t0=performance.now(),D=900;const f=n=>{const k=Math.min(1,(n-t0)/D);m.setLatLng([f0.lat+(to[0]-f0.lat)*k,f0.lng+(to[1]-f0.lng)*k]);if(k<1)requestAnimationFrame(f)};requestAnimationFrame(f)}
@@ -3602,7 +3602,8 @@ function trkNoteSync(){
   if(!trk.map||!trk.mk)return;
   setCarBadge(trk.mk,trk.myCol||userColor(me.id),'คุณ',trk.notes.length||'');
   if(!trk.nl)trk.nl=L.layerGroup().addTo(trk.map);trk.nl.clearLayers();
-  trk.notes.forEach(n=>{if(n.lat!=null&&n.lng!=null)L.marker([+n.lat,+n.lng],{icon:noteIcon(n.seq,trk.myCol||userColor(me.id))}).bindTooltip(`#${n.seq} ${trTime(n.at)} ${esc(n.note)}`).addTo(trk.nl)})}
+  const lp=trk.pts[trk.pts.length-1];   // หมุดหมายเลขที่อยู่ใกล้รถ (< 40 ม.) ไม่แสดง เพื่อให้เห็นตัวเลขวงเดียว (ตัวเลขบนหัวรถ)
+  trk.notes.forEach(n=>{if(n.lat!=null&&n.lng!=null&&!(lp&&hav(+n.lat,+n.lng,lp[0],lp[1])<40))L.marker([+n.lat,+n.lng],{icon:noteIcon(n.seq,trk.myCol||userColor(me.id))}).bindTooltip(`#${n.seq} ${trTime(n.at)} ${esc(n.note)}`).addTo(trk.nl)})}
 async function tripNotesLoad(){if(!trk.logId)return;try{const r=await sb.from('att_trip_notes').select('*').eq('log_id',trk.logId).order('seq');if(!r.error&&r.data)trk.notes=r.data}catch(e){}tripNotesRender()}
 async function tripNoteSave(){
   const inp=document.getElementById('tripNote'),msg=document.getElementById('tripNoteMsg');if(!inp||!msg)return;
@@ -3673,7 +3674,7 @@ async function trackAdminInit(){
       mk[k].setOpacity(dim?.2:1)
       if(!sel||sel===k)all=all.concat(s.line)});
     if(!noteLayer)noteLayer=L.layerGroup().addTo(map);noteLayer.clearLayers();
-    S.forEach(s=>{if(!(s.notes&&s.notes.length)||(sel?sel!==s.id:s.end))return;s.notes.forEach(n=>{if(n.lat!=null&&n.lng!=null)L.marker([+n.lat,+n.lng],{icon:noteIcon(n.seq,cm[s.emp])}).bindTooltip(`${nameOf(s.emp)} #${n.seq} ${tf(n.at)} น. — ${esc(n.note)}`).addTo(noteLayer)})});
+    S.forEach(s=>{if(!(s.notes&&s.notes.length)||(sel?sel!==s.id:s.end))return;const lp=s.line[s.line.length-1];s.notes.forEach(n=>{if(n.lat!=null&&n.lng!=null&&!(!s.end&&lp&&hav(+n.lat,+n.lng,lp[0],lp[1])<40))L.marker([+n.lat,+n.lng],{icon:noteIcon(n.seq,cm[s.emp])}).bindTooltip(`${nameOf(s.emp)} #${n.seq} ${tf(n.at)} น. — ${esc(n.note)}`).addTo(noteLayer)})});
     if(!stopLayer)stopLayer=L.layerGroup().addTo(map);stopLayer.clearLayers();
     S.forEach(s=>{if(!s.trip||(!s.end&&sel!==s.id))return;s.trip.stops.forEach(st=>L.marker([st.lat,st.lng],{icon:L.divIcon({className:'',html:'<div style="background:#f29b2f;color:#fff;border:2px solid #fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.4)">P</div>',iconSize:[22,22],iconAnchor:[11,11]})}).bindTooltip(`${nameOf(s.emp)} หยุดนิ่ง ${st.minutes} นาที (${tf(st.from)}–${tf(st.to)} น.)`).addTo(stopLayer))});
     Object.keys(pl).forEach(k=>{if(!keep.has(k)){map.removeLayer(pl[k]);delete pl[k]}});Object.keys(mk).forEach(k=>{if(!keep.has(k)){map.removeLayer(mk[k]);delete mk[k]}});
