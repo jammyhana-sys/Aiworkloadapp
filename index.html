@@ -3289,7 +3289,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v131 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v132 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3536,8 +3536,13 @@ async function selfieCapture(info){
 const trk={id:null,last:0,wl:null,msg:'',pts:[],map:null,mk:null,pl:null,ac:null,logId:null,seeded:false,seen:0,oth:{},othT:null,follow:true};
 /* แผนที่ของพนักงานเอง ระหว่างออกนอกสถานที่: จุดเคลื่อนที่ตามตำแหน่งจริง + เส้นทางที่เดินมา (แบบ LINEMAN) */
 /* หมุดเป็นรูปรถยนต์สีขาว (มองจากด้านบน) หันหน้าตามทิศที่เคลื่อนที่ + วงกระพริบสีประจำตัว */
-const CAR_SVG='<svg viewBox="0 0 28 44" width="28" height="44"><rect x="0.5" y="9" width="3.5" height="9" rx="1.7" fill="#1e2740"/><rect x="24" y="9" width="3.5" height="9" rx="1.7" fill="#1e2740"/><rect x="0.5" y="28" width="3.5" height="9" rx="1.7" fill="#1e2740"/><rect x="24" y="28" width="3.5" height="9" rx="1.7" fill="#1e2740"/><rect x="3.5" y="1.5" width="21" height="41" rx="9" fill="#fff" stroke="#2b3550" stroke-width="1.8"/><path d="M7 14 Q14 9.5 21 14 L20 19.5 H8 Z" fill="#6f81a8"/><rect x="7.5" y="27" width="13" height="7.5" rx="2.5" fill="#6f81a8"/><rect x="7.5" y="21" width="13" height="4.5" rx="1.5" fill="#e8edf6"/></svg>';
-const carIcon=(color,label)=>L.divIcon({className:'',html:`<div style="position:relative;width:28px;height:44px"><div class="carring" style="--c:${color}"></div><div class="carwrap" data-car>${CAR_SVG}</div>${label?`<div class="trklb" style="left:34px;top:12px">${label}</div>`:''}</div>`,iconSize:[28,44],iconAnchor:[14,22]});
+const USER_COLORS=['#e5484d','#3e63dd','#14a37f','#f76b15','#9b6bd6','#2bb3c0','#d6409f','#7ccf5a','#c28b6b','#0b8f4d','#f5c518','#6e56cf','#e93d82','#12a594','#ab6400','#0090ff','#a3b800','#8e4ec6','#ff8b3e','#5b6b7f'];
+const userHash=id=>{let x=0;String(id||'').split('').forEach(c=>x=(x*31+c.charCodeAt(0))>>>0);return x%USER_COLORS.length};
+const userColor=id=>USER_COLORS[userHash(id)];   // สีรถประจำตัวพนักงานแต่ละคน (คงที่)
+/* หลายคนอยู่บนแผนที่เดียวกัน: ถ้าสีชนกัน ให้คนถัดไปใช้สีที่ยังว่าง (เรียงตามรหัสพนักงาน ผลคงที่) */
+const userColors=ids=>{const m={},used=new Set();[...new Set(ids)].sort().forEach(id=>{let i=userHash(id);for(let k=0;used.has(i)&&k<USER_COLORS.length;k++)i=(i+1)%USER_COLORS.length;used.add(i);m[id]=USER_COLORS[i]});return m};
+const carSvg=c=>`<svg viewBox="0 0 28 44" width="28" height="44"><rect x="0.5" y="9" width="3.5" height="9" rx="1.7" fill="#1e2740"/><rect x="24" y="9" width="3.5" height="9" rx="1.7" fill="#1e2740"/><rect x="0.5" y="28" width="3.5" height="9" rx="1.7" fill="#1e2740"/><rect x="24" y="28" width="3.5" height="9" rx="1.7" fill="#1e2740"/><rect x="3.5" y="1.5" width="21" height="41" rx="9" fill="${c}" stroke="#1e2740" stroke-width="1.8"/><path d="M7 14 Q14 9.5 21 14 L20 19.5 H8 Z" fill="rgba(20,30,60,.62)"/><rect x="7.5" y="27" width="13" height="7.5" rx="2.5" fill="rgba(20,30,60,.62)"/><rect x="7.5" y="21" width="13" height="4.5" rx="1.5" fill="rgba(255,255,255,.38)"/></svg>`;
+const carIcon=(color,label)=>L.divIcon({className:'',html:`<div style="position:relative;width:28px;height:44px"><div class="carring" style="--c:${color}"></div><div class="carwrap" data-car>${carSvg(color)}</div>${label?`<div class="trklb" style="left:34px;top:12px">${label}</div>`:''}</div>`,iconSize:[28,44],iconAnchor:[14,22]});
 const bearingDeg=(a,b)=>{const t=x=>x*Math.PI/180,y=Math.sin(t(b[1]-a[1]))*Math.cos(t(b[0])),x=Math.cos(t(a[0]))*Math.sin(t(b[0]))-Math.sin(t(a[0]))*Math.cos(t(b[0]))*Math.cos(t(b[1]-a[1]));return (Math.atan2(y,x)*180/Math.PI+360)%360};
 function carTurn(m,from,to){if(Math.abs(from[0]-to[0])+Math.abs(from[1]-to[1])<0.00002)return;const el=m.getElement&&m.getElement(),w=el&&el.querySelector('[data-car]');if(w)w.style.transform=`rotate(${bearingDeg(from,to).toFixed(0)}deg)`}
 function trkGlide(m,to){const f0=m.getLatLng(),t0=performance.now(),D=900;const f=n=>{const k=Math.min(1,(n-t0)/D);m.setLatLng([f0.lat+(to[0]-f0.lat)*k,f0.lng+(to[1]-f0.lng)*k]);if(k<1)requestAnimationFrame(f)};requestAnimationFrame(f)}
@@ -3553,10 +3558,12 @@ async function trkOthers(){
     const live=[];Object.entries(by).forEach(([emp,L2])=>{let cur=null;L2.forEach(l=>{if(l.kind==='offsite_start')cur={id:l.id,emp,start:l};else if(cur&&(l.kind==='offsite_end'||l.kind==='out'))cur=null});if(cur)live.push(cur)});
     const byLog={};tk.data.forEach(t=>(byLog[t.log_id]=byLog[t.log_id]||[]).push(t));
     const COL=['#e5484d','#14a37f','#f29b2f','#9b6bd6','#2bb3c0','#c28b6b'],keep=new Set();
-    live.forEach((s,i)=>{const col=COL[i%COL.length],line=[];if(s.start.lat!=null)line.push([+s.start.lat,+s.start.lng]);(byLog[s.id]||[]).forEach(t=>line.push([+t.lat,+t.lng]));if(!line.length)return;
+    const cm=userColors([me.id,...live.map(x=>x.emp)]);
+    if(trk.mk&&trk.myCol!==cm[me.id]){trk.myCol=cm[me.id];trk.mk.setIcon(carIcon(trk.myCol,'คุณ'));trk.pl.setStyle({color:trk.myCol});trk.ac.setStyle({color:trk.myCol})}
+    live.forEach((s,i)=>{const col=cm[s.emp],line=[];if(s.start.lat!=null)line.push([+s.start.lat,+s.start.lng]);(byLog[s.id]||[]).forEach(t=>line.push([+t.lat,+t.lng]));if(!line.length)return;
       keep.add(s.id);const last=line[line.length-1],nm=(find(db.employees,s.emp)||{}).name||s.emp;let o=trk.oth[s.id];
-      if(!o){o=trk.oth[s.id]={pl:L.polyline(line,{color:col,weight:4,opacity:.8}).addTo(trk.map),mk:L.marker(last,{icon:carIcon(col,esc(nm))}).addTo(trk.map)}}
-      else{o.pl.setLatLngs(line);const mp=o.mk.getLatLng();carTurn(o.mk,[mp.lat,mp.lng],last);trkGlide(o.mk,last)}});
+      if(!o){o=trk.oth[s.id]={pl:L.polyline(line,{color:col,weight:4,opacity:.8}).addTo(trk.map),mk:L.marker(last,{icon:carIcon(col,esc(nm))}).addTo(trk.map),col}}
+      else{o.pl.setLatLngs(line);if(o.col!==col){o.col=col;o.pl.setStyle({color:col});o.mk.setIcon(carIcon(col,esc(nm)))}const mp=o.mk.getLatLng();carTurn(o.mk,[mp.lat,mp.lng],last);trkGlide(o.mk,last)}});
     Object.keys(trk.oth).forEach(k=>{if(!keep.has(k)){trk.map.removeLayer(trk.oth[k].pl);trk.map.removeLayer(trk.oth[k].mk);delete trk.oth[k]}});
     const n=document.getElementById('trkOthN');if(n)n.textContent=keep.size?`พนักงานคนอื่นที่ออกนอกสถานที่ตอนนี้ ${keep.size} คน`:'ไม่มีพนักงานคนอื่นออกนอกสถานที่ตอนนี้';
   }catch(e){console.warn('trkOthers',e)}}
@@ -3570,9 +3577,9 @@ async function myMapEnsure(){
     const c=trk.pts.length?trk.pts[trk.pts.length-1]:(att.pos?[att.pos.lat,att.pos.lng]:[13.7563,100.5018]);
     trk.map=L.map(el,{scrollWheelZoom:true}).setView(c,trk.pts.length?16:12);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(trk.map);
-    trk.pl=L.polyline(trk.pts,{color:'#4f6df5',weight:5,opacity:.9}).addTo(trk.map);
-    trk.ac=L.circle(c,{radius:30,color:'#4f6df5',weight:1,fillOpacity:.1}).addTo(trk.map);
-    trk.mk=L.marker(c,{icon:carIcon('#4f6df5','คุณ')}).addTo(trk.map);
+    trk.pl=L.polyline(trk.pts,{color:userColor(me.id),weight:5,opacity:.9}).addTo(trk.map);
+    trk.ac=L.circle(c,{radius:30,color:userColor(me.id),weight:1,fillOpacity:.1}).addTo(trk.map);
+    trk.myCol=trk.myCol||userColor(me.id);trk.mk=L.marker(c,{icon:carIcon(trk.myCol,'คุณ')}).addTo(trk.map);
     setTimeout(()=>trk.map&&trk.map.invalidateSize(),200);
     trkOthers();trk.othT=setInterval(trkOthers,10000)}
   {const bm=document.getElementById('trkMe'),ba=document.getElementById('trkAll');
@@ -3625,13 +3632,13 @@ async function trackAdminInit(){
     map=L.map($('#trkMap'),{scrollWheelZoom:true}).setView([13.7563,100.5018],11);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);setTimeout(()=>map.invalidateSize(),200);return true}
   async function drawMap(S){
     if(!S.length||!(await ensureMap()))return;
-    const keep=new Set();let all=[];
-    S.forEach((s,i)=>{const col=COL[i%COL.length],live=!s.end,k=s.id;keep.add(k);if(!s.line.length)return;
+    const keep=new Set();let all=[];const cm=userColors(S.map(x=>x.emp));
+    S.forEach((s,i)=>{const col=cm[s.emp],live=!s.end,k=s.id;keep.add(k);if(!s.line.length)return;
       if(pl[k])pl[k].setLatLngs(s.line).setStyle({color:col,dashArray:live?null:'6 6',opacity:live?.9:.55});else pl[k]=L.polyline(s.line,{color:col,weight:live?5:3,opacity:live?.9:.55,dashArray:live?null:'6 6'}).addTo(map);
       const last=s.line[s.line.length-1];
       const dot=L.divIcon({className:'',html:'<div style="width:12px;height:12px;border-radius:50%;background:#8a94a6;border:2px solid #fff"></div>',iconSize:[18,18],iconAnchor:[9,9]});
-      if(mk[k]){if(live){const mp=mk[k].getLatLng();carTurn(mk[k],[mp.lat,mp.lng],last);glide(mk[k],last)}else{if(mk[k]._car){mk[k].setIcon(dot);mk[k]._car=false}mk[k].setLatLng(last)}}
-      else{mk[k]=L.marker(last,{icon:live?carIcon(col,esc(nameOf(s.emp))):dot}).addTo(map);mk[k]._car=live}
+      if(mk[k]){if(live){if(mk[k]._col!==col){mk[k]._col=col;mk[k].setIcon(carIcon(col,esc(nameOf(s.emp))))}const mp=mk[k].getLatLng();carTurn(mk[k],[mp.lat,mp.lng],last);glide(mk[k],last)}else{if(mk[k]._car){mk[k].setIcon(dot);mk[k]._car=false}mk[k].setLatLng(last)}}
+      else{mk[k]=L.marker(last,{icon:live?carIcon(col,esc(nameOf(s.emp))):dot}).addTo(map);mk[k]._car=live;mk[k]._col=col}
       if(!sel||sel===k)all=all.concat(s.line)});
     if(!stopLayer)stopLayer=L.layerGroup().addTo(map);stopLayer.clearLayers();
     S.forEach(s=>{if(!s.trip||(!s.end&&sel!==s.id))return;s.trip.stops.forEach(st=>L.marker([st.lat,st.lng],{icon:L.divIcon({className:'',html:'<div style="background:#f29b2f;color:#fff;border:2px solid #fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.4)">P</div>',iconSize:[22,22],iconAnchor:[11,11]})}).bindTooltip(`${nameOf(s.emp)} หยุดนิ่ง ${st.minutes} นาที (${tf(st.from)}–${tf(st.to)} น.)`).addTo(stopLayer))});
@@ -3639,10 +3646,10 @@ async function trackAdminInit(){
     if(all.length&&(!fitted)){map.fitBounds(L.latLngBounds(all).pad(.25),{maxZoom:17});fitted=true}}
   function drawList(S){
     const el=$('#trkList');if(!S.length){el.innerHTML='<div class="hint">วันนี้ยังไม่มีการออกไปทำงานนอกสถานที่</div>';return}
-    const now=Date.now();
+    const now=Date.now(),cm=userColors(S.map(x=>x.emp));
     el.innerHTML=[...S].sort((a,b)=>(!!a.end)-(!!b.end)||new Date(b.start.at)-new Date(a.start.at)).map(s=>{const i=S.indexOf(s),live=!s.end;
       return `<div data-trk="${esc(s.id)}" style="display:flex;gap:10px;align-items:flex-start;padding:9px 6px;border-bottom:1px solid var(--line);cursor:pointer;${sel===s.id?'background:rgba(79,109,245,.08);border-radius:10px':''}">
-        <i style="width:12px;height:12px;border-radius:50%;background:${COL[i%COL.length]};margin-top:6px;flex:none"></i>
+        <i style="width:12px;height:12px;border-radius:50%;background:${cm[s.emp]};margin-top:6px;flex:none"></i>
         <div style="flex:1;min-width:0"><b>${esc(nameOf(s.emp))}</b> <span class="tag" style="background:${live?'var(--cost)':'var(--mut)'}">${live?'🟢 กำลังออกนอกสถานที่':'⏹ กลับแล้ว '+tf(s.end.at)+' น.'}</span>
         <div class="hint">ออกเมื่อ ${tf(s.start.at)} น.${s.start.note?' · '+esc(s.start.note):''}</div>
         <div class="hint">${live?(s.pts.length?`อัปเดตตำแหน่งล่าสุด ${ago(now-new Date(s.lastAt))} ที่แล้ว · ${s.pts.length} จุด`:'รอรับตำแหน่งแรกจากเครื่องพนักงาน…'):`เส้นทาง ${s.pts.length} จุด`}</div>
