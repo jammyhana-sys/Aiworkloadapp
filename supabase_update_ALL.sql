@@ -2720,3 +2720,599 @@ begin
 end $$;
 revoke all on function public.att_punch(text, double precision, double precision, real, text) from public, anon;
 grant execute on function public.att_punch(text, double precision, double precision, real, text) to authenticated;
+
+
+-- v121: สมัครสมาชิกใหม่ต้อง "รหัสพนักงาน + อีเมลบริษัท" ตรงกับข้อมูลพนักงานในฐานข้อมูล (นำเข้าจาก Empeo/ไฟล์สมาชิกไว้ก่อน)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_no_preapprove.sql) — รันซ้ำได้
+-- กติกา: ต้องมีแถวพนักงานที่ id = รหัสที่กรอก และ lower(email) = อีเมลที่กรอก · ยังไม่เคยมีผู้สมัคร (user_id ว่าง) · พนักงานยัง active
+--        ไม่ตรง = สมัครไม่ได้ (ไม่สร้างแถวพนักงานใหม่อัตโนมัติอีกต่อไป) · สมัครแล้วยังต้องรอ Admin อนุมัติเหมือนเดิม
+
+-- ตรวจก่อนสมัคร (เรียกจากหน้าสมัคร ก่อนสร้างบัญชี) — ตอบเฉพาะ OK / MISMATCH / TAKEN ไม่เปิดเผยข้อมูลอื่น
+create or replace function public.check_signup(p_emp text, p_email text) returns text
+language plpgsql stable security definer set search_path = public as $$
+declare e public.employees%rowtype;
+begin
+  select * into e from public.employees
+   where lower(trim(id)) = lower(trim(coalesce(p_emp, ''))) and lower(trim(coalesce(email, ''))) = lower(trim(coalesce(p_email, ''))) and active
+   limit 1;
+  if e.id is null then return 'MISMATCH'; end if;
+  if e.user_id is not null then return 'TAKEN'; end if;
+  return 'OK';
+end $$;
+revoke all on function public.check_signup(text, text) from public;
+grant execute on function public.check_signup(text, text) to anon, authenticated;
+
+-- ตัวสร้างบัญชีผู้สมัคร: ผูกกับแถวพนักงานที่รหัสและอีเมลตรงกันเท่านั้น (บังคับรออนุมัติเสมอ) · ไม่ตรง → ปฏิเสธการสมัคร
+create or replace function public.handle_new_user() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := nullif(trim(new.raw_user_meta_data->>'emp_id'), '');
+begin
+  update public.employees set user_id = new.id, approved = false
+   where lower(trim(id)) = lower(coalesce(v_emp, '')) and lower(trim(coalesce(email, ''))) = lower(trim(new.email))
+     and user_id is null and active;
+  if found then return new; end if;
+  raise exception 'SIGNUP_MISMATCH: รหัสพนักงานและอีเมลไม่ตรงกับข้อมูลในระบบ';
+end $$;
+
+-- v122: ผู้อนุมัติลางาน/ลงเวลา (hub_approvers) มองไม่เห็นข้อมูลพนักงานในขอบเขตของตน → การ์ด "รออนุมัติการลา" ไม่ขึ้น / อนุมัติไม่ได้
+-- สาเหตุ: ตาราง employees อนุญาตให้อ่านเฉพาะของตัวเอง / Admin / ผู้อนุมัติ Workload / ผู้บันทึกแทน — ไม่มีสิทธิ์สำหรับผู้อนุมัติของระบบลางาน-ลงเวลา
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub3.sql) — รันซ้ำได้
+-- ผลลัพธ์: ผู้อนุมัติอ่านข้อมูลพนักงานที่อยู่ในขอบเขต (ทั้งหมด / รายฝ่าย / รายคน) ที่ตั้งไว้ในเมนู "ผู้อนุมัติ" ได้ — อ่านอย่างเดียว
+
+drop policy if exists emp_hub_read on public.employees;
+create policy emp_hub_read on public.employees for select to authenticated
+  using (public.hub_can('leave', id) or public.hub_can('att', id));
+
+-- v122: ลงเวลาเข้า/ออกงานได้เฉพาะในจุดที่กำหนดให้พนักงาน (work_sites + กำหนดผู้ใช้) · ต้องมี GPS · นอกพื้นที่ = ปฏิเสธ
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub18.sql และ hub13) — รันซ้ำได้
+-- ปิดการบังคับชั่วคราว:  insert into public.app_settings (key, value) values ('att_site_required', '{"on": false}'::jsonb) on conflict (key) do update set value = excluded.value;
+-- (ออกไปทำงานนอกสถานที่ / กลับ ไม่ถูกบังคับพื้นที่ · AI-Beacon ผูกกับจุดของ Beacon อยู่แล้ว)
+
+create or replace function public.att_punch(p_kind text, p_lat double precision default null, p_lng double precision default null,
+                                            p_acc real default null, p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := public.my_emp_id(); v_last text; v_day date := (now() at time zone 'Asia/Bangkok')::date; r public.attendance_logs%rowtype;
+  v_sid text; v_sname text; v_d double precision; v_rad int; v_st record;
+begin
+  if v_emp is null then raise exception 'NO_EMPLOYEE'; end if;
+  if p_kind not in ('in', 'out', 'offsite_start', 'offsite_end') then raise exception 'BAD_KIND'; end if;
+  if p_kind in ('in', 'offsite_start') and not public.is_work_day(v_emp, v_day) then
+    raise exception 'NOT_WORK_DAY:วันนี้ไม่ใช่วันทำงานตามปฏิทินของระบบ จึงลงเวลาไม่ได้';
+  end if;
+  select kind into v_last from public.attendance_logs where emp_id = v_emp and (at at time zone 'Asia/Bangkok')::date = v_day order by at desc limit 1;
+  if p_kind = 'in' and v_last is not null then raise exception 'INVALID_SEQUENCE:ลงเวลาเข้างานได้วันละครั้งเท่านั้น (วันนี้ลงเวลาไปแล้ว) — หากต้องแก้ไขให้ติดต่อ Admin'; end if;
+  if p_kind = 'out'           and (v_last is null or v_last = 'out')                          then raise exception 'INVALID_SEQUENCE:ยังไม่ได้ลงเวลาเข้างาน'; end if;
+  if p_kind = 'out'           and v_last = 'offsite_start'                                    then raise exception 'INVALID_SEQUENCE:กรุณาบันทึกกลับจากนอกสถานที่ก่อน'; end if;
+  if p_kind = 'offsite_start' and (v_last is null or v_last in ('out', 'offsite_start'))      then raise exception 'INVALID_SEQUENCE:ต้องลงเวลาเข้างานก่อน และไม่อยู่ระหว่างออกนอกสถานที่'; end if;
+  if p_kind = 'offsite_end'   and (v_last is distinct from 'offsite_start')                   then raise exception 'INVALID_SEQUENCE:ยังไม่ได้บันทึกออกไปทำงานนอกสถานที่'; end if;
+  if exists (select 1 from public.attendance_logs where emp_id = v_emp and kind = p_kind and at > now() - interval '30 seconds') then raise exception 'INVALID_SEQUENCE:บันทึกซ้ำเร็วเกินไป'; end if;
+  -- ลงเวลาออกงานหลังทำงานครบ 8 ชม. ต้องระบุเหตุผล
+  if p_kind = 'out' and coalesce(trim(p_note), '') = '' then
+    select * into v_st from public.att_net_state(v_emp, v_day);
+    if v_st.is_open and v_st.net_secs >= 28800 then
+      raise exception 'REASON_REQUIRED:ทำงานครบ 8 ชั่วโมงแล้ว — กรุณาระบุเหตุผลที่ลงเวลาออกงาน (ช่องหมายเหตุ)';
+    end if;
+  end if;
+  if p_lat is not null and p_lng is not null then
+    select w.id, w.name, public.geo_dist_m(p_lat, p_lng, w.lat, w.lng), w.radius_m into v_sid, v_sname, v_d, v_rad
+      from public.work_sites w where w.active and public.site_applies(v_emp, w.id) order by 3 limit 1;
+  end if;
+  -- ลงเวลาเข้า/ออกงานได้เฉพาะ "ในจุดที่กำหนดให้พนักงานคนนี้" (ตั้งผู้ใช้จุดที่เมนูลงเวลา > จุดสำนักงาน) · ต้องมี GPS
+  -- เปิด/ปิด: app_settings 'att_site_required' = {"on": true/false} (ค่าเริ่มต้น เปิด) · โหมดทดลอง att_test เปิดอยู่ = ข้ามการตรวจพื้นที่ · ไม่มีจุดที่ใช้ได้เลย = ไม่บังคับ
+  if p_kind in ('in', 'out')
+     and coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_site_required'), true)
+     and not coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_test'), false)
+     and exists (select 1 from public.work_sites w where w.active and public.site_applies(v_emp, w.id)) then
+    if p_lat is null or p_lng is null then
+      raise exception 'NO_GPS:ต้องเปิด GPS และอนุญาตให้ใช้ตำแหน่ง จึงจะลงเวลาได้';
+    end if;
+    if v_sid is null or v_d > v_rad + least(coalesce(p_acc, 0), 50) then
+      raise exception 'OUT_OF_SITE:อยู่นอกจุดลงเวลาที่กำหนด — ใกล้สุด % ห่าง % ม. (รัศมี % ม.) กรุณาไปลงเวลาในพื้นที่', coalesce(v_sname, '-'), round(coalesce(v_d, 0)), coalesce(v_rad, 0);
+    end if;
+  end if;
+  insert into public.attendance_logs (emp_id, kind, at, lat, lng, accuracy_m, site_id, site_name, dist_m, source, note)
+  values (v_emp, p_kind, clock_timestamp(), p_lat, p_lng, p_acc,
+          case when v_sid is not null and v_d <= v_rad then v_sid end,
+          case when v_sid is not null and v_d <= v_rad then v_sname else '' end,
+          case when v_sid is not null then round(v_d)::int end, 'app', left(coalesce(p_note, ''), 300))
+  returning * into r;
+  return to_jsonb(r);
+end $$;
+revoke all on function public.att_punch(text, double precision, double precision, real, text) from public, anon;
+grant execute on function public.att_punch(text, double precision, double precision, real, text) to authenticated;
+
+
+-- v123: ลงเวลาต้องถ่ายรูป selfie — ลายน้ำ วัน-เวลา และพิกัด lat/long ใส่อัตโนมัติ · ไม่มีรูป = ลงเวลาไม่ได้
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub21.sql และ hub20) — รันซ้ำได้
+-- ปิดการบังคับชั่วคราว:  insert into public.app_settings (key, value) values ('att_photo_required', '{"on": false}'::jsonb) on conflict (key) do update set value = excluded.value;
+-- รูปเก็บใน bucket private "timesheet-files" เส้นทาง <รหัสพนักงาน>/att/<วันที่>/<ชนิด>-<เวลา>.jpg · เจ้าของ/ผู้ดูแล/ผู้อนุมัติ (ลงเวลา) ดูได้ · พนักงานลบรูปเองไม่ได้ (เฉพาะ Super Admin)
+
+alter table public.attendance_logs add column if not exists photo_path text;
+
+drop policy if exists tsf_read on storage.objects;
+create policy tsf_read on storage.objects for select to authenticated
+  using (bucket_id = 'timesheet-files'
+         and (public.is_admin() or public.is_approver()
+              or (storage.foldername(name))[1] = public.my_emp_id()
+              or public.can_enter_for((storage.foldername(name))[1])
+              or ((storage.foldername(name))[2] = 'att' and public.hub_can('att', (storage.foldername(name))[1]))));
+
+drop policy if exists tsf_delete on storage.objects;
+create policy tsf_delete on storage.objects for delete to authenticated
+  using (bucket_id = 'timesheet-files'
+         and (public.is_super_admin()
+              or (coalesce((storage.foldername(name))[2], '') <> 'att'
+                  and ((storage.foldername(name))[1] = public.my_emp_id() or public.can_enter_for((storage.foldername(name))[1])))));
+
+-- เปลี่ยนฟังก์ชันลงเวลาเป็นรุ่นที่รับรูป (ลบรุ่นเดิม ไม่ให้ซ้ำซ้อน)
+drop function if exists public.att_punch(text, double precision, double precision, real, text);
+
+create or replace function public.att_punch(p_kind text, p_lat double precision default null, p_lng double precision default null,
+                                            p_acc real default null, p_note text default '', p_photo text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := public.my_emp_id(); v_last text; v_day date := (now() at time zone 'Asia/Bangkok')::date; r public.attendance_logs%rowtype;
+  v_sid text; v_sname text; v_d double precision; v_rad int; v_st record;
+begin
+  if v_emp is null then raise exception 'NO_EMPLOYEE'; end if;
+  if p_kind not in ('in', 'out', 'offsite_start', 'offsite_end') then raise exception 'BAD_KIND'; end if;
+  if p_kind in ('in', 'offsite_start') and not public.is_work_day(v_emp, v_day) then
+    raise exception 'NOT_WORK_DAY:วันนี้ไม่ใช่วันทำงานตามปฏิทินของระบบ จึงลงเวลาไม่ได้';
+  end if;
+  select kind into v_last from public.attendance_logs where emp_id = v_emp and (at at time zone 'Asia/Bangkok')::date = v_day order by at desc limit 1;
+  if p_kind = 'in' and v_last is not null then raise exception 'INVALID_SEQUENCE:ลงเวลาเข้างานได้วันละครั้งเท่านั้น (วันนี้ลงเวลาไปแล้ว) — หากต้องแก้ไขให้ติดต่อ Admin'; end if;
+  if p_kind = 'out'           and (v_last is null or v_last = 'out')                          then raise exception 'INVALID_SEQUENCE:ยังไม่ได้ลงเวลาเข้างาน'; end if;
+  if p_kind = 'out'           and v_last = 'offsite_start'                                    then raise exception 'INVALID_SEQUENCE:กรุณาบันทึกกลับจากนอกสถานที่ก่อน'; end if;
+  if p_kind = 'offsite_start' and (v_last is null or v_last in ('out', 'offsite_start'))      then raise exception 'INVALID_SEQUENCE:ต้องลงเวลาเข้างานก่อน และไม่อยู่ระหว่างออกนอกสถานที่'; end if;
+  if p_kind = 'offsite_end'   and (v_last is distinct from 'offsite_start')                   then raise exception 'INVALID_SEQUENCE:ยังไม่ได้บันทึกออกไปทำงานนอกสถานที่'; end if;
+  if exists (select 1 from public.attendance_logs where emp_id = v_emp and kind = p_kind and at > now() - interval '30 seconds') then raise exception 'INVALID_SEQUENCE:บันทึกซ้ำเร็วเกินไป'; end if;
+  -- ลงเวลาออกงานหลังทำงานครบ 8 ชม. ต้องระบุเหตุผล
+  if p_kind = 'out' and coalesce(trim(p_note), '') = '' then
+    select * into v_st from public.att_net_state(v_emp, v_day);
+    if v_st.is_open and v_st.net_secs >= 28800 then
+      raise exception 'REASON_REQUIRED:ทำงานครบ 8 ชั่วโมงแล้ว — กรุณาระบุเหตุผลที่ลงเวลาออกงาน (ช่องหมายเหตุ)';
+    end if;
+  end if;
+  if p_lat is not null and p_lng is not null then
+    select w.id, w.name, public.geo_dist_m(p_lat, p_lng, w.lat, w.lng), w.radius_m into v_sid, v_sname, v_d, v_rad
+      from public.work_sites w where w.active and public.site_applies(v_emp, w.id) order by 3 limit 1;
+  end if;
+  -- ต้องแนบรูป selfie (อัปโหลดไว้ใน bucket timesheet-files โฟลเดอร์ <รหัสพนักงาน>/att/...) ทุกครั้งที่ลงเวลา — ไม่มีรูป = ไม่ให้ลงเวลา
+  if coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_photo_required'), true) then
+    if p_photo is null or coalesce((storage.foldername(p_photo))[1], '') <> v_emp or coalesce((storage.foldername(p_photo))[2], '') <> 'att'
+       or not exists (select 1 from storage.objects o where o.bucket_id = 'timesheet-files' and o.name = p_photo) then
+      raise exception 'NO_PHOTO:ต้องถ่ายรูป selfie ก่อนลงเวลา (ไม่มีรูปแนบ ลงเวลาไม่ได้)';
+    end if;
+  end if;
+  -- ลงเวลาเข้า/ออกงานได้เฉพาะ "ในจุดที่กำหนดให้พนักงานคนนี้" (ตั้งผู้ใช้จุดที่เมนูลงเวลา > จุดสำนักงาน) · ต้องมี GPS
+  -- เปิด/ปิด: app_settings 'att_site_required' = {"on": true/false} (ค่าเริ่มต้น เปิด) · โหมดทดลอง att_test เปิดอยู่ = ข้ามการตรวจพื้นที่ · ไม่มีจุดที่ใช้ได้เลย = ไม่บังคับ
+  if p_kind in ('in', 'out')
+     and coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_site_required'), true)
+     and not coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_test'), false)
+     and exists (select 1 from public.work_sites w where w.active and public.site_applies(v_emp, w.id)) then
+    if p_lat is null or p_lng is null then
+      raise exception 'NO_GPS:ต้องเปิด GPS และอนุญาตให้ใช้ตำแหน่ง จึงจะลงเวลาได้';
+    end if;
+    if v_sid is null or v_d > v_rad + least(coalesce(p_acc, 0), 50) then
+      raise exception 'OUT_OF_SITE:อยู่นอกจุดลงเวลาที่กำหนด — ใกล้สุด % ห่าง % ม. (รัศมี % ม.) กรุณาไปลงเวลาในพื้นที่', coalesce(v_sname, '-'), round(coalesce(v_d, 0)), coalesce(v_rad, 0);
+    end if;
+  end if;
+  insert into public.attendance_logs (emp_id, kind, at, lat, lng, accuracy_m, site_id, site_name, dist_m, source, note, photo_path)
+  values (v_emp, p_kind, clock_timestamp(), p_lat, p_lng, p_acc,
+          case when v_sid is not null and v_d <= v_rad then v_sid end,
+          case when v_sid is not null and v_d <= v_rad then v_sname else '' end,
+          case when v_sid is not null then round(v_d)::int end, 'app', left(coalesce(p_note, ''), 300), p_photo)
+  returning * into r;
+  return to_jsonb(r);
+end $$;
+revoke all on function public.att_punch(text, double precision, double precision, real, text, text) from public, anon;
+grant execute on function public.att_punch(text, double precision, double precision, real, text, text) to authenticated;
+
+
+-- v124: ไม่ใช่จุดลงเวลาที่ตั้งไว้ = ไม่ให้บันทึกลงเวลา (ทุกประเภท: เข้า/ออก/ออกนอกสถานที่/กลับ) · พนักงานที่ไม่มีจุดที่กำหนดให้เลย ลงเวลาไม่ได้
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub22.sql) — รันซ้ำได้
+-- เดิม (v122): บังคับเฉพาะเข้า/ออกงาน และคนที่ไม่มีจุดที่ใช้ได้เลยจะไม่ถูกบังคับ → ตอนนี้ปิดช่องทั้งสองแล้ว
+-- ปิดการบังคับชั่วคราว (หรือโหมดทดลอง att_test เปิดอยู่ = ข้ามการตรวจ):
+--   insert into public.app_settings (key, value) values ('att_site_required', '{"on": false}'::jsonb) on conflict (key) do update set value = excluded.value;
+
+create or replace function public.att_punch(p_kind text, p_lat double precision default null, p_lng double precision default null,
+                                            p_acc real default null, p_note text default '', p_photo text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := public.my_emp_id(); v_last text; v_day date := (now() at time zone 'Asia/Bangkok')::date; r public.attendance_logs%rowtype;
+  v_sid text; v_sname text; v_d double precision; v_rad int; v_st record;
+begin
+  if v_emp is null then raise exception 'NO_EMPLOYEE'; end if;
+  if p_kind not in ('in', 'out', 'offsite_start', 'offsite_end') then raise exception 'BAD_KIND'; end if;
+  if p_kind in ('in', 'offsite_start') and not public.is_work_day(v_emp, v_day) then
+    raise exception 'NOT_WORK_DAY:วันนี้ไม่ใช่วันทำงานตามปฏิทินของระบบ จึงลงเวลาไม่ได้';
+  end if;
+  select kind into v_last from public.attendance_logs where emp_id = v_emp and (at at time zone 'Asia/Bangkok')::date = v_day order by at desc limit 1;
+  if p_kind = 'in' and v_last is not null then raise exception 'INVALID_SEQUENCE:ลงเวลาเข้างานได้วันละครั้งเท่านั้น (วันนี้ลงเวลาไปแล้ว) — หากต้องแก้ไขให้ติดต่อ Admin'; end if;
+  if p_kind = 'out'           and (v_last is null or v_last = 'out')                          then raise exception 'INVALID_SEQUENCE:ยังไม่ได้ลงเวลาเข้างาน'; end if;
+  if p_kind = 'out'           and v_last = 'offsite_start'                                    then raise exception 'INVALID_SEQUENCE:กรุณาบันทึกกลับจากนอกสถานที่ก่อน'; end if;
+  if p_kind = 'offsite_start' and (v_last is null or v_last in ('out', 'offsite_start'))      then raise exception 'INVALID_SEQUENCE:ต้องลงเวลาเข้างานก่อน และไม่อยู่ระหว่างออกนอกสถานที่'; end if;
+  if p_kind = 'offsite_end'   and (v_last is distinct from 'offsite_start')                   then raise exception 'INVALID_SEQUENCE:ยังไม่ได้บันทึกออกไปทำงานนอกสถานที่'; end if;
+  if exists (select 1 from public.attendance_logs where emp_id = v_emp and kind = p_kind and at > now() - interval '30 seconds') then raise exception 'INVALID_SEQUENCE:บันทึกซ้ำเร็วเกินไป'; end if;
+  -- ลงเวลาออกงานหลังทำงานครบ 8 ชม. ต้องระบุเหตุผล
+  if p_kind = 'out' and coalesce(trim(p_note), '') = '' then
+    select * into v_st from public.att_net_state(v_emp, v_day);
+    if v_st.is_open and v_st.net_secs >= 28800 then
+      raise exception 'REASON_REQUIRED:ทำงานครบ 8 ชั่วโมงแล้ว — กรุณาระบุเหตุผลที่ลงเวลาออกงาน (ช่องหมายเหตุ)';
+    end if;
+  end if;
+  if p_lat is not null and p_lng is not null then
+    select w.id, w.name, public.geo_dist_m(p_lat, p_lng, w.lat, w.lng), w.radius_m into v_sid, v_sname, v_d, v_rad
+      from public.work_sites w where w.active and public.site_applies(v_emp, w.id) order by 3 limit 1;
+  end if;
+  -- ต้องแนบรูป selfie (อัปโหลดไว้ใน bucket timesheet-files โฟลเดอร์ <รหัสพนักงาน>/att/...) ทุกครั้งที่ลงเวลา — ไม่มีรูป = ไม่ให้ลงเวลา
+  if coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_photo_required'), true) then
+    if p_photo is null or coalesce((storage.foldername(p_photo))[1], '') <> v_emp or coalesce((storage.foldername(p_photo))[2], '') <> 'att'
+       or not exists (select 1 from storage.objects o where o.bucket_id = 'timesheet-files' and o.name = p_photo) then
+      raise exception 'NO_PHOTO:ต้องถ่ายรูป selfie ก่อนลงเวลา (ไม่มีรูปแนบ ลงเวลาไม่ได้)';
+    end if;
+  end if;
+  -- ลงเวลาเข้า/ออกงานได้เฉพาะ "ในจุดที่กำหนดให้พนักงานคนนี้" (ตั้งผู้ใช้จุดที่เมนูลงเวลา > จุดสำนักงาน) · ต้องมี GPS
+  -- เปิด/ปิด: app_settings 'att_site_required' = {"on": true/false} (ค่าเริ่มต้น เปิด) · โหมดทดลอง att_test เปิดอยู่ = ข้ามการตรวจพื้นที่ · ไม่มีจุดที่ใช้ได้เลย = ไม่บังคับ
+  if coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_site_required'), true)
+     and not coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_test'), false) then
+    if not exists (select 1 from public.work_sites w where w.active and public.site_applies(v_emp, w.id)) then
+      raise exception 'NO_SITE:ยังไม่ได้กำหนดจุดลงเวลาให้คุณ — ลงเวลาไม่ได้ กรุณาติดต่อ Admin เพื่อกำหนดจุดลงเวลา';
+    end if;
+    if p_lat is null or p_lng is null then
+      raise exception 'NO_GPS:ต้องเปิด GPS และอนุญาตให้ใช้ตำแหน่ง จึงจะลงเวลาได้';
+    end if;
+    if v_sid is null or v_d > v_rad + least(coalesce(p_acc, 0), 50) then
+      raise exception 'OUT_OF_SITE:อยู่นอกจุดลงเวลาที่กำหนด — ใกล้สุด % ห่าง % ม. (รัศมี % ม.) กรุณาไปลงเวลาในพื้นที่', coalesce(v_sname, '-'), round(coalesce(v_d, 0)), coalesce(v_rad, 0);
+    end if;
+  end if;
+  insert into public.attendance_logs (emp_id, kind, at, lat, lng, accuracy_m, site_id, site_name, dist_m, source, note, photo_path)
+  values (v_emp, p_kind, clock_timestamp(), p_lat, p_lng, p_acc,
+          case when v_sid is not null and v_d <= v_rad then v_sid end,
+          case when v_sid is not null and v_d <= v_rad then v_sname else '' end,
+          case when v_sid is not null then round(v_d)::int end, 'app', left(coalesce(p_note, ''), 300), p_photo)
+  returning * into r;
+  return to_jsonb(r);
+end $$;
+revoke all on function public.att_punch(text, double precision, double precision, real, text, text) from public, anon;
+grant execute on function public.att_punch(text, double precision, double precision, real, text, text) to authenticated;
+
+
+-- v125: ติดตามการเคลื่อนไหวระหว่าง "ออกไปทำงานนอกสถานที่" บนแผนที่ (แบบ LINEMAN) — เก็บเส้นทางเฉพาะช่วงที่อยู่ระหว่างออกนอกสถานที่
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub20.sql) — รันซ้ำได้
+-- แอปส่งตำแหน่งทุก ~15 วินาที ขณะเปิดแอปค้างไว้และสถานะเป็น "ออกนอกสถานที่" (หยุดเองเมื่อกด "กลับจากนอกสถานที่" หรือลงเวลาออก)
+-- ดูแผนที่ได้: เจ้าของ · ผู้ดูแล · ผู้อนุมัติลงเวลา (เมนูผู้อนุมัติ) ตามขอบเขต · เก็บ 90 วัน (ล้างด้วย select public.att_tracks_cleanup();)
+
+create table if not exists public.att_tracks (
+  id     bigint generated always as identity primary key,
+  emp_id text not null references public.employees(id) on delete cascade,
+  log_id uuid,                                       -- รายการ "ออกไปทำงานนอกสถานที่" ที่เป็นเจ้าของเส้นทางนี้
+  at     timestamptz not null default now(),
+  lat    double precision not null,
+  lng    double precision not null,
+  acc    real,
+  speed  real
+);
+create index if not exists att_tracks_emp_at on public.att_tracks (emp_id, at desc);
+create index if not exists att_tracks_log on public.att_tracks (log_id, at);
+alter table public.att_tracks enable row level security;
+revoke all on public.att_tracks from anon, authenticated;
+grant select on public.att_tracks to authenticated;
+drop policy if exists trk_read on public.att_tracks;
+create policy trk_read on public.att_tracks for select to authenticated
+  using (emp_id = public.my_emp_id() or public.is_admin() or public.hub_can('att', emp_id));
+
+-- พนักงานส่งตำแหน่ง (ได้เฉพาะตอนที่สถานะล่าสุดของวันนี้ = ออกไปทำงานนอกสถานที่)
+create or replace function public.att_track(p_lat double precision, p_lng double precision, p_acc real default null, p_speed real default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := public.my_emp_id(); v_day date := (now() at time zone 'Asia/Bangkok')::date; l public.attendance_logs%rowtype; v_last timestamptz;
+begin
+  if v_emp is null then raise exception 'NO_EMPLOYEE'; end if;
+  select * into l from public.attendance_logs where emp_id = v_emp and (at at time zone 'Asia/Bangkok')::date = v_day order by at desc limit 1;
+  if l.id is null or l.kind <> 'offsite_start' then raise exception 'NOT_OFFSITE:ไม่ได้อยู่ระหว่างออกไปทำงานนอกสถานที่'; end if;
+  if p_lat is null or p_lng is null or p_lat not between -90 and 90 or p_lng not between -180 and 180 then raise exception 'BAD_POS'; end if;
+  select max(at) into v_last from public.att_tracks where log_id = l.id;
+  if v_last is not null and v_last > now() - interval '8 seconds' then return jsonb_build_object('ok', true, 'skipped', true); end if;
+  insert into public.att_tracks (emp_id, log_id, lat, lng, acc, speed) values (v_emp, l.id, p_lat, p_lng, p_acc, p_speed);
+  return jsonb_build_object('ok', true, 'at', now());
+end $$;
+revoke all on function public.att_track(double precision, double precision, real, real) from public, anon;
+grant execute on function public.att_track(double precision, double precision, real, real) to authenticated;
+
+create or replace function public.att_tracks_cleanup() returns integer
+language plpgsql security definer set search_path = public as $$
+declare n integer;
+begin
+  if not public.is_super_admin() then raise exception 'FORBIDDEN'; end if;
+  delete from public.att_tracks where at < now() - interval '90 days';
+  get diagnostics n = row_count; return n;
+end $$;
+revoke all on function public.att_tracks_cleanup() from public, anon;
+grant execute on function public.att_tracks_cleanup() to authenticated;
+
+-- v126: หลังกลับจากออกนอกสถานที่ → เก็บสรุปการเดินทาง: (1) ระยะทางรวม (2) จุดที่อยู่นิ่งเกิน 30 นาที
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub24.sql) — รันซ้ำได้
+-- คำนวณจากจุดตำแหน่งที่แอปส่งระหว่างออกนอกสถานที่ (att_tracks) + พิกัดตอนออก/ตอนกลับ
+--   ระยะทาง: รวมระยะระหว่างจุดที่ขยับจากจุดก่อนหน้า ≥ 20 ม. (ตัดสัญญาณ GPS แกว่งตอนอยู่นิ่ง)
+--   จุดนิ่ง: ช่วงที่ตำแหน่งอยู่ในรัศมี 60 ม. จากจุดตั้งต้น นานเกิน 30 นาที (เก็บ ตำแหน่ง / เวลาเริ่ม-สิ้นสุด / จำนวนนาที)
+-- ถ้าแอปถูกปิด/ล็อกจอระหว่างทาง จุดจะขาดช่วง ระยะทางอาจน้อยกว่าจริง (ระบบเดินทางเป็นเส้นตรงระหว่างจุดที่ได้รับ)
+
+create table if not exists public.att_trips (
+  log_id      uuid primary key,                         -- รายการ "ออกไปทำงานนอกสถานที่"
+  emp_id      text not null references public.employees(id) on delete cascade,
+  start_at    timestamptz not null,
+  end_at      timestamptz,
+  distance_m  integer not null default 0,
+  stops       jsonb not null default '[]'::jsonb,       -- [{lat,lng,from,to,minutes}]
+  n_points    integer not null default 0,
+  created_at  timestamptz not null default now()
+);
+create index if not exists att_trips_emp on public.att_trips (emp_id, start_at desc);
+alter table public.att_trips enable row level security;
+revoke all on public.att_trips from anon, authenticated;
+grant select on public.att_trips to authenticated;
+drop policy if exists trips_read on public.att_trips;
+create policy trips_read on public.att_trips for select to authenticated
+  using (emp_id = public.my_emp_id() or public.is_admin() or public.hub_can('att', emp_id));
+
+create or replace function public.att_trip_compute(p_log uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  s public.attendance_logs%rowtype; e public.attendance_logs%rowtype; r record;
+  v_dist double precision := 0; v_n int := 0; d double precision; v_first boolean := true;
+  la double precision; ln double precision;                                          -- จุดล่าสุดที่นับระยะทาง
+  ca_lat double precision; ca_lng double precision; c_from timestamptz; c_to timestamptz; c_slat double precision := 0; c_slng double precision := 0; c_cnt int := 0;
+  v_stops jsonb := '[]'::jsonb;
+begin
+  select * into s from public.attendance_logs where id = p_log and kind = 'offsite_start';
+  if s.id is null then return; end if;
+  select * into e from public.attendance_logs where emp_id = s.emp_id and kind in ('offsite_end', 'out') and at > s.at order by at limit 1;
+  for r in
+    select q.at, q.lat, q.lng from (
+      select s.at as at, s.lat as lat, s.lng as lng where s.lat is not null and s.lng is not null
+      union all select t.at, t.lat, t.lng from public.att_tracks t where t.log_id = p_log
+      union all select e.at, e.lat, e.lng where e.id is not null and e.lat is not null and e.lng is not null
+    ) q order by q.at
+  loop
+    v_n := v_n + 1;
+    if v_first then
+      la := r.lat; ln := r.lng; ca_lat := r.lat; ca_lng := r.lng; c_from := r.at; c_to := r.at; c_slat := r.lat; c_slng := r.lng; c_cnt := 1; v_first := false;
+      continue;
+    end if;
+    d := public.geo_dist_m(la, ln, r.lat, r.lng);
+    if d >= 20 then v_dist := v_dist + d; la := r.lat; ln := r.lng; end if;
+    if public.geo_dist_m(ca_lat, ca_lng, r.lat, r.lng) <= 60 then
+      c_to := r.at; c_slat := c_slat + r.lat; c_slng := c_slng + r.lng; c_cnt := c_cnt + 1;
+    else
+      if c_to - c_from >= interval '30 minutes' then
+        v_stops := v_stops || jsonb_build_array(jsonb_build_object('lat', round((c_slat / c_cnt)::numeric, 6), 'lng', round((c_slng / c_cnt)::numeric, 6),
+                     'from', c_from, 'to', c_to, 'minutes', round(extract(epoch from (c_to - c_from)) / 60)::int));
+      end if;
+      ca_lat := r.lat; ca_lng := r.lng; c_from := r.at; c_to := r.at; c_slat := r.lat; c_slng := r.lng; c_cnt := 1;
+    end if;
+  end loop;
+  if not v_first and c_to - c_from >= interval '30 minutes' then
+    v_stops := v_stops || jsonb_build_array(jsonb_build_object('lat', round((c_slat / c_cnt)::numeric, 6), 'lng', round((c_slng / c_cnt)::numeric, 6),
+                 'from', c_from, 'to', c_to, 'minutes', round(extract(epoch from (c_to - c_from)) / 60)::int));
+  end if;
+  insert into public.att_trips (log_id, emp_id, start_at, end_at, distance_m, stops, n_points)
+  values (p_log, s.emp_id, s.at, e.at, round(v_dist)::int, v_stops, v_n)
+  on conflict (log_id) do update set end_at = excluded.end_at, distance_m = excluded.distance_m, stops = excluded.stops, n_points = excluded.n_points;
+end $$;
+revoke all on function public.att_trip_compute(uuid) from public, anon, authenticated;
+
+-- เมื่อบันทึก "กลับจากนอกสถานที่" → คำนวณสรุปการเดินทางของรอบนั้นทันที (ล้มเหลวไม่กระทบการลงเวลา)
+create or replace function public.att_trip_on_return() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_start uuid;
+begin
+  begin
+    select id into v_start from public.attendance_logs where emp_id = new.emp_id and kind = 'offsite_start' and at < new.at order by at desc limit 1;
+    if v_start is not null then perform public.att_trip_compute(v_start); end if;
+  exception when others then null;
+  end;
+  return new;
+end $$;
+drop trigger if exists trg_att_trip on public.attendance_logs;
+create trigger trg_att_trip after insert on public.attendance_logs for each row when (new.kind in ('offsite_end', 'out')) execute function public.att_trip_on_return();
+
+-- คำนวณย้อนหลังให้รอบที่กลับมาแล้ว (ถ้ามีจุดตำแหน่งเก็บไว้)
+do $$ declare x uuid; begin
+  for x in select l.id from public.attendance_logs l where l.kind = 'offsite_start'
+             and exists (select 1 from public.attendance_logs e where e.emp_id = l.emp_id and e.kind in ('offsite_end', 'out') and e.at > l.at) loop
+    begin perform public.att_trip_compute(x); exception when others then null; end;
+  end loop;
+end $$;
+
+-- v130: แผนที่ติดตามการเดินทางเห็นได้เฉพาะ Super Admin (ข้อมูลตำแหน่งระหว่างออกนอกสถานที่ = ข้อมูลส่วนบุคคล จำกัดผู้เข้าถึง)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub25.sql) — รันซ้ำได้
+-- att_tracks (จุดตำแหน่ง): อ่านได้เฉพาะ Super Admin และเจ้าของ · att_trips (สรุประยะทาง/จุดนิ่ง): Super Admin และเจ้าของ
+-- (เดิม Admin และผู้อนุมัติลงเวลาอ่านได้ — เอาออกแล้ว)
+
+drop policy if exists trk_read on public.att_tracks;
+create policy trk_read on public.att_tracks for select to authenticated
+  using (emp_id = public.my_emp_id() or public.is_super_admin());
+
+drop policy if exists trips_read on public.att_trips;
+create policy trips_read on public.att_trips for select to authenticated
+  using (emp_id = public.my_emp_id() or public.is_super_admin());
+
+-- v133: บันทึก comment งานระหว่างออกนอกสถานที่ (นับเป็นรายการ 1, 2, 3 … ต่อการเดินทางหนึ่งรอบ) พร้อมตำแหน่ง GPS ตอนบันทึก
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub26.sql) — รันซ้ำได้
+-- ใช้แสดงจำนวน comment บนหัวรถในแผนที่ติดตามของ Super Admin และหมุดหมายเลขตามจุดที่บันทึก
+
+create table if not exists public.att_trip_notes (
+  id     bigint generated always as identity primary key,
+  emp_id text not null references public.employees(id) on delete cascade,
+  log_id uuid not null,                       -- รายการ "ออกไปทำงานนอกสถานที่" ของรอบนี้
+  seq    integer not null,                    -- ลำดับ comment ในรอบ: 1, 2, 3 …
+  note   text not null,
+  at     timestamptz not null default now(),
+  lat    double precision,
+  lng    double precision,
+  acc    real,
+  unique (log_id, seq)
+);
+create index if not exists att_trip_notes_log on public.att_trip_notes (log_id, seq);
+alter table public.att_trip_notes enable row level security;
+revoke all on public.att_trip_notes from anon, authenticated;
+grant select on public.att_trip_notes to authenticated;
+drop policy if exists tnote_read on public.att_trip_notes;
+create policy tnote_read on public.att_trip_notes for select to authenticated
+  using (emp_id = public.my_emp_id() or public.is_super_admin());
+
+-- พนักงานบันทึก comment งาน (ได้เฉพาะตอนสถานะล่าสุดของวันนี้ = ออกไปทำงานนอกสถานที่)
+create or replace function public.att_trip_note(p_note text, p_lat double precision default null, p_lng double precision default null, p_acc real default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := public.my_emp_id(); v_day date := (now() at time zone 'Asia/Bangkok')::date; l public.attendance_logs%rowtype; v_seq integer; v_note text := left(trim(coalesce(p_note, '')), 300);
+begin
+  if v_emp is null then raise exception 'NO_EMPLOYEE'; end if;
+  if v_note = '' then raise exception 'EMPTY_NOTE:กรุณาใส่ comment งาน'; end if;
+  select * into l from public.attendance_logs where emp_id = v_emp and (at at time zone 'Asia/Bangkok')::date = v_day order by at desc limit 1;
+  if l.id is null or l.kind <> 'offsite_start' then raise exception 'NOT_OFFSITE:บันทึก comment ได้เฉพาะระหว่างออกไปทำงานนอกสถานที่'; end if;
+  perform pg_advisory_xact_lock(hashtext('trip_note|' || l.id::text));
+  select coalesce(max(seq), 0) + 1 into v_seq from public.att_trip_notes where log_id = l.id;
+  insert into public.att_trip_notes (emp_id, log_id, seq, note, lat, lng, acc)
+  values (v_emp, l.id, v_seq, v_note, p_lat, p_lng, p_acc);
+  return jsonb_build_object('ok', true, 'seq', v_seq, 'at', now(), 'log_id', l.id);
+end $$;
+revoke all on function public.att_trip_note(text, double precision, double precision, real) from public, anon;
+grant execute on function public.att_trip_note(text, double precision, double precision, real) to authenticated;
+
+-- v136: แจ้งเตือนทาง LINE ระบบลางาน — (1) มีคำขอลาใหม่/แก้ไขคำขอ → แจ้งผู้อนุมัติลา (ตามขอบเขต hub_approvers + Super Admin) (2) อนุมัติ/ไม่อนุมัติ → แจ้งผู้ลา
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub12.sql และต้องตั้ง private_config line_notify_url / line_notify_secret ไว้แล้ว เหมือนการแจ้งเตือนอื่น) — รันซ้ำได้
+-- ต้อง deploy Edge Function line-notify.ts (function "hyper-api") ใหม่ด้วย
+
+create or replace function public.notify_leave() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_url text; v_sec text; v_kind text;
+begin
+  begin
+    select value into v_url from public.private_config where key = 'line_notify_url';
+    select value into v_sec from public.private_config where key = 'line_notify_secret';
+    if v_url is null or v_sec is null then return new; end if;
+    if tg_op = 'INSERT' then
+      if new.status = 'Pending' then v_kind := 'leave_new'; end if;
+    else
+      if new.status = 'Pending' and (old.status is distinct from 'Pending' or old.start_date <> new.start_date or old.end_date <> new.end_date
+                                     or old.type_id <> new.type_id or old.part <> new.part) then
+        v_kind := 'leave_new';                    -- ขอใหม่ หรือแก้ไขคำขอ (ทำให้กลับเป็นรออนุมัติ)
+      elsif old.status = 'Pending' and new.status in ('Approved', 'Rejected') then
+        v_kind := 'leave_decided';                -- ผลการอนุมัติ → แจ้งผู้ลา
+      end if;
+    end if;
+    if v_kind is not null then
+      perform net.http_post(url := v_url,
+        headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', v_sec),
+        body := jsonb_build_object('kind', v_kind, 'leave_id', new.id));
+    end if;
+  exception when others then
+    null;   -- ห้ามให้การแจ้งเตือนทำให้การขอลา/อนุมัติล้มเหลว
+  end;
+  return new;
+end $$;
+
+drop trigger if exists leave_notify on public.leave_requests;
+create trigger leave_notify after insert or update on public.leave_requests
+  for each row execute function public.notify_leave();
+
+-- ===== hub29 =====
+-- v137: อนุมัติ/ไม่อนุมัติการลาในแชต LINE ได้เลย (การ์ดคำขอลามีปุ่ม "✅ อนุมัติ" กดครั้งเดียว และ "❌ ไม่อนุมัติ" → พิมพ์เหตุผลตอบกลับ)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub28.sql) — รันซ้ำได้
+-- ต้อง deploy Edge Function: line-notify.ts (hyper-api) และ line-webhook.ts (clever-task) ใหม่
+-- สิทธิ์ตรวจที่ฐานข้อมูลเหมือนในแอป: Super Admin หรือผู้อนุมัติลาตามขอบเขต (hub_approvers) · อนุมัติใบลาของตัวเองผ่าน LINE ไม่ได้
+
+create table if not exists public.line_leave_reject (
+  line_user text primary key,
+  leave_id  uuid not null,
+  exp       timestamptz not null
+);
+alter table public.line_leave_reject enable row level security;
+revoke all on public.line_leave_reject from anon, authenticated;
+
+-- อนุมัติ/ไม่อนุมัติใบลาจาก LINE userId · p_dry = true ตรวจสิทธิ์อย่างเดียว ไม่บันทึก
+create or replace function public.line_leave_decide(p_line_user text, p_leave uuid, p_approve boolean, p_note text default '', p_dry boolean default false) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me public.employees%rowtype; r public.leave_requests%rowtype; o public.employees%rowtype; v_ok boolean; v_type text;
+begin
+  select * into me from public.employees where line_user_id = p_line_user and active and approved;
+  if me.id is null then return jsonb_build_object('ok', false, 'msg', 'ไม่พบบัญชีที่ผูกกับ LINE นี้ในระบบ'); end if;
+  select * into r from public.leave_requests where id = p_leave for update;
+  if r.id is null then return jsonb_build_object('ok', false, 'msg', 'ไม่พบใบลานี้'); end if;
+  if r.status <> 'Pending' then
+    return jsonb_build_object('ok', false, 'msg', 'ใบลานี้ดำเนินการไปแล้ว (' || case r.status when 'Approved' then 'อนุมัติแล้ว' when 'Rejected' then 'ไม่อนุมัติแล้ว' else 'ยกเลิกแล้ว' end || ')');
+  end if;
+  if r.emp_id = me.id then return jsonb_build_object('ok', false, 'msg', 'อนุมัติใบลาของตัวเองผ่าน LINE ไม่ได้'); end if;
+  select * into o from public.employees where id = r.emp_id;
+  v_ok := me.role = 'super_admin' or exists (
+    select 1 from public.hub_approvers a
+     where a.emp_id = me.id and a.module = 'leave'
+       and (a.scope_type = 'all' or (a.scope_type = 'dept' and a.scope_key = o.dept) or (a.scope_type = 'emp' and a.scope_key = o.id)));
+  if not v_ok then return jsonb_build_object('ok', false, 'msg', 'คุณไม่มีสิทธิ์อนุมัติการลาของพนักงานคนนี้'); end if;
+  select name into v_type from public.leave_types where id = r.type_id;
+  if not p_dry then
+    update public.leave_requests
+       set status = case when p_approve then 'Approved' else 'Rejected' end, decided_by = me.id, decided_at = now(), decide_note = left(coalesce(p_note, ''), 300)
+     where id = p_leave;
+  end if;
+  return jsonb_build_object('ok', true, 'emp', o.name, 'emp_id', o.id, 'type', v_type, 'start', r.start_date, 'end', r.end_date, 'days', r.days, 'part', r.part);
+end $$;
+revoke all on function public.line_leave_decide(text, uuid, boolean, text, boolean) from public, anon, authenticated;
+grant execute on function public.line_leave_decide(text, uuid, boolean, text, boolean) to service_role;
+
+-- กด "ไม่อนุมัติ": รอข้อความถัดไปของผู้กดเป็นเหตุผล (หมดอายุ 5 นาที)
+create or replace function public.line_leave_reject_wait(p_line_user text, p_leave uuid) returns void
+language sql security definer set search_path = public as $$
+  insert into public.line_leave_reject (line_user, leave_id, exp) values (p_line_user, p_leave, now() + interval '5 minutes')
+  on conflict (line_user) do update set leave_id = excluded.leave_id, exp = excluded.exp
+$$;
+revoke all on function public.line_leave_reject_wait(text, uuid) from public, anon, authenticated;
+grant execute on function public.line_leave_reject_wait(text, uuid) to service_role;
+
+-- ข้อความที่ผู้ใช้พิมพ์ตอบ: ถ้ากำลังรอเหตุผลไม่อนุมัติ → ใช้เป็นเหตุผลแล้วบันทึกไม่อนุมัติ ("ยกเลิก" = ยกเลิกการไม่อนุมัติ)
+create or replace function public.line_leave_take_reason(p_line_user text, p_text text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare w public.line_leave_reject%rowtype; res jsonb;
+begin
+  select * into w from public.line_leave_reject where line_user = p_line_user and exp > now();
+  if w.line_user is null then
+    delete from public.line_leave_reject where line_user = p_line_user;
+    return jsonb_build_object('pending', false);
+  end if;
+  delete from public.line_leave_reject where line_user = p_line_user;
+  if lower(trim(p_text)) in ('ยกเลิก', 'cancel') then return jsonb_build_object('pending', true, 'cancelled', true); end if;
+  res := public.line_leave_decide(p_line_user, w.leave_id, false, p_text, false);
+  return jsonb_build_object('pending', true, 'cancelled', false, 'result', res);
+end $$;
+revoke all on function public.line_leave_take_reason(text, text) from public, anon, authenticated;
+grant execute on function public.line_leave_take_reason(text, text) to service_role;
+
+-- ===== hub30 =====
+-- v154: เปิดโหมดทดลอง — บันทึกชั่วโมงงานได้เต็ม 8 ชม. ทันทีหลังลงเวลาเข้างาน ไม่ต้องรอให้เวลาผ่านไปครบ
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub29.sql) — รันซ้ำได้
+-- โหมดทดลอง = app_settings 'att_test' {"on": true}  (ยังต้องลงเวลาเข้างานก่อน แต่ชั่วโมงที่บันทึกได้ไม่ผูกกับเวลาที่ผ่านไป)
+-- ปิดโหมดทดลองก่อนใช้งานจริง:  update public.app_settings set value = '{"on": false}'::jsonb where key = 'att_test';
+
+insert into public.app_settings (key, value) values ('att_test', '{"on": true}'::jsonb)
+on conflict (key) do update set value = '{"on": true}'::jsonb;
+
+create or replace function public.ts_att_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_new numeric := 0; v_old numeric := 0; v_allow integer; v_test boolean := false;
+begin
+  select coalesce((value->>'on')::boolean, false) into v_test from public.app_settings where key = 'att_test';
+  select coalesce(sum(coalesce((e->>'hours')::numeric, 0)), 0) into v_new from jsonb_array_elements(coalesce(new.entries, '[]'::jsonb)) e;
+  if tg_op = 'UPDATE' then
+    select coalesce(sum(coalesce((e->>'hours')::numeric, 0)), 0) into v_old from jsonb_array_elements(coalesce(old.entries, '[]'::jsonb)) e;
+  end if;
+  if v_new <= v_old then return new; end if;
+  if auth.uid() is null or (public.is_super_admin() and new.emp_id is distinct from public.my_emp_id()) then return new; end if;
+  if not public.att_required_for(new.emp_id, new.day) then return new; end if;
+  v_allow := public.att_hours_for(new.emp_id, new.day);
+  if v_allow is null then
+    raise exception 'NO_CLOCK_IN:ยังไม่ได้ลงเวลาเข้างานของวันที่ % — ไม่สามารถบันทึกชั่วโมงงานได้ (ลงเวลาที่ระบบลงเวลา หรือผ่าน AI-Beacon ก่อน)', to_char(new.day, 'DD/MM/YYYY');
+  end if;
+  if coalesce(v_test, false) then v_allow := 8; end if;   -- โหมดทดลอง: ไม่ต้องรอเวลาผ่านไปครบ
+  if v_new > v_allow then
+    raise exception 'HOURS_EXCEED:ชั่วโมงงานรวม % ชม. เกินชั่วโมงที่ได้จากการลงเวลา % ชม. ของวันที่ %', v_new, v_allow, to_char(new.day, 'DD/MM/YYYY');
+  end if;
+  return new;
+end $$;
