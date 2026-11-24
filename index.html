@@ -3289,7 +3289,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v127 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v129 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3479,15 +3479,22 @@ function todayLogs(){const day=bkkDay();return att.logs.filter(l=>bkkDay(new Dat
 /* ---------- Selfie ตอนลงเวลา: เปิดกล้องหน้า ถ่ายรูป · ลายน้ำ ชื่อ/วัน-เวลา/lat-long ใส่อัตโนมัติ · ไม่ถ่าย = ไม่ลงเวลา ---------- */
 async function selfieCapture(info){
   return new Promise(resolve=>{
-    const ov=document.createElement('div');ov.style.cssText='position:fixed;inset:0;z-index:99999;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:14px;color:#fff;font-family:inherit';
+    const inLine=/Line\//i.test(navigator.userAgent||'');
+    const ov=document.createElement('div');ov.style.cssText='position:fixed;inset:0;z-index:99999;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:14px;color:#fff;font-family:inherit;overflow:auto';
+    const bt='flex:1;min-width:120px;padding:14px;border-radius:14px;font-size:16px;font-weight:700;text-align:center;position:relative;overflow:hidden;color:#fff;cursor:pointer;box-sizing:border-box';
+    // ปุ่มเลือก/ถ่ายรูปจากกล้องเครื่อง = <input type=file> ตัวจริงโปร่งใสวางทับปุ่ม (ผู้ใช้แตะที่ input โดยตรง — เบราว์เซอร์ในแอปของ vivo/huawei/LINE เปิดกล้องได้เสถียรกว่าการสั่ง click จากโค้ด)
     ov.innerHTML=`<div style="text-align:center;font-weight:700;font-size:17px">📷 ถ่ายรูป selfie เพื่อ${esc(info.label)}</div>
       <div style="flex:1;width:100%;display:flex;align-items:center;justify-content:center;min-height:0"><video id="slfV" playsinline muted autoplay style="max-width:100%;max-height:100%;border-radius:14px;transform:scaleX(-1);background:#222"></video></div>
-      <div id="slfMsg" style="font-size:13px;opacity:.85;margin:8px 0;text-align:center">ให้เห็นใบหน้าชัดเจน · ระบบใส่วัน-เวลาและพิกัดลงในรูปให้อัตโนมัติ</div>
-      <div style="display:flex;gap:12px;width:100%;max-width:420px"><button id="slfNo" style="flex:1;padding:14px;border-radius:14px;border:1px solid #888;background:transparent;color:#fff;font-size:16px">ยกเลิก</button>
-      <button id="slfGo" style="flex:2;padding:14px;border-radius:14px;border:0;background:linear-gradient(135deg,#4f6df5,#7a5cf0);color:#fff;font-size:18px;font-weight:700">📸 ถ่ายรูป</button></div>
-      <input id="slfF" type="file" accept="image/*" capture="user" style="display:none">`;
+      <div id="slfMsg" style="font-size:13px;opacity:.9;margin:8px 0;text-align:center;line-height:1.5">ให้เห็นใบหน้าชัดเจน · ระบบใส่วัน-เวลาและพิกัดลงในรูปให้อัตโนมัติ</div>
+      <div id="slfExtW" style="display:none;width:100%;max-width:420px;margin-bottom:8px"><a id="slfExt" style="display:block;text-align:center;padding:12px;border-radius:14px;border:1px solid #6a7a93;color:#cfe0ff;text-decoration:none;font-size:14px">🌐 เปิดแอปด้วยเบราว์เซอร์ของเครื่อง (Chrome / เบราว์เซอร์ Huawei) แล้วลองใหม่</a></div>
+      <div style="display:flex;gap:10px;width:100%;max-width:420px;flex-wrap:wrap">
+        <button id="slfNo" style="${bt};background:transparent;border:1px solid #888;flex:1">ยกเลิก</button>
+        <button id="slfGo" style="${bt};background:linear-gradient(135deg,#4f6df5,#7a5cf0);border:0;flex:2;font-size:18px">📸 ถ่ายรูป</button>
+        <label id="slfLbl" style="${bt};background:linear-gradient(135deg,#4f6df5,#7a5cf0);flex:2;font-size:18px;display:none">📸 เปิดกล้องถ่ายรูป<input id="slfF" type="file" accept="image/*" capture="user" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;font-size:100px;cursor:pointer"></label>
+      </div>
+      <label id="slfLbl2" style="${bt};flex:none;display:none;margin-top:8px;max-width:420px;width:100%;background:#2a3558;font-size:14px;font-weight:600;padding:12px">🖼 เลือกรูป (ต้องเป็นรูปที่เพิ่งถ่ายตอนนี้)<input id="slfF2" type="file" accept="image/*" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;font-size:100px;cursor:pointer"></label>`;
     document.body.appendChild(ov);
-    const v=ov.querySelector('#slfV'),msg=ov.querySelector('#slfMsg');let stream=null;
+    const $o=s=>ov.querySelector(s),v=$o('#slfV'),msg=$o('#slfMsg');let stream=null;
     const done=r=>{try{stream&&stream.getTracks().forEach(t=>t.stop())}catch(e){}ov.remove();resolve(r)};
     const stamp=src=>{   // วาดรูป + ลายน้ำ → Blob (JPEG)
       const W0=src.videoWidth||src.naturalWidth||src.width,H0=src.videoHeight||src.naturalHeight||src.height,sc=Math.min(1,960/Math.max(W0,H0)),W=Math.round(W0*sc),H=Math.round(H0*sc);
@@ -3499,18 +3506,40 @@ async function selfieCapture(info){
       L.forEach((t,i)=>g.fillText(t,pad,H-bh+pad+i*(fs+4),W-pad*2));
       return new Promise(r=>c.toBlob(b=>r({blob:b,preview:c.toDataURL('image/jpeg',.5)}),'image/jpeg',.72));
     };
-    ov.querySelector('#slfNo').onclick=()=>done(null);
-    const useFile=()=>{const f=ov.querySelector('#slfF');f.onchange=async()=>{const file=f.files[0];if(!file)return;const im=new Image();im.onload=async()=>done(await stamp(im));im.onerror=()=>{msg.textContent='อ่านรูปไม่ได้ กรุณาลองใหม่'};im.src=URL.createObjectURL(file)};f.click()};
-    ov.querySelector('#slfGo').onclick=async()=>{if(stream&&v.videoWidth){done(await stamp(v))}else useFile()};
-    (async()=>{try{if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('nocam');
-      stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:960}},audio:false});v.srcObject=stream;await v.play().catch(()=>{})}
-      catch(e){v.style.display='none';msg.textContent='เปิดกล้องในหน้านี้ไม่ได้ (ตรวจสิทธิ์กล้อง) — กด "ถ่ายรูป" เพื่อเปิดกล้องของเครื่อง'}})();
+    const onFile=file=>{
+      if(!file)return;
+      if(file.lastModified&&Date.now()-file.lastModified>5*60e3){msg.style.color='#ffb4b8';msg.textContent='รูปนี้ไม่ใช่รูปที่เพิ่งถ่าย — กรุณาถ่ายรูป selfie ใหม่ตอนนี้';return}   // กันเลือกรูปเก่าจากแกลเลอรี
+      msg.style.color='';msg.textContent='กำลังประมวลผลรูป…';
+      const im=new Image();im.onload=async()=>{try{done(await stamp(im))}catch(e){msg.textContent='ประมวลผลรูปไม่สำเร็จ กรุณาลองใหม่'}};im.onerror=()=>{msg.textContent='อ่านรูปไม่ได้ กรุณาลองใหม่'};im.src=URL.createObjectURL(file)};
+    $o('#slfF').onchange=ev=>{const f=ev.target.files[0];ev.target.value='';onFile(f)};
+    $o('#slfF2').onchange=ev=>{const f=ev.target.files[0];ev.target.value='';onFile(f)};
+    $o('#slfNo').onclick=()=>done(null);
+    $o('#slfGo').onclick=async()=>{if(stream&&v.videoWidth){try{done(await stamp(v))}catch(e){msg.textContent='ถ่ายรูปไม่สำเร็จ ลองใหม่'}}};
+    const fallback=why=>{   // เปิดกล้องในหน้าไม่ได้ → ใช้กล้องของเครื่องผ่านปุ่ม input ตัวจริง
+      v.style.display='none';$o('#slfGo').style.display='none';$o('#slfLbl').style.display='block';$o('#slfLbl2').style.display='block';
+      msg.innerHTML=`เปิดกล้องในหน้านี้ไม่ได้${why?' ('+esc(why)+')':''}<br>กดปุ่ม <b>"เปิดกล้องถ่ายรูป"</b> เพื่อใช้กล้องของเครื่อง<br><span style="opacity:.8">ถ้ากดแล้วไม่มีอะไรเกิดขึ้น: ไปที่ ตั้งค่าเครื่อง › แอป › LINE (หรือเบราว์เซอร์ที่ใช้) › สิทธิ์ › กล้อง แล้วเลือก "อนุญาต"</span>`;
+      if(inLine){const u=new URL(location.href);u.searchParams.set('openExternalBrowser','1');$o('#slfExt').href=u.toString();$o('#slfExtW').style.display='block'}};
+    (async()=>{
+      if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return fallback('เบราว์เซอร์ไม่รองรับกล้องในหน้า');
+      let err=null;
+      for(const c of [{video:{facingMode:'user',width:{ideal:1280},height:{ideal:960}},audio:false},{video:{facingMode:'user'},audio:false},{video:true,audio:false}]){
+        try{stream=await navigator.mediaDevices.getUserMedia(c);err=null;break}catch(e){err=e;if(e&&(e.name==='NotAllowedError'||e.name==='SecurityError'))break}}
+      if(!stream)return fallback(err&&err.name||'');
+      v.srcObject=stream;try{await v.play()}catch(e){}
+      if(!v.videoWidth){await new Promise(r=>setTimeout(r,1200))}
+      if(!v.videoWidth){try{stream.getTracks().forEach(t=>t.stop())}catch(e){}stream=null;fallback('กล้องไม่แสดงภาพ')}
+    })();
   });
 }
 /* ---------- ติดตามเส้นทางระหว่างออกนอกสถานที่ (แบบ LINEMAN): พนักงานส่งตำแหน่งทุก ~15 วินาที · ผู้ดูแล/ผู้อนุมัติดูบนแผนที่ ---------- */
-{const st=document.createElement('style');st.textContent='.trkdot{width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 0 rgba(79,109,245,.6);animation:trkpulse 1.6s infinite}@keyframes trkpulse{70%{box-shadow:0 0 0 16px rgba(79,109,245,0)}100%{box-shadow:0 0 0 0 rgba(79,109,245,0)}}.trklb{position:absolute;left:22px;top:-2px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;font-weight:700;border-radius:8px;padding:1px 7px;white-space:nowrap}';document.head.appendChild(st)}
+{const st=document.createElement('style');st.textContent='.trkdot{width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 0 rgba(79,109,245,.6);animation:trkpulse 1.6s infinite}@keyframes trkpulse{70%{box-shadow:0 0 0 16px rgba(79,109,245,0)}100%{box-shadow:0 0 0 0 rgba(79,109,245,0)}}.carwrap{width:28px;height:44px;transition:transform .6s linear;filter:drop-shadow(0 1px 3px rgba(0,0,0,.6))}.carring{position:absolute;left:3px;top:11px;width:22px;height:22px;border-radius:50%;background:var(--c);animation:carpulse 1.6s infinite}@keyframes carpulse{0%{transform:scale(1);opacity:.55}100%{transform:scale(2.6);opacity:0}}.trklb{position:absolute;left:22px;top:-2px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;font-weight:700;border-radius:8px;padding:1px 7px;white-space:nowrap}';document.head.appendChild(st)}
 const trk={id:null,last:0,wl:null,msg:'',pts:[],map:null,mk:null,pl:null,ac:null,logId:null,seeded:false,seen:0};
 /* แผนที่ของพนักงานเอง ระหว่างออกนอกสถานที่: จุดเคลื่อนที่ตามตำแหน่งจริง + เส้นทางที่เดินมา (แบบ LINEMAN) */
+/* หมุดเป็นรูปรถยนต์สีขาว (มองจากด้านบน) หันหน้าตามทิศที่เคลื่อนที่ + วงกระพริบสีประจำตัว */
+const CAR_SVG='<svg viewBox="0 0 28 44" width="28" height="44"><rect x="0.5" y="9" width="3.5" height="9" rx="1.7" fill="#1e2740"/><rect x="24" y="9" width="3.5" height="9" rx="1.7" fill="#1e2740"/><rect x="0.5" y="28" width="3.5" height="9" rx="1.7" fill="#1e2740"/><rect x="24" y="28" width="3.5" height="9" rx="1.7" fill="#1e2740"/><rect x="3.5" y="1.5" width="21" height="41" rx="9" fill="#fff" stroke="#2b3550" stroke-width="1.8"/><path d="M7 14 Q14 9.5 21 14 L20 19.5 H8 Z" fill="#6f81a8"/><rect x="7.5" y="27" width="13" height="7.5" rx="2.5" fill="#6f81a8"/><rect x="7.5" y="21" width="13" height="4.5" rx="1.5" fill="#e8edf6"/></svg>';
+const carIcon=(color,label)=>L.divIcon({className:'',html:`<div style="position:relative;width:28px;height:44px"><div class="carring" style="--c:${color}"></div><div class="carwrap" data-car>${CAR_SVG}</div>${label?`<div class="trklb" style="left:34px;top:12px">${label}</div>`:''}</div>`,iconSize:[28,44],iconAnchor:[14,22]});
+const bearingDeg=(a,b)=>{const t=x=>x*Math.PI/180,y=Math.sin(t(b[1]-a[1]))*Math.cos(t(b[0])),x=Math.cos(t(a[0]))*Math.sin(t(b[0]))-Math.sin(t(a[0]))*Math.cos(t(b[0]))*Math.cos(t(b[1]-a[1]));return (Math.atan2(y,x)*180/Math.PI+360)%360};
+function carTurn(m,from,to){if(Math.abs(from[0]-to[0])+Math.abs(from[1]-to[1])<0.00002)return;const el=m.getElement&&m.getElement(),w=el&&el.querySelector('[data-car]');if(w)w.style.transform=`rotate(${bearingDeg(from,to).toFixed(0)}deg)`}
 function trkGlide(m,to){const f0=m.getLatLng(),t0=performance.now(),D=900;const f=n=>{const k=Math.min(1,(n-t0)/D);m.setLatLng([f0.lat+(to[0]-f0.lat)*k,f0.lng+(to[1]-f0.lng)*k]);if(k<1)requestAnimationFrame(f)};requestAnimationFrame(f)}
 async function myMapEnsure(){
   const el=document.getElementById('myMap');
@@ -3524,10 +3553,10 @@ async function myMapEnsure(){
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(trk.map);
     trk.pl=L.polyline(trk.pts,{color:'#4f6df5',weight:5,opacity:.9}).addTo(trk.map);
     trk.ac=L.circle(c,{radius:30,color:'#4f6df5',weight:1,fillOpacity:.1}).addTo(trk.map);
-    trk.mk=L.marker(c,{icon:L.divIcon({className:'',html:'<div class="trkdot" style="background:#4f6df5"></div><div class="trklb">คุณ</div>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(trk.map);
+    trk.mk=L.marker(c,{icon:carIcon('#4f6df5','คุณ')}).addTo(trk.map);
     setTimeout(()=>trk.map&&trk.map.invalidateSize(),200)}
   const last=trk.pts[trk.pts.length-1];
-  if(last){trk.pl.setLatLngs(trk.pts);trkGlide(trk.mk,last);trk.ac.setLatLng(last);if(trk.acc)trk.ac.setRadius(Math.max(10,trk.acc));trk.map.panTo(last,{animate:true,duration:.8})}
+  if(last){trk.pl.setLatLngs(trk.pts);{const mp=trk.mk.getLatLng();carTurn(trk.mk,[mp.lat,mp.lng],last)}trkGlide(trk.mk,last);trk.ac.setLatLng(last);if(trk.acc)trk.ac.setRadius(Math.max(10,trk.acc));trk.map.panTo(last,{animate:true,duration:.8})}
 }
 function trkPush(p){const a=[p.coords.latitude,p.coords.longitude],l=trk.pts[trk.pts.length-1];trk.acc=p.coords.accuracy;
   if(!l||Math.abs(l[0]-a[0])+Math.abs(l[1]-a[1])>0.00002){trk.pts.push(a);if(trk.pts.length>3000)trk.pts.shift()}
@@ -3577,8 +3606,9 @@ async function trackAdminInit(){
     S.forEach((s,i)=>{const col=COL[i%COL.length],live=!s.end,k=s.id;keep.add(k);if(!s.line.length)return;
       if(pl[k])pl[k].setLatLngs(s.line).setStyle({color:col,dashArray:live?null:'6 6',opacity:live?.9:.55});else pl[k]=L.polyline(s.line,{color:col,weight:live?5:3,opacity:live?.9:.55,dashArray:live?null:'6 6'}).addTo(map);
       const last=s.line[s.line.length-1];
-      if(mk[k]){if(live)glide(mk[k],last);else mk[k].setLatLng(last)}
-      else mk[k]=L.marker(last,{icon:L.divIcon({className:'',html:live?`<div class="trkdot" style="background:${col}"></div><div class="trklb">${esc(nameOf(s.emp))}</div>`:`<div style="width:12px;height:12px;border-radius:50%;background:#8a94a6;border:2px solid #fff"></div>`,iconSize:[18,18],iconAnchor:[9,9]})}).addTo(map);
+      const dot=L.divIcon({className:'',html:'<div style="width:12px;height:12px;border-radius:50%;background:#8a94a6;border:2px solid #fff"></div>',iconSize:[18,18],iconAnchor:[9,9]});
+      if(mk[k]){if(live){const mp=mk[k].getLatLng();carTurn(mk[k],[mp.lat,mp.lng],last);glide(mk[k],last)}else{if(mk[k]._car){mk[k].setIcon(dot);mk[k]._car=false}mk[k].setLatLng(last)}}
+      else{mk[k]=L.marker(last,{icon:live?carIcon(col,esc(nameOf(s.emp))):dot}).addTo(map);mk[k]._car=live}
       if(!sel||sel===k)all=all.concat(s.line)});
     if(!stopLayer)stopLayer=L.layerGroup().addTo(map);stopLayer.clearLayers();
     S.forEach(s=>{if(!s.trip||(!s.end&&sel!==s.id))return;s.trip.stops.forEach(st=>L.marker([st.lat,st.lng],{icon:L.divIcon({className:'',html:'<div style="background:#f29b2f;color:#fff;border:2px solid #fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.4)">P</div>',iconSize:[22,22],iconAnchor:[11,11]})}).bindTooltip(`${nameOf(s.emp)} หยุดนิ่ง ${st.minutes} นาที (${tf(st.from)}–${tf(st.to)} น.)`).addTo(stopLayer))});
