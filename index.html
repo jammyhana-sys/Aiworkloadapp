@@ -162,7 +162,8 @@ header>*{min-width:0}
 .lg b{margin-left:auto;white-space:nowrap}.lg span.p{color:var(--mut);font-size:12.5px;min-width:42px;text-align:right}
 
 /* ===== หน้าหลัก / PIN / ลงเวลา / ลางาน ===== */
-body[data-mode=home] main,body[data-mode=att] main,body[data-mode=leave] main{max-width:760px}
+body[data-mode=home] main,body[data-mode=att] main,body[data-mode=leave] main,body[data-mode=kpi] main,body[data-mode=okr] main{max-width:760px}
+.gt{margin:4px 4px 10px;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;color:var(--ink)}.gt:before{content:'';width:5px;height:18px;border-radius:3px;background:linear-gradient(180deg,#4f6df5,#7a5cf0)}.grp{margin-bottom:6px}.soon{display:inline-block;background:rgba(122,92,240,.14);color:#7a5cf0;border-radius:8px;padding:1px 8px;font-size:11.5px;font-weight:700}
 .hero{display:flex;gap:16px;align-items:center;background:linear-gradient(120deg,var(--pri),var(--pri2));color:#fff;border-radius:20px;padding:22px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
 .hero .av{width:58px;height:58px;border-radius:50%;background:rgba(255,255,255,.24);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;flex:none}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:16px}
@@ -272,6 +273,8 @@ button.btn.ok{background:var(--cost);border-color:var(--cost);color:#fff}button.
 <div id="hubBar" class="hide"></div>
 <section id="mod-att" class="hide"></section>
 <section id="mod-leave" class="hide"></section>
+<section id="mod-kpi" class="hide"></section>
+<section id="mod-okr" class="hide"></section>
 
 <!-- ===== LOG ===== -->
 <section id="tab-log">
@@ -3226,14 +3229,21 @@ const WL_TABS=['log','hist','appr','astat','setup','mem','adm','acct'];
 function setMode(m){
   appMode=m;document.body.dataset.mode=m;clearInterval(clockTimer);
   WL_TABS.forEach(t=>{const s=$('#tab-'+t);if(s)s.classList.add('hide')});
-  ['home','mod-att','mod-leave'].forEach(id=>$('#'+id).classList.toggle('hide',id!==(m==='home'?'home':'mod-'+m)));
+  ['home','mod-att','mod-leave','mod-kpi','mod-okr'].forEach(id=>$('#'+id).classList.toggle('hide',id!==(m==='home'?'home':'mod-'+m)));
   document.querySelector('header nav').classList.toggle('hide',m!=='workload');
   $('#homeBtn').classList.toggle('hide',m==='home');
   if(m==='workload'){const b=document.querySelector('nav button.on')||document.querySelector('nav button[data-tab=log]');b.click()}
   hubBarPaint(m);
-  if(m==='home')renderHome();else if(m==='att')renderAtt();else if(m==='leave')renderLeave();
+  if(m==='home')renderHome();else if(m==='att')renderAtt();else if(m==='leave')renderLeave();else if(m==='kpi'||m==='okr')renderPerf(m);
   window.scrollTo(0,0);
 }
+/* Performance Management: KPI / OKR (หน้าเตรียมไว้ — ยังไม่เปิดใช้งาน) */
+function renderPerf(m){
+  const el=$('#mod-'+m);if(!el)return;
+  const K=m==='kpi'?{ico:'📈',col:'linear-gradient(135deg,#2bb3c0,#14a37f)',t:'KPI',d:'ตัวชี้วัดผลงาน (Key Performance Indicator)'}:{ico:'🎯',col:'linear-gradient(135deg,#d6409f,#7a5cf0)',t:'OKR',d:'เป้าหมายและผลลัพธ์หลัก (Objectives and Key Results)'};
+  el.innerHTML=`<div class="card" style="text-align:center;padding:28px 18px"><div style="width:72px;height:72px;border-radius:20px;margin:0 auto 12px;background:${K.col};color:#fff;display:flex;align-items:center;justify-content:center;font-size:36px">${K.ico}</div>
+    <h2 style="margin:0">${K.t}</h2><div class="hint" style="margin:4px 0 12px">${K.d}</div><span class="soon">เร็ว ๆ นี้</span>
+    <div class="hint" style="margin-top:14px">กลุ่ม Performance Management — โมดูลนี้อยู่ระหว่างพัฒนา จะเปิดใช้งานในเวอร์ชันถัดไป</div></div>`}
 /* เมนู "ผู้อนุมัติ" ของระบบลางาน/ลงเวลา (Super Admin) — กำหนดแยกจาก Role and permission ของ Workload (ตาราง hub_approvers) */
 let hubApOpen=false;
 function hubBarPaint(m){
@@ -3286,12 +3296,17 @@ function renderHome(){
   const nm=String((me&&me.name)||(user&&user.name)||''),fn=nm.split(/\s+/)[0],wlPend=canApprove()?pendingRows().length:0,hub=hubOn();
   const tile=(go,ico,col,title,id,bd,off)=>`<button class="tile${off?' off':''}" data-go="${off?'':go}" ${off?'disabled':''}>${bd?`<em class="bd">${bd}</em>`:''}<i style="background:${col}">${ico}</i><b>${title}</b><span id="${id}"></span></button>`;
   el.innerHTML=`<div class="hero"><div class="av">${esc(initials(nm))}</div><div><div style="font-size:14px;opacity:.85">${greet()}</div><div style="font-size:22px;font-weight:700">${esc(fn)}</div><div style="font-size:13px;opacity:.85">${esc(dShort(bkkDay()))}${me&&me.dept?' · ฝ่าย '+esc(((find(db.depts,me.dept)||{}).name)||me.dept):''}</div></div></div>
+    <div class="grp"><div class="gt">Work Management</div>
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
-      ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v134 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+      ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div></div>
+    <div class="grp"><div class="gt">Performance Management</div>
+    <div class="tiles">${tile('kpi','📈','linear-gradient(135deg,#2bb3c0,#14a37f)','KPI','tileKpi','',false)}
+      ${tile('okr','🎯','linear-gradient(135deg,#d6409f,#7a5cf0)','OKR','tileOkr','',false)}</div></div>
+    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v135 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
+    {const k=$('#tileKpi'),o=$('#tileOkr');if(k)k.innerHTML='<span class="soon">เร็ว ๆ นี้</span>';if(o)o.innerHTML='<span class="soon">เร็ว ๆ นี้</span>'}
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
     l.textContent=hub?(s.toApprove?`รออนุมัติ ${s.toApprove} รายการ`:s.myPend?`รออนุมัติ ${s.myPend} รายการของฉัน`:'ขอลา · ดูสิทธิ์วันลา'):'ต้องเชื่อมระบบกลาง';
     if(s.toApprove&&l.parentElement&&!l.parentElement.querySelector('.bd'))l.parentElement.insertAdjacentHTML('afterbegin',`<em class="bd">${s.toApprove}</em>`);
