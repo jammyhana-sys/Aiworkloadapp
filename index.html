@@ -3289,7 +3289,7 @@ function renderHome(){
     <div class="tiles">${tile('workload','⏱','linear-gradient(135deg,#4f6df5,#7a5cf0)','Workload','tileWl',wlPend,false)}
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div>
-    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v130 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
+    <div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v131 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div>`;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
@@ -3860,6 +3860,7 @@ function siteSearchInit(sitesAll){
   $('#siteSearch').onclick=doSearch;q.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();doSearch()}};
   const hereBtn=$('#siteHere');if(hereBtn){const old=hereBtn.onclick;hereBtn.onclick=async()=>{await old();const lat=parseFloat(f.lat.value),lng=parseFloat(f.lng.value);if(isFinite(lat)&&isFinite(lng))show(lat,lng,18)}}
   // แผนที่แสดงทันที — แตะเพื่อปักหมุดได้เลยโดยไม่ต้องค้นหา (เริ่มที่จุดแรกที่มี หรือกรุงเทพฯ)
+  window._siteShow=(la2,ln2,z)=>show(la2,ln2,z);
   const s0=(sitesAll||[])[0];ensureMap(s0?+s0.lat:13.7563,s0?+s0.lng:100.5018,s0?15:6)}
 /* ---------- กำหนดผู้ใช้งานจุดสำนักงาน: ทุกคน / รายฝ่าย / รายคน (ค้นหา รหัส · ชื่อ · ฝ่าย) ---------- */
 let _asgOpen=null;
@@ -3913,16 +3914,18 @@ async function renderAttAdmin(){
   let html=`<div class="card"><h2>ภาพรวมการลงเวลาวันนี้ (ผู้ดูแล)</h2><div class="hint" style="margin-bottom:8px">ลงเวลาแล้ว ${Object.keys(per).length} คน</div><div class="scroll"><table><thead><tr><th>พนักงาน</th><th>เข้า</th><th>ออก</th><th>สถานะ</th><th>สถานที่</th></tr></thead><tbody>${rows}</tbody></table></div></div>`+(isSuperAdmin?trackCardHtml():'');
   if(isSuperAdmin){
     html+=`<div class="card"><h2>จุดสำนักงาน / ไซต์งาน (ตรวจว่าลงเวลาในพื้นที่หรือไม่)</h2>
-      <div class="scroll"><table><thead><tr><th>ชื่อ</th><th>พิกัด</th><th class="n">รัศมี (ม.)</th><th>ผู้ใช้งาน</th><th></th></tr></thead><tbody>${sitesAll.map(s=>`<tr><td>${esc(s.name)}</td><td class="hint">${(+s.lat).toFixed(5)}, ${(+s.lng).toFixed(5)}</td><td class="n">${s.radius_m}</td><td>${siteAsgSummary(asg,s.id)}</td><td style="white-space:nowrap">${asg===null?'':`<button class="btn" style="padding:3px 9px" data-sasg="${esc(s.id)}">👥 กำหนดผู้ใช้</button> `}<button class="x" data-sdel="${esc(s.id)}">✕</button></td></tr>`).join('')||'<tr><td colspan="5" class="hint">ยังไม่มีจุดสำนักงาน</td></tr>'}</tbody></table></div><div id="siteAsg"></div>
+      <div class="scroll"><table><thead><tr><th>ชื่อ</th><th>พิกัด</th><th class="n">รัศมี (ม.)</th><th>ผู้ใช้งาน</th><th></th></tr></thead><tbody>${sitesAll.map(s=>`<tr><td>${esc(s.name)}${s.active===false?' <span class="tag st">ปิดใช้งาน</span>':''}</td><td class="hint">${(+s.lat).toFixed(5)}, ${(+s.lng).toFixed(5)}</td><td class="n">${s.radius_m}</td><td>${siteAsgSummary(asg,s.id)}</td><td style="white-space:nowrap">${asg===null?'':`<button class="btn" style="padding:3px 9px" data-sasg="${esc(s.id)}">👥 กำหนดผู้ใช้</button> `}<button class="btn" style="padding:3px 9px" data-sedit="${esc(s.id)}" title="แก้ไขชื่อ พิกัด รัศมี สถานะ">✎ แก้ไข</button> <button class="x" data-sdel="${esc(s.id)}">✕</button></td></tr>`).join('')||'<tr><td colspan="5" class="hint">ยังไม่มีจุดสำนักงาน</td></tr>'}</tbody></table></div><div id="siteAsg"></div>
       <div style="margin-top:14px"><label>🔍 ค้นหาพิกัด (ชื่อสถานที่ / ที่อยู่ · หรือวางพิกัด เช่น 13.7563, 100.5018 · หรือลิงก์ Google Maps)</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="siteQ" style="flex:1;min-width:220px" placeholder="เช่น ศูนย์ราชการเฉลิมพระเกียรติ แจ้งวัฒนะ"><button class="btn pri" type="button" id="siteSearch">ค้นหา</button></div>
         <div id="siteRes" style="margin-top:8px"></div>
         <div id="siteMap" style="height:280px;border-radius:12px;margin-top:10px;overflow:hidden;background:#e6edf5;display:none"></div>
         <div class="hint" id="siteMapHint" style="margin-top:4px;display:none">แตะแผนที่หรือลากหมุดเพื่อปรับตำแหน่งให้ตรงจุดลงเวลา · วงกลมสีฟ้า = รัศมีที่พนักงานลงเวลาได้ · วงสีเทา = จุดที่มีอยู่แล้ว</div></div>
+      <div id="siteEditBar" class="notice hide" style="margin:12px 0 0"></div>
       <form id="siteForm" class="row" style="margin-top:12px;align-items:end"><div><label>ชื่อสถานที่</label><input name="name" required placeholder="เช่น สำนักงานใหญ่"></div>
         <div><label>ละติจูด</label><input name="lat" required inputmode="decimal" placeholder="13.7563"></div><div><label>ลองจิจูด</label><input name="lng" required inputmode="decimal" placeholder="100.5018"></div>
         <div><label>รัศมี (เมตร)</label><input name="radius" value="150" inputmode="numeric"></div>
-        <div style="display:flex;gap:8px"><button class="btn" type="button" id="siteHere">📍 ใช้ตำแหน่งปัจจุบัน</button><button class="btn pri">+ เพิ่ม</button></div></form><div class="err" id="siteMsg"></div></div>
+        <div><label>สถานะ</label><label style="font-weight:400;display:flex;gap:6px;align-items:center;min-height:40px"><input type="checkbox" name="active" checked style="width:auto;min-height:0"> ใช้งาน</label></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="button" id="siteHere">📍 ใช้ตำแหน่งปัจจุบัน</button><button class="btn pri" id="siteSave">+ เพิ่ม</button><button class="btn hide" type="button" id="siteEditCancel">ยกเลิกการแก้ไข</button></div></form><div class="err" id="siteMsg"></div></div>
       <div class="card" id="attEd"><h2>🛠 แก้ไขบันทึกลงเวลา (Super Admin)</h2></div>
       <div class="card"><h2>AI-Beacon ที่ลงทะเบียน</h2><div class="hint" style="margin-bottom:8px">พนักงานที่ผูก LINE แล้วเดินเข้าใกล้ Beacon ครั้งแรกของวัน ระบบจะลงเวลาเข้างานให้ (ต้องเปิด Bluetooth และตั้ง Beacon ที่ LINE Official Account — ดู README_LINE.md)</div>
       <div class="scroll"><table><thead><tr><th>HWID</th><th>ชื่อ</th><th>จุดสำนักงาน</th><th></th></tr></thead><tbody>${beacons.map(b=>`<tr><td><code>${esc(b.hwid)}</code></td><td>${esc(b.name)}</td><td>${esc((sitesAll.find(s=>s.id===b.site_id)||{}).name||'—')}</td><td><button class="x" data-bdel="${esc(b.hwid)}">✕</button></td></tr>`).join('')||'<tr><td colspan="4" class="hint">ยังไม่มี Beacon</td></tr>'}</tbody></table></div>
@@ -3936,8 +3939,17 @@ async function renderAttAdmin(){
   siteSearchInit(sitesAll);siteAsgInit(sitesAll,asg||[],async()=>{att.loaded=false;await attLoad();renderAttAdmin()});
   $('#siteForm').onsubmit=async ev=>{ev.preventDefault();const f=ev.target,lat=parseFloat(f.lat.value),lng=parseFloat(f.lng.value),rad=parseInt(f.radius.value,10)||150;
     if(!(lat>=-90&&lat<=90&&lng>=-180&&lng<=180))return $('#siteMsg').textContent='พิกัดไม่ถูกต้อง';
-    const {error}=await sb.from('work_sites').upsert({id:'S'+Date.now().toString(36),name:f.name.value.trim(),lat,lng,radius_m:rad,active:true});
+    const editId=f.dataset.edit||'';
+    const {error}=await sb.from('work_sites').upsert({id:editId||'S'+Date.now().toString(36),name:f.name.value.trim(),lat,lng,radius_m:rad,active:!!f.active.checked});
     if(error)return $('#siteMsg').textContent='บันทึกไม่สำเร็จ: '+error.message;await reload()};
+  /* แก้ไขจุดสำนักงานที่มีอยู่: ชื่อ · พิกัด (ลากหมุดบนแผนที่ได้) · รัศมี · เปิด/ปิดใช้งาน */
+  const endEdit=()=>{const f=$('#siteForm');delete f.dataset.edit;f.reset();f.radius.value='150';f.active.checked=true;$('#siteSave').textContent='+ เพิ่ม';$('#siteEditCancel').classList.add('hide');$('#siteEditBar').classList.add('hide');$('#siteMsg').textContent=''};
+  $('#siteEditCancel').onclick=endEdit;
+  $$('[data-sedit]').forEach(b=>b.onclick=()=>{const s=sitesAll.find(x=>x.id===b.dataset.sedit),f=$('#siteForm');if(!s)return;
+    f.dataset.edit=s.id;f.name.value=s.name;f.lat.value=(+s.lat).toFixed(6);f.lng.value=(+s.lng).toFixed(6);f.radius.value=s.radius_m;f.active.checked=s.active!==false;
+    $('#siteSave').textContent='💾 บันทึกการแก้ไข';$('#siteEditCancel').classList.remove('hide');
+    const bar=$('#siteEditBar');bar.classList.remove('hide');bar.innerHTML='✎ กำลังแก้ไขจุด: <b>'+esc(s.name)+'</b> — แก้ชื่อ รัศมี สถานะ หรือลากหมุดบนแผนที่เพื่อย้ายพิกัด แล้วกด "บันทึกการแก้ไข" (ผู้ใช้งานของจุดยังคงเดิม)';
+    if(window._siteShow)window._siteShow(+s.lat,+s.lng,17);bar.scrollIntoView({behavior:'smooth',block:'center'})});
   $$('[data-sdel]').forEach(b=>b.onclick=async()=>{if(!confirm('ลบจุดสำนักงานนี้?'))return;const {error}=await sb.from('work_sites').delete().eq('id',b.dataset.sdel);if(error)return alert(error.message);await reload()});
   $('#beaconForm').onsubmit=async ev=>{ev.preventDefault();const f=ev.target;
     const {error}=await sb.from('beacons').upsert({hwid:f.hwid.value.trim().toLowerCase(),name:f.name.value.trim(),site_id:f.site.value||null,active:true});
