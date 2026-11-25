@@ -1315,6 +1315,9 @@ function snLoad(){if(snMap||snBusy||!snVisible()||typeof CLOUD==='undefined'||!C
 const snTag=code=>{if(!code||!snVisible())return '';if(!snMap){snLoad();return ''}const s=snMap[code];return s?` <span class="tag st" title="Short Name (IFS)" style="font-size:11px">${esc(s)}</span>`:''};
 const entLbl0=x=>x.cat==='Cost'?`${esc(x.code)} ${esc(trunc(entryName(x),30))}${snTag(x.code)}`:`${esc(x.sgaId)} ${esc(trunc(find(db.sgaTypes,x.sgaId)?.name||'',16))}${x.code?' <span class="hint">('+esc(x.code)+')</span>':''}`;
 const entLbl=x=>entLbl0(x)+attLinks(x);
+/* ป้ายสัดส่วนชั่วโมงสำหรับขั้น "ธุรการ": ชม. ของรายการ ÷ ชม.เป้าหมายของวันนั้น (เช่น 8 ชม. = 100%) */
+function hrPct(t,x,e){try{if(nextRole(t,x)!=='adm')return '';const tg=(dayTarget(e,t.date)||TARGET)||8,p=Math.round((+x.hours||0)/tg*1000)/10;
+  return `<div><span class="tag st" style="margin-top:4px;white-space:nowrap" title="${x.hours} ชม. จากเป้าหมาย ${tg} ชม./วัน">${x.hours} ชม. = ${p}%</span></div>`}catch(_){return ''}}
 function renderAppr(){renderApprView()}
 let ap_={proj:'',dept:'',emp:'',group:'none'};
 function renderApprView(){
@@ -1339,7 +1342,7 @@ function renderApprView(){
   $('#apprList').innerHTML=rows.map(({t,x})=>{const e=find(db.employees,t.empId)||{},k=esc(t.id)+'|'+esc(x.id);let hdr='';
     if(ap_.group!=='none'){const g=gkey({t,x});if(g!==lastG){lastG=g;const gr=rows.filter(r=>gkey(r)===g);
       hdr=`<tr class="tot"><td colspan="9"><label style="display:inline-flex;gap:8px;align-items:center;margin:0"><input type="checkbox" data-gk="${esc(g)}" style="width:auto;min-height:0"> <b>${esc(glab(g))}</b></label> · ${gr.length} รายการ · ${gr.reduce((a,r)=>a+r.x.hours,0)} ชม. <button class="btn ok" style="padding:4px 12px;margin-left:8px" data-gok="${esc(g)}">อนุมัติทั้งกลุ่ม</button></td></tr>`}}
-    return hdr+`<tr><td><input type="checkbox" data-ak="${k}" data-g="${esc(gkey({t,x}))}" style="width:auto;min-height:0"></td><td>${t.date}</td><td>${esc(t.empId)} ${esc(e.name||'')}<div class="hint">${esc(e.dept||'')}</div></td><td>${entLbl(x)}</td><td>${plTag(x)} ${typeTag(x.code)}</td><td class="n">${x.hours}</td><td style="font-size:12.5px;white-space:nowrap">${flowTxt(t,x)}</td><td class="hint">${esc(trunc(x.note||'',40))}</td>
+    return hdr+`<tr><td><input type="checkbox" data-ak="${k}" data-g="${esc(gkey({t,x}))}" style="width:auto;min-height:0"></td><td>${t.date}</td><td>${esc(t.empId)} ${esc(e.name||'')}<div class="hint">${esc(e.dept||'')}</div></td><td>${entLbl(x)}</td><td>${plTag(x)} ${typeTag(x.code)}</td><td class="n">${x.hours}${hrPct(t,x,e)}</td><td style="font-size:12.5px;white-space:nowrap">${flowTxt(t,x)}</td><td class="hint">${esc(trunc(x.note||'',40))}</td>
       <td style="white-space:nowrap"><button class="btn ok" style="padding:5px 12px" data-aok="${k}">อนุมัติ</button> <button class="btn" style="padding:5px 12px;color:var(--bad)" data-arj="${k}">ส่งกลับ</button></td></tr>`}).join('')||'<tr><td colspan="9" class="hint">ไม่มีรายการที่ถึงคิวของคุณ 🎉</td></tr>';
   $$('#apprList [data-aok]').forEach(b=>b.onclick=()=>apprApprove([pairOf(b.dataset.aok)]));
   $$('#apprList [data-gk]').forEach(c=>c.onchange=()=>$$('#apprList [data-ak]').forEach(r=>{if(r.dataset.g===c.dataset.gk)r.checked=c.checked}));
@@ -4451,7 +4454,7 @@ if(CLOUD)cloudInit();
 (()=>{const ps=document.getElementById('pinScreen');if(!ps)return;
   ['gesturestart','gesturechange','gestureend'].forEach(t=>ps.addEventListener(t,e=>e.preventDefault()));
   ps.addEventListener('dblclick',e=>e.preventDefault());})();/* ตรวจเวอร์ชันใหม่อัตโนมัติ: เมื่อกลับมาเปิดแอป / ทุก 5 นาที — ถ้ามีเวอร์ชันใหม่ รีโหลดเองเมื่ออยู่หน้าหลัก ไม่งั้นแสดงแถบให้แตะอัปเดต */
-const APP_BUILD=201;
+const APP_BUILD=202;
 async function chkUpdate(){try{const t=await (await fetch('sw.js?'+Date.now(),{cache:'no-store'})).text();const m=t.match(/timesheet-v(\d+)/);if(!m||Number(m[1])<=APP_BUILD)return;
   try{const rg=await navigator.serviceWorker?.getRegistration();if(rg)await rg.update()}catch(_){}
   const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||'');
