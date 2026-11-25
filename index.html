@@ -570,7 +570,8 @@ body[data-mode=home] #tabbar{display:flex;justify-content:center;gap:2px}
     <p class="hint">พนักงานจะเห็นเฉพาะรหัสที่ถูก assign ให้ (Cost = รหัสโครงการ, SG&amp;A = Sales Contract No. / MT Project Code / Backlog Project Code) · ค้นหาในตารางด้านล่างแล้วกด <b>＋ Assign</b> ที่แถว ระบบจะเลือกรหัสนั้นในฟอร์มให้ แล้วพิมพ์รหัสพนักงานได้เลย</p>
     <form id="asgForm" class="row" style="align-items:end">
       <div><label>รหัสโครงการ / Sales Contract</label><select id="asgCode"></select></div>
-      <div style="grid-column:span 2"><label>รหัสพนักงาน (คั่นด้วย , หรือขึ้นบรรทัดใหม่)</label><textarea id="asgEmps" rows="2" placeholder="01726, 02326"></textarea></div>
+      <div><label>Assign รายฝ่าย (ทั้งฝ่าย)</label><select id="asgDept"></select><div class="hint" id="asgDeptN"></div></div>
+      <div style="grid-column:span 2"><label>รหัสพนักงาน (คั่นด้วย , หรือขึ้นบรรทัดใหม่) — ใส่เพิ่มจากฝ่ายได้</label><textarea id="asgEmps" rows="2" placeholder="01726, 02326"></textarea></div>
       <div><button class="btn pri">+ Assign</button></div>
     </form>
     <input type="search" data-ms="assign" placeholder="🔍 ค้นหา รหัส / ชื่อโครงการ / รหัสพนักงาน …" style="max-width:380px;margin:12px 0 0">
@@ -2363,7 +2364,7 @@ function renderSetup(){const BU=budgetUsed();try{ifsInit()}catch(_){}setTimeout(
   // assignments
   const codes=[...db.projects.map(p=>({id:p.id,name:`${p.name} [${p.kind}]`,upd:p.updatedAt||'',active:p.active!==false})),...db.contracts.map(c=>({id:c.id,name:`${c.name} [Sales Contract]`,upd:c.updatedAt||'',active:c.active!==false}))]
     .sort((a,b)=>String(b.upd).localeCompare(String(a.upd))||String(b.id).localeCompare(String(a.id),undefined,{numeric:true}));   // โครงการ/สัญญาล่าสุด (นำเข้า/อัปเดตล่าสุด) ขึ้นก่อน
-  {const keep=$('#asgCode').value;$('#asgCode').innerHTML=opt(codes.filter(c=>c.active),c=>`${c.id} — ${c.name}`,'— เลือกรหัส (ล่าสุดขึ้นก่อน) —');if(keep)$('#asgCode').value=keep;makeSearch('#asgCode')}
+  {const keep=$('#asgCode').value;$('#asgCode').innerHTML=opt(codes.filter(c=>c.active),c=>`${c.id} — ${c.name}`,'— เลือกรหัส (ล่าสุดขึ้นก่อน) —');if(keep)$('#asgCode').value=keep;makeSearch('#asgCode');asgDeptFill()}
   $('#asgList').innerHTML=codes.map((c,n)=>{const es=db.assign.filter(a=>a.code===c.id).map(a=>a.empId);
     return `<tr><td class="hint">${n+1}</td><td>${esc(c.id)}</td><td>${esc(c.name)}</td><td>${es.map(id=>`<span class="tag st" style="margin:0 4px 4px 0">${esc(id)} <a href="#" data-unasg="${esc(id)}|${esc(c.id)}" style="color:#fff;text-decoration:none">✕</a></span>`).join('')||'<span class="hint">ยังไม่มี</span>'}</td><td style="white-space:nowrap">${c.active?`<button class="btn" type="button" style="padding:4px 12px" data-asgpick="${esc(c.id)}">＋ Assign</button>`:'<span class="hint">ปิดใช้งาน</span>'}</td></tr>`}).join('');applyMS();
   $$('[data-asgpick]').forEach(b=>b.onclick=()=>{const s=$('#asgCode');s.value=b.dataset.asgpick;s.dispatchEvent(new Event('change',{bubbles:true}));const f=$('#asgForm');f.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>$('#asgEmps').focus(),350)});
@@ -2374,10 +2375,18 @@ function renderSetup(){const BU=budgetUsed();try{ifsInit()}catch(_){}setTimeout(
   $('[data-ccolor]')?.addEventListener('change',ev=>{db.costStyle={...costSty(),color:ev.target.value};uiSave()});
   $('#uiReset')?.addEventListener('click',()=>{if(!confirm('คืนชื่อและสีของทุกประเภทเป็นค่าเริ่มต้น?'))return;const d=seed().sgaTypes;db.sgaTypes.forEach(t=>{const o=d.find(x=>x.id===t.id);if(o)t.name=o.name;delete t.color});db.costStyle=null;uiSave();renderSetup()});
 }
+/* Assign รายฝ่าย: เลือกฝ่าย → พนักงานที่ใช้งานอยู่ทุกคนในฝ่ายนั้นถูก assign รหัสที่เลือก */
+const deptEmps=d=>d?db.employees.filter(e=>e.dept===d&&e.active!==false).map(e=>e.id):[];
+function asgDeptFill(){const s=$('#asgDept');if(!s)return;const keep=s.value;const ds=[...new Set(db.employees.filter(e=>e.active!==false&&e.dept).map(e=>e.dept))].sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true}));
+  s.innerHTML='<option value="">— ไม่เลือก (ระบุรหัสพนักงานเอง) —</option>'+ds.map(d=>`<option value="${esc(d)}">${esc(d)} ${esc((find(db.depts,d)||{}).name||'')} (${deptEmps(d).length} คน)</option>`).join('');if(keep&&ds.includes(keep))s.value=keep;
+  s.onchange=()=>{const n=deptEmps(s.value).length;$('#asgDeptN').textContent=s.value?`จะ assign ให้พนักงาน ${n} คน`:''}}
 $('#asgForm').onsubmit=ev=>{ev.preventDefault();const code=$('#asgCode').value;if(!code)return alert('เลือกรหัสก่อน');
-  const ids=$('#asgEmps').value.split(/[\s,;]+/).filter(Boolean);const bad=ids.filter(i=>!find(db.employees,i));
+  const typed=$('#asgEmps').value.split(/[\s,;]+/).filter(Boolean);const bad=typed.filter(i=>!find(db.employees,i));
   if(bad.length)return alert('ไม่พบรหัสพนักงาน: '+bad.join(', '));
-  ids.forEach(empId=>{if(!assigned(empId,code))db.assign.push({empId,code})});$('#asgEmps').value='';save();renderSetup();syncForm();renderLog()};
+  const dep=$('#asgDept').value,fromDept=deptEmps(dep);
+  const ids=[...new Set([...typed,...fromDept])];if(!ids.length)return alert('ระบุรหัสพนักงาน หรือเลือกฝ่าย');
+  if(dep&&!confirm(`Assign รหัส ${code} ให้ฝ่าย ${dep} ทั้งหมด ${fromDept.length} คน${typed.length?` (+ ระบุเพิ่ม ${typed.length} คน)`:''} ?`))return;
+  let n=0;ids.forEach(empId=>{if(!assigned(empId,code)){db.assign.push({empId,code});n++}});$('#asgEmps').value='';$('#asgDept').value='';save();renderSetup();syncForm();renderLog();if(dep)alert(`เพิ่ม assign ใหม่ ${n} คน (เดิมมีอยู่แล้ว ${ids.length-n} คน)`)};
 /* ---- Excel import / export (SheetJS) ---- */
 const xlsxReady=()=>{if(window.XLSX)return true;$('#xMsg').textContent='โหลดไลบรารี Excel ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)';return false};
 function sheetsFromDb(){
@@ -4442,7 +4451,7 @@ if(CLOUD)cloudInit();
 (()=>{const ps=document.getElementById('pinScreen');if(!ps)return;
   ['gesturestart','gesturechange','gestureend'].forEach(t=>ps.addEventListener(t,e=>e.preventDefault()));
   ps.addEventListener('dblclick',e=>e.preventDefault());})();/* ตรวจเวอร์ชันใหม่อัตโนมัติ: เมื่อกลับมาเปิดแอป / ทุก 5 นาที — ถ้ามีเวอร์ชันใหม่ รีโหลดเองเมื่ออยู่หน้าหลัก ไม่งั้นแสดงแถบให้แตะอัปเดต */
-const APP_BUILD=199;
+const APP_BUILD=200;
 async function chkUpdate(){try{const t=await (await fetch('sw.js?'+Date.now(),{cache:'no-store'})).text();const m=t.match(/timesheet-v(\d+)/);if(!m||Number(m[1])<=APP_BUILD)return;
   try{const rg=await navigator.serviceWorker?.getRegistration();if(rg)await rg.update()}catch(_){}
   const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||'');
