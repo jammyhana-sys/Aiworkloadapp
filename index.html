@@ -1946,25 +1946,25 @@ async function exportPersonReport(pe){
     const pb=(c,tot)=>{const x=ws.getCell(3,c);x.value=tot*rate;x.numFmt='#,##0.00;-#,##0.00;"-"';x.font={bold:true};x.alignment={horizontal:'center'};x.fill=fill('FCE4D6')};
     pb(11,D.tot.h);pb(cCost,D.tot.cost);D.pc.forEach((c,i)=>pb(cP0+i,D.tot.p[c]||0));pb(cSga,D.tot.sga);D.sgaT.forEach((s,i)=>pb(cN0+i,D.tot.n[s.id]||0))}
   // แถว 3: ชื่อโครงการ / ชื่อประเภท SG&A
-  D.pc.forEach((c,i)=>{const cell=ws.getCell(3+sh,cP0+i);cell.value=trunc(codeInfo(c)?.name||'',16);cell.font={size:8,color:{argb:'FF666666'}};cell.alignment={horizontal:'center',wrapText:true}});
+  D.pc.forEach((c,i)=>{const cell=ws.getCell(3+sh,cP0+i);cell.value=trunc(codeInfo(c)?.name||'',16)+((snVisible()&&snMap&&snMap[c])?'`n'+snMap[c]:'');cell.font={size:8,color:{argb:'FF666666'}};cell.alignment={horizontal:'center',wrapText:true}});
   D.sgaT.forEach((s,i)=>{const cell=ws.getCell(3+sh,cN0+i);cell.value=s.name;cell.font={bold:true,size:9};cell.alignment={horizontal:'center'};cell.fill=fill('DDE3FF')});
-  ws.getRow(3+sh).height=26;
+  ws.getRow(3+sh).height=(snVisible()&&snMap&&D.pc.some(c=>snMap[c]))?38:26;
   // แถว 4: หัวตาราง
-  const heads=['ปี','เดือน','วัน','D/M/Y','ฝ่าย','รหัสพนง.','ชื่อ','ตำแหน่ง','Level','ชื่อเล่น','Hours','Cost',...D.pc,'SG&A',...D.sgaT.map(s=>s.id),...(SALR?['ต้นทุน (บาท)']:[]),'สถานะ'];
+  const heads=['ปี','เดือน','วัน','D/M/Y','ฝ่าย','รหัสพนง.','ชื่อ','ตำแหน่ง','Level','ชื่อเล่น','Hours','Cost',...D.pc,'SG&A',...D.sgaT.map(s=>s.id),...(SALR?['ต้นทุน (บาท)']:[]),'สถานะ','% ชม.ทำงาน'];
   heads.forEach((h,i)=>{const c=ws.getCell(4+sh,i+1);c.value=h;c.font={bold:true,color:{argb:'FFFFFFFF'}};c.alignment={horizontal:'center',vertical:'middle'};
     c.fill=fill(i+1>=cCost&&i+1<cSga?'7030A0':(SALR&&i+1===cSt?'C2410C':'1F2A6B'))});
   ws.getRow(4+sh).height=22;
   // ข้อมูลรายวัน
   D.days.forEach((o,k)=>{const rI=5+sh+k,row=ws.getRow(rI);
-    const vals=[o.y,o.m,o.dn,o.date,e.dept||'',e.id,e.name,e.position||'',e.level||'',e.nick||'',o.h||0,o.cost||0,...D.pc.map(c=>o.p[c]||null),o.sga||0,...D.sgaT.map(s=>o.n[s.id]||null),...(SALR?[o.h?o.h*rate:0]:[]),o.status];
-    vals.forEach((v,i)=>{const c=row.getCell(i+1);c.value=v;if(i>=10&&i<cStat-1)c.numFmt=NUM;if(i===3)c.numFmt='d/m/yyyy'});
+    const vals=[o.y,o.m,o.dn,o.date,e.dept||'',e.id,e.name,e.position||'',e.level||'',e.nick||'',o.h||0,o.cost||0,...D.pc.map(c=>o.p[c]||null),o.sga||0,...D.sgaT.map(s=>o.n[s.id]||null),...(SALR?[o.h?o.h*rate:0]:[]),o.status,o.h?o.h/(dayTarget(e,o.ds)||TARGET):null];
+    vals.forEach((v,i)=>{const c=row.getCell(i+1);c.value=v;if(i>=10&&i<cStat-1)c.numFmt=NUM;if(i===3)c.numFmt='d/m/yyyy';if(i===cStat)c.numFmt='0%'});
     row.getCell(11).font={bold:true};row.getCell(11).fill=fill('DDEBF7');row.getCell(cCost).fill=fill('F2F2F2');row.getCell(cSga).fill=fill('F2F2F2');
     row.getCell(cCost).font=row.getCell(cSga).font={bold:true};
     if(!o.work){[3,4].forEach(i=>row.getCell(i).fill=fill('D9D9D9'))}
     for(let i=1;i<=cStat;i++)row.getCell(i).alignment={horizontal:i>=11&&i<cStat?'right':'center'};
     row.getCell(7).alignment={horizontal:'left'};row.getCell(8).alignment={horizontal:'left'}});
   [6,7,6,11,8,10,18,16,7,10,10,10].forEach((w,i)=>ws.getColumn(i+1).width=w);
-  for(let c=cP0;c<=cSga;c++)ws.getColumn(c).width=11;for(let c=cN0;c<=cN0+D.sgaT.length-1;c++)ws.getColumn(c).width=8;ws.getColumn(cStat).width=12;if(SALR)ws.getColumn(cSt).width=14;
+  for(let c=cP0;c<=cSga;c++)ws.getColumn(c).width=11;for(let c=cN0;c<=cN0+D.sgaT.length-1;c++)ws.getColumn(c).width=8;ws.getColumn(cStat).width=12;ws.getColumn(cStat+1).width=13;if(SALR)ws.getColumn(cSt).width=14;
   const buf=await wb.xlsx.writeBuffer(),a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));a.download=fname;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
 }
@@ -1977,12 +1977,13 @@ function renderPersonReport(){
   const sel=isAdmin?`<select id="rpEmp" style="max-width:320px">${db.employees.slice().sort(byId).map(x=>`<option value="${esc(x.id)}" ${x.id===e.id?'selected':''}>${esc(x.id+' — '+x.name)}</option>`).join('')}</select>`:'';
   const cols=[{t:'Hours',v:D.tot.h,k:'h'},{t:'Cost',v:D.tot.cost,k:'c',cst:1},...D.pc.map(c=>({t:c,v:D.tot.p[c]||0,k:'p:'+c,cst:1,nm:trunc(codeInfo(c)?.name||'',14)})),{t:'SG&A',v:D.tot.sga,k:'s'},...D.sgaT.map(s=>({t:s.id,v:D.tot.n[s.id]||0,k:'n:'+s.id,nm:s.name}))];
   const val=(o,k)=>k==='h'?o.h:k==='c'?o.cost:k==='s'?o.sga:k[0]==='p'?(o.p[k.slice(2)]||0):(o.n[k.slice(2)]||0);
-  const head=`<thead><tr class="y1"><td>YTD %</td>${cols.map(c=>`<td>${pc(c.v)}</td>`).join('')}${SALR?'<td></td>':''}<td></td></tr>
-    <tr class="y2"><td>YTD (ชม.)</td>${cols.map(c=>`<td>${fx(c.v)}</td>`).join('')}${SALR?'<td></td>':''}<td></td></tr>
-    ${SALR?`<tr class="y2 ysal"><td>YTD (บาท)</td>${cols.map(c=>`<td>${fx(c.v*rate)}</td>`).join('')}<td class="n">${fx(D.tot.h*rate)}</td><td></td></tr>`:''}
-    <tr class="y3"><td></td>${cols.map(c=>`<td>${esc(c.nm||'')}</td>`).join('')}${SALR?'<td></td>':''}<td></td></tr>
-    <tr class="h4"><th>วันที่</th>${cols.map(c=>`<th class="${c.cst?'cst':''}">${esc(c.t)}</th>`).join('')}${SALR?'<th style="background:#c2410c">ต้นทุน (บาท)</th>':''}<th>สถานะ</th></tr></thead>`;
-  const body=D.days.map(o=>`<tr class="${o.work?'':'off'}"><td>${o.dn} ${+o.ds.slice(8)}/${o.m}/${o.y}</td>${cols.map(c=>{const v=val(o,c.k);return `<td class="${c.k==='h'?'hrs':c.k==='c'||c.k==='s'?'tot':''}">${v?fx(v):(c.k==='h'||c.k==='c'||c.k==='s'?'-':'')}</td>`}).join('')}${SALR?`<td class="tot">${o.h?fx(o.h*rate):'-'}</td>`:''}<td>${esc(o.status)}</td></tr>`).join('');
+  const shC=c=>c.k&&c.k[0]==='p'&&snVisible()&&snMap?(snMap[c.t]||''):'';const shRow=cols.some(c=>shC(c))?`<tr class="y3"><td>Short Name</td>${cols.map(c=>`<td style="font-size:11px">${esc(shC(c))}</td>${c.k==='h'?'<td></td>':''}`).join('')}${SALR?'<td></td>':''}<td></td></tr>`:'';
+  const head=`<thead><tr class="y1"><td>YTD %</td>${cols.map(c=>`<td>${pc(c.v)}</td>${c.k==='h'?'<td></td>':''}`).join('')}${SALR?'<td></td>':''}<td></td></tr>
+    <tr class="y2"><td>YTD (ชม.)</td>${cols.map(c=>`<td>${fx(c.v)}</td>${c.k==='h'?'<td></td>':''}`).join('')}${SALR?'<td></td>':''}<td></td></tr>
+    ${SALR?`<tr class="y2 ysal"><td>YTD (บาท)</td>${cols.map(c=>`<td>${fx(c.v*rate)}</td>${c.k==='h'?'<td></td>':''}`).join('')}<td class="n">${fx(D.tot.h*rate)}</td><td></td></tr>`:''}
+    <tr class="y3"><td></td>${cols.map(c=>`<td>${esc(c.nm||'')}</td>${c.k==='h'?'<td></td>':''}`).join('')}${SALR?'<td></td>':''}<td></td></tr>${shRow}
+    <tr class="h4"><th>วันที่</th>${cols.map(c=>`<th class="${c.cst?'cst':''}">${esc(c.t)}</th>${c.k==='h'?'<th>% ชม.ทำงาน</th>':''}`).join('')}${SALR?'<th style="background:#c2410c">ต้นทุน (บาท)</th>':''}<th>สถานะ</th></tr></thead>`;
+  const body=D.days.map(o=>`<tr class="${o.work?'':'off'}"><td>${o.dn} ${+o.ds.slice(8)}/${o.m}/${o.y}</td>${cols.map(c=>{const v=val(o,c.k);return `<td class="${c.k==='h'?'hrs':c.k==='c'||c.k==='s'?'tot':''}">${v?fx(v):(c.k==='h'||c.k==='c'||c.k==='s'?'-':'')}</td>${c.k==='h'?`<td class="n">${o.h?Math.round(o.h/(dayTarget(e,o.ds)||TARGET)*100)+'%':'-'}</td>`:''}`}).join('')}${SALR?`<td class="tot">${o.h?fx(o.h*rate):'-'}</td>`:''}<td>${esc(o.status)}</td></tr>`).join('');
   el.innerHTML=`<div class="card">
     <div class="dashhead" style="margin-bottom:10px"><div><h2 style="margin:0">รายงานรายคน</h2>
       <div class="hint">${esc(e.id)} ${esc(e.name)}${e.nick?' ('+esc(e.nick)+')':''} · ฝ่าย ${esc(e.dept||'-')} ${esc(find(db.depts,e.dept)?.name||'')} · ${esc(e.position||'')} ${esc(e.level||'')} · ${esc(pLabel(D.mode,hs.anchor,D.r))} · เป้า ${D.target} ชม.${SALR?` · <b style="color:#c2410c">เรท ฿${fx(rate)}/ชม.</b> (เงินเดือน ฿${xm(sinfo.amt)} จาก ${esc(sinfo.src)})`:(hasSal()?' · <span style="color:var(--bad)">ยังไม่ได้กำหนดเงินเดือนของคนนี้ จึงไม่แสดงต้นทุนเป็นบาท</span>':'')}</div></div>
@@ -4454,7 +4455,7 @@ if(CLOUD)cloudInit();
 (()=>{const ps=document.getElementById('pinScreen');if(!ps)return;
   ['gesturestart','gesturechange','gestureend'].forEach(t=>ps.addEventListener(t,e=>e.preventDefault()));
   ps.addEventListener('dblclick',e=>e.preventDefault());})();/* ตรวจเวอร์ชันใหม่อัตโนมัติ: เมื่อกลับมาเปิดแอป / ทุก 5 นาที — ถ้ามีเวอร์ชันใหม่ รีโหลดเองเมื่ออยู่หน้าหลัก ไม่งั้นแสดงแถบให้แตะอัปเดต */
-const APP_BUILD=202;
+const APP_BUILD=203;
 async function chkUpdate(){try{const t=await (await fetch('sw.js?'+Date.now(),{cache:'no-store'})).text();const m=t.match(/timesheet-v(\d+)/);if(!m||Number(m[1])<=APP_BUILD)return;
   try{const rg=await navigator.serviceWorker?.getRegistration();if(rg)await rg.update()}catch(_){}
   const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||'');
