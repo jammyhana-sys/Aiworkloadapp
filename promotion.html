@@ -346,13 +346,64 @@ async function loadFlow(){
     FLOW.ready=!s.error;db.steps=s.error?[]:(s.data||[]);db.approvers=a.error?[]:(a.data||[])}catch(_){FLOW.ready=false}
   try{const me=await sb.rpc('my_emp_id');FLOW.me=(me&&me.data)||'';const su=await sb.rpc('is_super_admin');FLOW.sup=!!(su&&su.data);const mr=await sb.rpc('promo_my_approver_rows');FLOW.mine=mr.error?[]:(mr.data||[])}catch(_){}
 }
-const scopeMatchE=(s,e)=>{const t=(s&&s.type)||'all';if(t==='all')return true;const k=(s.keys||[]);return t==='group'?k.includes(e.groupCode):t==='line'?k.includes(e.lineCode):t==='dept'?k.includes(e.deptCode):t==='section'?k.includes(e.section):false};
-const SC_TH={group:'กลุ่มงาน',line:'สายงาน',dept:'ฝ่าย',section:'แผนก'};
-/* ตัวเลือกขอบเขต: key ที่ใช้เทียบ (รหัส หรือชื่อแผนก) + ชื่อที่แสดง */
-function scopeOptions(type){const m=new Map();db.emps.forEach(e=>{const [k,n]=type==='group'?[e.groupCode,e.group]:type==='line'?[e.lineCode,e.line]:type==='dept'?[e.deptCode,e.dept]:[e.section,e.section];if(k&&!m.has(k))m.set(k,n||k)});
-  return [...m.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'th'))}
-const keyLabel=(type,k)=>{const o=scopeOptions(type).find(x=>x[0]===k);return o?(type==='section'?o[1]:`${o[1]} (${k})`):k};
-const scopeTxt=s=>!s||!s.type||s.type==='all'?'ทั้งหมด':`${SC_TH[s.type]||s.type}: ${(s.keys||[]).map(k=>keyLabel(s.type,k)).join(', ')}`;
+/* โครงสร้างองค์กร (จากหน้า SharePoint HR "โครงสร้างอัตรากำลัง" — อัปเดต 4 พ.ย. 2569, ผลบังคับล่าสุด 1 ก.ย. 2569) กลุ่มงาน › สายงาน/สำนัก › ฝ่าย */
+const ORG=[{c:'10000',n:'สำนักงานกลาง',t:'group',p:'',h:'นายณัฐพงศ์ กอร่ม ประธานเจ้าหน้าที่บริหาร ( CEO)'},
+  {c:'12001',n:'ฝ่ายบริหารความเสี่ยงองค์กร',t:'dept',p:'10000'},
+  {c:'60001',n:'ฝ่ายความปลอดภัยและสิ่งแวดล้อม',t:'dept',p:'10000'},
+  {c:'20002',n:'ฝ่ายกำกับและควบคุม',t:'dept',p:'10000'},
+  {c:'20003',n:'ฝ่ายกฎหมายและนิติกรรมสัญญา',t:'dept',p:'10000'},
+  {c:'65003',n:'ฝ่ายบริการกลางและอาคารสถานที่',t:'dept',p:'10000'},
+  {c:'65000',n:'สายงานทรัพยากรบุคคล',t:'line',p:'10000'},
+  {c:'65001',n:'ฝ่ายบริหารทรัพยากรบุคคล',t:'dept',p:'65000'},
+  {c:'65002',n:'ฝ่ายพัฒนาทรัพยากรบุคคล',t:'dept',p:'65000'},
+  {c:'11000',n:'สำนักประธานเจ้าหน้าที่บริหาร',t:'line',p:'10000'},
+  {c:'11001',n:'ฝ่ายสื่อสารองค์กรและพัฒนาความยั่งยืน',t:'dept',p:'11000'},
+  {c:'20000',n:'สำนักตรวจสอบ',t:'line',p:'10000'},
+  {c:'20001',n:'ฝ่ายตรวจสอบภายใน',t:'dept',p:'20000'},
+  {c:'30000',n:'กลุ่มงานปฏิบัติการ',t:'group',p:'',h:'นายสุชาติ ก่อคุณากร ประธานเจ้าหน้าที่กลุ่มงาน ( COO)'},
+  {c:'31000',n:'สายงานออกแบบวิศวกรรม',t:'line',p:'30000'},
+  {c:'31001',n:'ฝ่ายออกแบบและวิศวกรรมไฟฟ้า',t:'dept',p:'31000'},
+  {c:'31002',n:'ฝ่ายออกแบบและวิศวกรรมโยธา',t:'dept',p:'31000'},
+  {c:'31003',n:'ฝ่ายออกแบบและวิศวกรรมโครงเหล็ก',t:'dept',p:'31000'},
+  {c:'32000',n:'สายงานบริหารงานก่อสร้าง 1',t:'line',p:'30000'},
+  {c:'32002',n:'ฝ่ายบริหารงานก่อสร้างระบบสายส่ง 115 kV. และระบบจำหน่าย',t:'dept',p:'32000'},
+  {c:'32003',n:'ฝ่ายบริหารงานก่อสร้างระบบสายส่ง 230-500 kV และก่อสร้างโยธา',t:'dept',p:'32000'},
+  {c:'43000',n:'สายงานบริหารงานก่อสร้าง 2',t:'line',p:'30000'},
+  {c:'43001',n:'ฝ่ายบริหารงานก่อสร้างสถานีไฟฟ้า 1',t:'dept',p:'43000'},
+  {c:'43002',n:'ฝ่ายบริหารงานก่อสร้างสถานีไฟฟ้า 2',t:'dept',p:'43000'},
+  {c:'43003',n:'ฝ่ายงานก่อสร้างสถานีไฟฟ้า',t:'dept',p:'43000'},
+  {c:'73000',n:'สายงานบริหารงานปฏิบัติการและบำรุงรักษา',t:'line',p:'30000'},
+  {c:'41004',n:'ฝ่ายบริหารงานก่อสร้างวิศวกรรมนวัตกรรม',t:'dept',p:'73000'},
+  {c:'73001',n:'ฝ่ายบำรุงรักษา ทดสอบระบบไฟฟ้าและพลังงานทดแทน',t:'dept',p:'73000'},
+  {c:'61000',n:'กลุ่มงานบริหารการเงิน',t:'group',p:'',h:'นายโชคชวาล ยังถาวรตระกูล ประธานเจ้าหน้าที่กลุ่มงาน ( CFO)'},
+  {c:'61100',n:'สายงานบริหารการเงิน',t:'line',p:'61000'},
+  {c:'61001',n:'ฝ่ายบัญชี',t:'dept',p:'61100'},
+  {c:'61002',n:'ฝ่ายการเงิน',t:'dept',p:'61100'},
+  {c:'61003',n:'ฝ่ายวางแผนการเงินและบริหารงบประมาณ',t:'dept',p:'61100'},
+  {c:'60000',n:'กลุ่มงานสนับสนุนธุรกิจ',t:'group',p:'',h:'นายโชคชวาล ยังถาวรตระกูล รักษาการประธานเจ้าหน้าที่กลุ่มงาน (CSO)'},
+  {c:'62000',n:'สายงานจัดซื้อ คลังสินค้า และ Logistic',t:'line',p:'60000'},
+  {c:'62001',n:'ฝ่ายจัดซื้อ',t:'dept',p:'62000'},
+  {c:'62002',n:'ฝ่ายคลังสินค้าและการจัดการระบบขนส่ง',t:'dept',p:'62000'},
+  {c:'63000',n:'สายงานเทคโนโลยีสารสนเทศ',t:'line',p:'60000'},
+  {c:'63001',n:'ฝ่ายพัฒนาและสนับสนุนข้อมูลด้านสารสนเทศ',t:'dept',p:'63000'},
+  {c:'63002',n:'ฝ่ายระบบเทคโนโลยีสารสนเทศ',t:'dept',p:'63000'},
+  {c:'70000',n:'กลุ่มงานธุรกิจ',t:'group',p:'',h:'นายณัฐพงศ์ กอร่ม รักษาการประธานเจ้าหน้าที่กลุ่มงาน (CBO)'},
+  {c:'72004',n:'ฝ่ายสนับสนุนและประมาณราคาโครงการ',t:'dept',p:'70000'},
+  {c:'71000',n:'สายงานการตลาดและการขาย',t:'line',p:'70000'},
+  {c:'71001',n:'ฝ่ายการตลาดและการขาย 1',t:'dept',p:'71000'},
+  {c:'71003',n:'ฝ่ายการตลาดและการขาย 2',t:'dept',p:'71000'},
+  {c:'51000',n:'สายงานพัฒนาธุรกิจด้านวางแผนการลงทุน',t:'line',p:'70000'},
+  {c:'51001',n:'ฝ่ายบริหารและขับเคลื่อนกลยุทธ์',t:'dept',p:'51000'},
+  {c:'51003',n:'ฝ่ายพัฒนาธุรกิจ',t:'dept',p:'51000'}];
+const orgOf=c=>ORG.find(u=>u.c===c);
+const orgUnder=code=>{const s=new Set([code]);let ch=true;while(ch){ch=false;ORG.forEach(u=>{if(!s.has(u.c)&&s.has(u.p)){s.add(u.c);ch=true}})}return s};
+const orgDepth=u=>u.t==='group'?0:u.t==='line'?1:(orgOf(u.p)&&orgOf(u.p).t==='line'?2:1);
+const orgTree=()=>{const out=[];ORG.filter(u=>u.t==='group').forEach(g=>{out.push(g);const walk=p=>ORG.filter(u=>u.p===p).forEach(u=>{out.push(u);walk(u.c)});walk(g.c)});return out};
+const headName=u=>u&&u.h?u.h.split(/\s+(?=ประธาน|รักษาการ)/)[0].trim():'';
+const empInUnit=(e,set)=>!set||set.has(e.groupCode)||set.has(e.lineCode)||set.has(e.deptCode);
+const scopeMatchE=(s,e)=>{const t=(s&&s.type)||'all';if(t==='all')return true;const k=(s.keys||[]);return t==='unit'?(k.includes(e.groupCode)||k.includes(e.lineCode)||k.includes(e.deptCode)):t==='group'?k.includes(e.groupCode):t==='line'?k.includes(e.lineCode):t==='dept'?k.includes(e.deptCode):t==='section'?k.includes(e.section):false};
+const SC_TH={unit:'หน่วยงาน',group:'กลุ่มงาน',line:'สายงาน',dept:'ฝ่าย',section:'แผนก'};
+const scopeTxt=s=>!s||!s.type||s.type==='all'?'ทั้งบริษัท':s.type==='unit'?`หน่วยงาน: ${(s.labels||(s.keys||[]).map(k=>(orgOf(k)||{n:k}).n)).join(', ')}`:`${SC_TH[s.type]||s.type}: ${(s.keys||[]).join(', ')}`;
 const activeSteps=()=>(db.steps||[]).filter(s=>s.active).sort((a,b)=>a.step_no-b.step_no);
 const stepName=n=>{const s=(db.steps||[]).find(x=>x.step_no===n.step);return s?s.name:''};
 function canAct(n){if(n.status!=='เสนอแล้ว'||!n.step)return false;if(FLOW.sup)return true;if(n.empId===FLOW.me)return false;const e=empOf(n.empId);return !!e&&FLOW.mine.some(r=>r.step_no===n.step&&scopeMatchE(r.scope,e))}
@@ -408,22 +459,21 @@ function rFlow(){
   const el=$('#v-flow'),sup=FLOW.sup,steps=(db.steps||[]).slice().sort((a,b)=>a.step_no-b.step_no);
   if(!FLOW.ready){el.innerHTML='<div class="card"><div class="hint">ยังไม่ได้ติดตั้ง Flow อนุมัติ — รัน supabase_update_hub51.sql ใน Supabase SQL Editor หนึ่งครั้ง แล้วรีเฟรชหน้านี้</div></div>';return}
   const empOpts=db.emps.slice().sort((a,b)=>a.id.localeCompare(b.id)).map(e=>`<option value="${esc(e.id)}">${esc(e.id)} — ${esc(e.name)}</option>`).join('');
-  const lvOpts=[...new Set(db.emps.map(e=>e.level))].sort((a,b)=>b-a).map(l=>`<option value="${l}">Level ${l}</option>`).join(''),orgOpts=t=>scopeOptions(t).map(([k,n])=>`<option value="${esc(k)}">${esc(n)}</option>`).join('');
+  const lvOpts=[...new Set(db.emps.map(e=>e.level))].sort((a,b)=>b-a).map(l=>`<option value="${l}">Level ${l}</option>`).join('');
   el.innerHTML=`<div class="card"><h2>Flow การอนุมัติการเสนอชื่อปรับตำแหน่ง</h2>
     <div class="hint" style="margin-bottom:12px">เมื่อกด "ส่งขออนุมัติ" รายการจะผ่านทีละขั้นตามลำดับ (ขั้นที่ 1 ก่อน) ผู้อนุมัติแต่ละขั้นเห็นและอนุมัติได้เฉพาะพนักงานในขอบเขตของตน (ทั้งหมด / กลุ่มงาน / สายงาน / ฝ่าย) · ครบทุกขั้น = ผ่านการพิจารณา · ไม่อนุมัติ/ส่งกลับต้องใส่เหตุผล · อนุมัติรายการของตัวเองไม่ได้ · Super Admin อนุมัติแทนได้ทุกขั้น${sup?'':' · <b>แก้ไขได้เฉพาะ Super Admin</b>'}</div>
     ${steps.map(s=>{const ap=(db.approvers||[]).filter(x=>x.step_no===s.step_no);
       return `<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-bottom:12px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="tag pri" style="font-size:13px">ขั้นที่ ${s.step_no}</span>
         ${sup?`<input data-sn="${s.step_no}" value="${esc(s.name)}" style="max-width:300px"> <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-sa="${s.step_no}" ${s.active?'checked':''} style="width:auto;min-height:0"> ใช้งาน</label> <button class="btn sm bad" data-sd="${s.step_no}">ลบขั้นนี้</button>`:`<b>${esc(s.name)}</b> ${s.active?'':'<span class="tag warn">ปิดใช้งาน</span>'}`}</div>
         <div style="margin-top:10px">${ap.map(x=>`<span class="tag" style="margin:0 6px 6px 0;font-size:12.5px;padding:4px 12px">${esc(x.emp_id)} ${esc(x.name)} · ${esc(scopeTxt(x.scope))}${sup?` <a href="#" data-ad="${s.step_no}|${esc(x.emp_id)}" style="color:var(--bad);text-decoration:none">✕</a>`:''}</span>`).join('')||'<span class="hint">ยังไม่มีผู้อนุมัติขั้นนี้ (Super Admin อนุมัติแทนได้)</span>'}</div>
-        ${sup?`<div style="margin-top:10px"><label style="margin-bottom:6px">เพิ่มผู้อนุมัติ — เลือกจาก Level / กลุ่มงาน / สายงาน / ฝ่าย / แผนก แล้วเลือกชื่อ</label>
+        ${sup?`<div style="margin-top:10px"><label style="margin-bottom:6px">เพิ่มผู้อนุมัติ — เลือกตามโครงสร้างองค์กร (กลุ่มงาน › สายงาน/สำนัก › ฝ่าย › แผนก) แล้วเลือกชื่อ</label>
           <div class="row" data-pk="${s.step_no}"><div><label>Level</label><select data-f="lv"><option value="">ทั้งหมด</option>${lvOpts}</select></div>
-            <div><label>กลุ่มงาน</label><select data-f="group"><option value="">ทั้งหมด</option>${orgOpts('group')}</select></div>
-            <div><label>สายงาน</label><select data-f="line"><option value="">ทั้งหมด</option>${orgOpts('line')}</select></div>
-            <div><label>ฝ่าย</label><select data-f="dept"><option value="">ทั้งหมด</option>${orgOpts('dept')}</select></div>
-            <div><label>แผนก</label><select data-f="section"><option value="">ทั้งหมด</option>${orgOpts('section')}</select></div></div>
-          <div class="row" style="margin-top:8px"><div style="flex:2"><label>ชื่อ <span class="hint" data-fc="${s.step_no}"></span></label><select data-ae="${s.step_no}"><option value="">— เลือกพนักงาน —</option></select></div>
-            <div><label>ผู้อนุมัติคนนี้อนุมัติให้พนักงานใน</label><select data-as="${s.step_no}"><option value="all">ทั้งบริษัท</option><option value="group">เฉพาะกลุ่มงาน</option><option value="line">เฉพาะสายงาน</option><option value="dept">เฉพาะฝ่าย</option><option value="section">เฉพาะแผนก</option></select></div></div>
-          <div class="row hide" style="margin-top:8px" data-akw="${s.step_no}"><div><label>เลือกชื่อที่รับผิดชอบ (กด Ctrl ค้างเพื่อเลือกหลายรายการ)</label><select multiple size="6" data-ak="${s.step_no}" style="min-height:130px"></select></div></div>
+            <div><label>กลุ่มงาน</label><select data-f="group"></select></div><div><label>สายงาน / สำนัก</label><select data-f="line"></select></div>
+            <div><label>ฝ่าย</label><select data-f="dept"></select></div><div><label>แผนก</label><select data-f="section"></select></div></div>
+          <div class="hint" data-hd="${s.step_no}" style="margin:6px 0"></div>
+          <div class="row"><div style="flex:2"><label>ชื่อ <span class="hint" data-fc="${s.step_no}"></span></label><select data-ae="${s.step_no}"><option value="">— เลือกพนักงาน —</option></select></div>
+            <div><label>ผู้อนุมัติคนนี้อนุมัติให้พนักงานใน</label><select data-as="${s.step_no}"><option value="all">ทั้งบริษัท</option><option value="unit">เฉพาะหน่วยงานตามโครงสร้าง (กลุ่มงาน/สายงาน/ฝ่าย)</option><option value="section">เฉพาะแผนก</option></select></div></div>
+          <div class="row hide" style="margin-top:8px" data-akw="${s.step_no}"><div><label>เลือกได้หลายรายการ (กด Ctrl ค้าง) — เลือกกลุ่มงาน/สายงานจะรวมทุกฝ่ายภายใต้</label><select multiple size="9" data-ak="${s.step_no}" style="min-height:170px"></select></div></div>
           <div style="margin-top:8px"><button class="btn pri" data-aa="${s.step_no}">＋ เพิ่มผู้อนุมัติ</button></div></div>`:''}</div>`}).join('')||'<div class="hint">ยังไม่มีขั้นตอน</div>'}
     ${sup?`<button class="btn" id="fAddStep">＋ เพิ่มขั้นอนุมัติ</button> <span class="hint" id="fMsg"></span>`:''}</div>`;
   if(!sup)return;
@@ -433,17 +483,34 @@ function rFlow(){
   $$('#v-flow [data-sa]').forEach(i=>i.onchange=async()=>{const r=await sb.from('promo_flow_steps').update({active:i.checked}).eq('step_no',+i.dataset.sa);if(r.error)return fail(r.error);reload()});
   $$('#v-flow [data-sd]').forEach(b=>b.onclick=async()=>{if(!confirm('ลบขั้นนี้และผู้อนุมัติของขั้นนี้? (รายการที่รออยู่ขั้นนี้ต้องให้ Super Admin ดำเนินการ)'))return;const r=await sb.from('promo_flow_steps').delete().eq('step_no',+b.dataset.sd);if(r.error)return fail(r.error);reload()});
   $$('#v-flow [data-ad]').forEach(a=>a.onclick=async ev=>{ev.preventDefault();const [s,e]=a.dataset.ad.split('|');const r=await sb.from('promo_flow_approvers').delete().eq('step_no',+s).eq('emp_id',e);if(r.error)return fail(r.error);reload()});
-  $$('#v-flow [data-pk]').forEach(pk=>{const s=pk.dataset.pk,sel=$(`[data-ae="${s}"]`),cnt=$(`[data-fc="${s}"]`);
-    const refresh=()=>{const f={};$$('[data-f]',pk).forEach(x=>f[x.dataset.f]=x.value);
-      const list=db.emps.filter(e=>(!f.lv||String(e.level)===f.lv)&&(!f.group||e.groupCode===f.group)&&(!f.line||e.lineCode===f.line)&&(!f.dept||e.deptCode===f.dept)&&(!f.section||e.section===f.section)).sort((a,b)=>b.level-a.level||a.id.localeCompare(b.id));
+  const optHtml=(arr,all)=>`<option value="">${all}</option>`+arr.map(u=>`<option value="${esc(u.c)}">${esc(u.n)} (${esc(u.c)})</option>`).join('');
+  $$('#v-flow [data-pk]').forEach(pk=>{const s=pk.dataset.pk,sel=$(`[data-ae="${s}"]`),cnt=$(`[data-fc="${s}"]`),hd=$(`[data-hd="${s}"]`),F=k=>$(`[data-f="${k}"]`,pk);
+    const groups=ORG.filter(u=>u.t==='group');
+    const build=(who)=>{const g=F('group').value;
+      if(who==='group'||!who){const lines=ORG.filter(u=>u.t==='line'&&(!g||u.p===g));const keepL=F('line').value;F('line').innerHTML=optHtml(lines,'ทั้งหมด');if(lines.some(u=>u.c===keepL))F('line').value=keepL}
+      const g2=F('group').value,l=F('line').value;
+      if(who==='group'||who==='line'||!who){const root=l||g2;const set=root?orgUnder(root):null;const depts=ORG.filter(u=>u.t==='dept'&&(!set||set.has(u.c)));const keepD=F('dept').value;F('dept').innerHTML=optHtml(depts,'ทั้งหมด');if(depts.some(u=>u.c===keepD))F('dept').value=keepD}
+      const d=F('dept').value,root=d||l||g2,set=root?orgUnder(root):null;
+      const secs=[...new Set(db.emps.filter(e=>empInUnit(e,set)&&e.section).map(e=>e.section))].sort((a,b)=>a.localeCompare(b,'th'));const keepS=F('section').value;
+      F('section').innerHTML='<option value="">ทั้งหมด</option>'+secs.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(secs.includes(keepS))F('section').value=keepS;
+      refresh(set)};
+    const refresh=set=>{const lv=F('lv').value,sec=F('section').value;
+      const list=db.emps.filter(e=>(!lv||String(e.level)===lv)&&empInUnit(e,set)&&(!sec||e.section===sec)).sort((a,b)=>b.level-a.level||a.id.localeCompare(b.id));
       const keep=sel.value;sel.innerHTML='<option value="">— เลือกพนักงาน —</option>'+list.map(e=>`<option value="${esc(e.id)}">${esc(e.name)} · ${esc(e.id)} · L${e.level} ${esc(e.pos)}</option>`).join('');
-      if(list.some(e=>e.id===keep))sel.value=keep;cnt.textContent=`(${list.length} คน)`};
-    $$('[data-f]',pk).forEach(x=>x.onchange=refresh);refresh()});
+      if(list.some(e=>e.id===keep))sel.value=keep;cnt.textContent=`(${list.length} คน)`;
+      /* หัวหน้าหน่วยตามโครงสร้าง: กลุ่มงานที่เลือก (หรือกลุ่มงานของสายงาน/ฝ่ายที่เลือก) */
+      let u=orgOf(F('dept').value||F('line').value||F('group').value);while(u&&!u.h&&u.p)u=orgOf(u.p);
+      if(u&&u.h){const hn=headName(u),he=db.emps.find(e=>nname(e.name)===nname(hn));hd.innerHTML=`ผู้บริหารตามโครงสร้าง ${esc(u.n)}: <b>${esc(u.h.replace(/\s+/g,' '))}</b> ${he?`<a href="#" data-hp="${esc(he.id)}" style="color:var(--pri);font-weight:600">เลือกท่านนี้</a>`:'<span class="hint">(ไม่พบในรายชื่อ Promotion)</span>'}`;
+        const a=hd.querySelector('[data-hp]');if(a)a.onclick=ev=>{ev.preventDefault();F('lv').value='';build();sel.value=a.dataset.hp;if(sel.value!==a.dataset.hp){sel.insertAdjacentHTML('beforeend',`<option value="${esc(a.dataset.hp)}">${esc(he.name)} · ${esc(he.id)}</option>`);sel.value=a.dataset.hp}}}
+      else hd.innerHTML=''};
+    F('group').innerHTML=optHtml(groups,'ทั้งหมด');
+    F('group').onchange=()=>build('group');F('line').onchange=()=>build('line');F('dept').onchange=()=>build('dept');F('section').onchange=()=>build('section');F('lv').onchange=()=>build('lv');
+    build()});
   $$('#v-flow [data-as]').forEach(sl=>sl.onchange=()=>{const s=sl.dataset.as,t=sl.value,w=$(`[data-akw="${s}"]`),k=$(`[data-ak="${s}"]`);w.classList.toggle('hide',t==='all');
-    k.innerHTML=t==='all'?'':scopeOptions(t).map(([v,n])=>`<option value="${esc(v)}">${esc(n)}${t==='section'?'':' ('+esc(v)+')'}</option>`).join('')});
-  $$('#v-flow [data-aa]').forEach(b=>b.onclick=async()=>{const s=+b.dataset.aa,emp=$(`[data-ae="${s}"]`).value,ty=$(`[data-as="${s}"]`).value,keys=[...$(`[data-ak="${s}"]`).selectedOptions].map(o=>o.value);
+    k.innerHTML=t==='all'?'':t==='unit'?orgTree().map(u=>`<option value="${esc(u.c)}">${'\u00A0\u00A0\u00A0\u00A0'.repeat(orgDepth(u))}${u.t==='group'?'■ ':u.t==='line'?'▸ ':'· '}${esc(u.n)} (${esc(u.c)})</option>`).join(''):[...new Set(db.emps.map(e=>e.section).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'th')).map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')});
+  $$('#v-flow [data-aa]').forEach(b=>b.onclick=async()=>{const s=+b.dataset.aa,emp=$(`[data-ae="${s}"]`).value,ty=$(`[data-as="${s}"]`).value,sel=[...$(`[data-ak="${s}"]`).selectedOptions].map(o=>o.value),keys=ty==='unit'?[...new Set(sel.flatMap(c=>[...orgUnder(c)]))]:sel;
     if(!emp)return alert('เลือกพนักงานก่อน');if(ty!=='all'&&!keys.length)return alert('ระบุรหัสขอบเขตอย่างน้อย 1 รหัส (หรือเลือก ทั้งหมด)');
-    const e=empOf(emp),scope=ty==='all'?{type:'all'}:{type:ty,keys};
+    const e=empOf(emp),scope=ty==='all'?{type:'all'}:ty==='unit'?{type:'unit',keys,labels:sel.map(c=>(orgOf(c)||{n:c}).n)}:{type:ty,keys};
     let r=await sb.from('promo_flow_approvers').upsert({step_no:s,emp_id:emp,name:e?e.name:'',scope});if(r.error)return fail(r.error);
     /* ผู้อนุมัติต้องเข้าโมดูลได้ (อ่านรายการเสนอชื่อ) — ถ้ายังไม่มีสิทธิ์ ให้เพิ่มสิทธิ์ "ดูอย่างเดียว" ตามขอบเขตเดียวกัน */
     const m=await sb.from('module_access').select('emp_id').eq('module','promo').eq('emp_id',emp);
