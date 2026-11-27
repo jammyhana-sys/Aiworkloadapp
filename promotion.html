@@ -120,9 +120,15 @@ const fmt1=n=>n==null||isNaN(n)?'-':(Math.round(n*100)/100).toFixed(2);
 const toISO=v=>{if(v==null||v==='')return '';if(typeof v==='number'&&v>20000&&v<80000){const d=new Date(Math.round((v-25569)*864e5));return d.toISOString().slice(0,10)}
   if(v instanceof Date)return v.toISOString().slice(0,10);return ''};
 const yearsBetween=(iso,to=new Date())=>{if(!iso)return null;const d=new Date(iso+'T00:00:00Z');return (to-d)/(365.25*864e5)};
+/* วันที่มีผลในไฟล์เป็นเลขลำดับวัน (serial) ที่ปีเป็น พ.ศ. อยู่ในช่องปี ค.ศ. เช่น 242554 = 24/2/2564 → แปลงเป็น วัน/เดือน/ปี พ.ศ. */
+const effDate=v=>{if(v==null||v==='')return '';const s=String(v).trim();if(!/^\d{5,7}$/.test(s))return s;const d=new Date(Date.UTC(1899,11,30)+(+s)*864e5);if(isNaN(d))return s;return `${String(d.getUTCDate()).padStart(2,"0")}/${String(d.getUTCMonth()+1).padStart(2,"0")}/${d.getUTCFullYear()}`};
+/* อายุงานในตำแหน่งปัจจุบัน = นับจาก "วันที่มีผล" ของการปรับตำแหน่งครั้งล่าสุด (ถ้าไม่มีประวัติ นับจากวันเริ่มงาน) */
+const beToISO=s=>{const m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(effDate(s));return m?`${+m[3]-543}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:''};
+const posSince=e=>{const ds=(e.hist||[]).map(h=>beToISO(h.date)).filter(Boolean).sort();return ds.length?{iso:ds[ds.length-1],src:'promo'}:{iso:e.start||'',src:'start'}};
+const posTen=e=>{const s=posSince(e);return s.iso?`${ymd(s.iso)}${s.src==='start'?' *':''}`:'-'};
 const ymd=(iso,noDay)=>{if(!iso)return '-';const a=new Date(iso+'T00:00:00Z'),b=new Date();let y=b.getUTCFullYear()-a.getUTCFullYear(),m=b.getUTCMonth()-a.getUTCMonth(),d=b.getUTCDate()-a.getUTCDate();if(d<0){m--;d+=new Date(Date.UTC(b.getUTCFullYear(),b.getUTCMonth(),0)).getUTCDate()}if(m<0){y--;m+=12}return `${y} ปี ${m} ด.`+(noDay?'':` ${d} ว.`)};
 const orgLine=(e,sep)=>[[e.group,e.groupCode],[e.line,e.lineCode],[e.dept,e.deptCode],[e.section,'']].filter(x=>x[0]||x[1]).map(([n,c])=>esc(n)+(c?` <span class="hint">(${esc(c)})</span>`:'')).join(sep);
-const thDate=iso=>{if(!iso)return '-';const [y,m,d]=iso.split('-');return `${+d}/${+m}/${+y+543}`};
+const thDate=iso=>{if(!iso)return '-';const [y,m,d]=iso.split('-');return `${d}/${m}/${+y+543}`};
 const reqOf=l=>db.reqs.find(r=>r.level===l);
 const empOf=id=>db.emps.find(e=>e.id===id);
 
@@ -136,7 +142,7 @@ function parseWorkbook(buf){
   const emps=[];
   E.forEach(r=>{const id=String(r.B??'').trim();if(!/^\d{3,}$/.test(id))return;
     const g={};GRADE_YEARS.forEach((y,i)=>{const v=String(r['IJKLM'[i]]??'').trim();g[y]=GP[v]!=null?v:''});
-    const hist=[['AS','AT','AU','AV','AW','AX'],['AY','AZ','BA','BB','BC','BD'],['BE','BF','BG','BH','BI','BJ']].map(c=>({from:String(r[c[0]]||''),to:String(r[c[1]]||''),orgFrom:String(r[c[2]]||''),orgTo:String(r[c[3]]||''),order:String(r[c[4]]||''),date:String(r[c[5]]||'')})).filter(h=>h.from||h.to);
+    const hist=[['AS','AT','AU','AV','AW','AX'],['AY','AZ','BA','BB','BC','BD'],['BE','BF','BG','BH','BI','BJ']].map(c=>({from:String(r[c[0]]||''),to:String(r[c[1]]||''),orgFrom:String(r[c[2]]||''),orgTo:String(r[c[3]]||''),order:String(r[c[4]]||''),date:effDate(r[c[5]])})).filter(h=>h.from||h.to);
     emps.push({id,sex:r.C||'',name:String(r.D||'').trim(),nick:String(r.F||'').trim(),pos:String(r.G||'').trim(),level:lv(r.H),grades:g,
       reqLevel:lv(r.N),group:String(r.W||''),line:String(r.Y||''),dept:String(r.AA||''),deptCode:String(r.Z||''),groupCode:String(r.V||''),lineCode:String(r.X||''),section:String(r.AB||''),
       start:toISO(r.AC),birth:toISO(r.AG),
@@ -205,7 +211,7 @@ function filteredEmps(){
   const f=V.emp,ev=new Map(db.emps.map(e=>[e.id,evalEmp(e)]));
   let a=db.emps.filter(e=>(!f.lv||e.level===+f.lv)&&(!f.dept||e.dept===f.dept)&&(!f.q||[e.id,e.name,e.nick,e.pos,e.dept].join(' ').toLowerCase().includes(f.q.toLowerCase()))
     &&(f.only===''||(f.only==='pass'?ev.get(e.id).pass:f.only==='fail'?!ev.get(e.id).pass:f.only==='nom'?!!activeNom(e.id):!activeNom(e.id))));
-  const key={id:e=>e.id,name:e=>e.name,level:e=>e.level,avg:e=>ev.get(e.id).avg??-1,ten:e=>ev.get(e.id).ten??-1,dept:e=>e.dept,age:e=>yearsBetween(e.birth)??-1}[f.sort]||(e=>e.id);
+  const key={id:e=>e.id,name:e=>e.name,level:e=>e.level,avg:e=>ev.get(e.id).avg??-1,ten:e=>ev.get(e.id).ten??-1,dept:e=>e.dept,age:e=>yearsBetween(e.birth)??-1,pten:e=>yearsBetween(posSince(e).iso)??-1}[f.sort]||(e=>e.id);
   a.sort((x,y)=>{const p=key(x),q=key(y);return (typeof p==='number'?p-q:String(p).localeCompare(String(q),'th'))*f.dir});
   return{a,ev};
 }
@@ -221,20 +227,20 @@ function rEmps(){
     $('#fq').oninput=e=>{f.q=e.target.value;f.lim=100;rEmps()};$('#flv').onchange=e=>{f.lv=e.target.value;f.lim=100;rEmps()};$('#fdept').onchange=e=>{f.dept=e.target.value;f.lim=100;rEmps()};$('#fonly').onchange=e=>{f.only=e.target.value;f.lim=100;rEmps()}}
   $('#fexp').onclick=()=>{const{a,ev}=filteredEmps();if(!window.XLSX)return alert('โหลดไลบรารี Excel ไม่สำเร็จ');
     const rows=a.map(e=>{const x=ev.get(e.id),h=e.hist;return{รหัส:e.id,'ชื่อ-สกุล':e.name,ชื่อเล่น:e.nick,ตำแหน่ง:e.pos,Level:e.level,'รหัสกลุ่มงาน':e.groupCode,กลุ่มงาน:e.group,'รหัสสายงาน':e.lineCode,สายงาน:e.line,'รหัสฝ่าย':e.deptCode,ฝ่าย:e.dept,แผนก:e.section,
-      วันเริ่มงาน:e.start,อายุงาน:ymd(e.start),วันเกิด:e.birth,อายุตัว:ymd(e.birth,1),วุฒิ:e.edu.lvl,สาขา:e.edu.major,สถาบัน:e.edu.inst,...Object.fromEntries(GRADE_YEARS.map(y=>['เกรด '+y,e.grades[y]||''])),เกรดเฉลี่ย:x.avg==null?'':Math.round(x.avg*100)/100,ผ่านเกณฑ์เบื้องต้น:x.pass?'ผ่าน':'ไม่ผ่าน',
-      จำนวนครั้งที่ปรับตำแหน่ง:h.length,ประวัติปรับตำแหน่ง:h.map((q,i)=>`${i+1}) ${q.from} → ${q.to} (${q.order} ${q.date})`).join(' | ')}});
+      วันเริ่มงาน:e.start,อายุงาน:ymd(e.start),อายุงานในตำแหน่งปัจจุบัน:posTen(e).replace(' *',''),วันเกิด:e.birth,อายุตัว:ymd(e.birth,1),วุฒิ:e.edu.lvl,สาขา:e.edu.major,สถาบัน:e.edu.inst,...Object.fromEntries(GRADE_YEARS.map(y=>['เกรด '+y,e.grades[y]||''])),เกรดเฉลี่ย:x.avg==null?'':Math.round(x.avg*100)/100,ผ่านเกณฑ์เบื้องต้น:x.pass?'ผ่าน':'ไม่ผ่าน',
+      จำนวนครั้งที่ปรับตำแหน่ง:h.length,ประวัติปรับตำแหน่ง:h.map((q,i)=>`${i+1}) ${q.from} → ${q.to} (${q.order} มีผล ${effDate(q.date)})`).join(' | ')}});
     const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'พนักงาน');XLSX.writeFile(wb,'Promotion_Employees_'+new Date().toISOString().slice(0,10)+'.xlsx')};
   $('#flv').value=f.lv;$('#fdept').value=f.dept;$('#fonly').value=f.only;
   const th=(k,t)=>`<th data-s="${k}">${t}${f.sort===k?(f.dir>0?' ▲':' ▼'):''}</th>`;
-  $('#fhead').innerHTML=th('id','รหัส')+th('name','ชื่อ-สกุล')+'<th>ตำแหน่ง</th>'+th('level','Level')+'<th>เกรด ปี '+GRADE_YEARS.map(y=>y.slice(2)).join('·')+'</th>'+th('avg',`เฉลี่ย ${db.cfg.gradeYears} ปี`)+th('ten','อายุงาน')+th('age','อายุตัว')+'<th>วุฒิ</th>'+th('dept','สังกัด (กลุ่มงาน › สายงาน › ฝ่าย › แผนก)')+'<th>ประวัติปรับตำแหน่ง</th><th>เกณฑ์เบื้องต้น</th><th></th>';
+  $('#fhead').innerHTML=th('id','รหัส')+th('name','ชื่อ-สกุล')+'<th>ตำแหน่ง</th>'+th('level','Level')+'<th>เกรด ปี '+GRADE_YEARS.map(y=>y.slice(2)).join('·')+'</th>'+th('avg',`เฉลี่ย ${db.cfg.gradeYears} ปี`)+th('ten','อายุงาน')+th('pten','อายุงานในตำแหน่งปัจจุบัน')+th('age','อายุตัว')+'<th>วุฒิ</th>'+th('dept','สังกัด (กลุ่มงาน › สายงาน › ฝ่าย › แผนก)')+'<th>ประวัติปรับตำแหน่ง</th><th>เกณฑ์เบื้องต้น</th><th></th>';
   $$('#fhead th[data-s]').forEach(t=>t.onclick=()=>{if(f.sort===t.dataset.s)f.dir*=-1;else{f.sort=t.dataset.s;f.dir=1}rEmps()});
   const{a,ev}=filteredEmps();
   $('#fcount').textContent=`พบ ${a.length} จาก ${db.emps.length} คน`;
   $('#fbody').innerHTML=a.slice(0,f.lim).map(e=>{const x=ev.get(e.id),n=activeNom(e.id);
     return `<tr><td>${esc(e.id)}</td><td><a href="#" data-d="${esc(e.id)}" style="color:var(--pri);font-weight:600;text-decoration:none">${esc(e.name)}</a>${e.nick?`<div class="hint">${esc(e.nick)}</div>`:''}</td><td>${esc(e.pos)}</td><td><span class="tag">L${e.level}</span></td>
-    <td style="white-space:nowrap">${gradeChips(e)}</td><td><b>${fmt1(x.avg)}</b></td><td style="white-space:nowrap">${ymd(e.start)}</td><td style="white-space:nowrap">${ymd(e.birth,1)}</td><td>${esc(e.edu.lvl||'-')}</td><td style="min-width:260px;font-size:12.5px">${orgLine(e,'<br>')||'-'}</td><td style="min-width:170px;font-size:12.5px">${e.hist.length?`<b>${e.hist.length} ครั้ง</b><div class="hint">ล่าสุด: ${esc(e.hist[e.hist.length-1].to)} ${esc(e.hist[e.hist.length-1].date)}</div>`:'<span class="hint">-</span>'}</td>
+    <td style="white-space:nowrap">${gradeChips(e)}</td><td><b>${fmt1(x.avg)}</b></td><td style="white-space:nowrap">${ymd(e.start)}</td><td style="white-space:nowrap" title="${posSince(e).src==='start'?'ไม่มีประวัติปรับตำแหน่ง — นับจากวันเริ่มงาน':'นับจากวันที่มีผลล่าสุด '+esc(effDate((e.hist.slice().sort((a,b)=>beToISO(a.date).localeCompare(beToISO(b.date))).pop()||{}).date))}">${posTen(e)}</td><td style="white-space:nowrap">${ymd(e.birth,1)}</td><td>${esc(e.edu.lvl||'-')}</td><td style="min-width:260px;font-size:12.5px">${orgLine(e,'<br>')||'-'}</td><td style="min-width:170px;font-size:12.5px">${e.hist.length?`<b>${e.hist.length} ครั้ง</b><div class="hint">ล่าสุด: ${esc(e.hist[e.hist.length-1].to)} · มีผล ${esc(effDate(e.hist[e.hist.length-1].date))}</div>`:'<span class="hint">-</span>'}</td>
     <td>${x.pass?'<span class="tag ok">ผ่าน</span>':`<span class="tag bad" title="${esc(x.why.join(' · '))}">ไม่ผ่าน</span>`}${n?` <span class="tag ${STCLS[n.status]||'pri'}">${esc(n.status)}</span>`:''}</td>
-    <td style="white-space:nowrap">${n?`<button class="btn sm" data-n="${esc(n.id)}">ดูรายการ</button>`:(CAN.manage?`<button class="btn sm pri" data-nom="${esc(e.id)}">＋ เสนอชื่อ</button>`:'')}</td></tr>`}).join('')||'<tr><td colspan="13" class="hint">ไม่พบข้อมูล</td></tr>';
+    <td style="white-space:nowrap">${n?`<button class="btn sm" data-n="${esc(n.id)}">ดูรายการ</button>`:(CAN.manage?`<button class="btn sm pri" data-nom="${esc(e.id)}">＋ เสนอชื่อ</button>`:'')}</td></tr>`}).join('')||'<tr><td colspan="14" class="hint">ไม่พบข้อมูล</td></tr>';
   $('#fmore').innerHTML=a.length>f.lim?`<button class="btn" id="fm">แสดงเพิ่ม (${a.length-f.lim} คน)</button>`:'';
   if($('#fm'))$('#fm').onclick=()=>{f.lim+=200;rEmps()};
   $$('#fbody [data-d]').forEach(x=>x.onclick=ev=>{ev.preventDefault();openEmp(x.dataset.d)});
@@ -252,11 +258,11 @@ function openEmp(id){
   const bars=GRADE_YEARS.map(y=>{const g=e.grades[y],p=GP[g]||0;return `<div class="bar"><span class="n">ปี ${y}</span><i style="width:${p/4.3*55}%"></i><span class="gr ${gcls(g)}">${esc(g||'–')}</span></div>`}).join('');
   modal(`<div style="display:flex;justify-content:space-between;gap:10px;align-items:start"><div><h2 style="margin:0;font-size:20px">${esc(e.name)} ${e.nick?`<span class="hint">(${esc(e.nick)})</span>`:''}</h2><div class="hint">รหัส ${esc(e.id)} · ${esc(e.pos)} · Level ${e.level}</div></div><button class="btn sm" onclick="closeModal()">✕ ปิด</button></div>
   <div class="grid g2" style="margin-top:14px"><div><h3 style="margin:0 0 6px;font-size:15px">ข้อมูลทั่วไป</h3><dl class="kv"><dt>กลุ่มงาน</dt><dd>${esc(e.group||'-')} ${e.groupCode?`<span class="hint">(รหัส ${esc(e.groupCode)})</span>`:''}</dd><dt>สายงาน</dt><dd>${esc(e.line||'-')} ${e.lineCode?`<span class="hint">(รหัส ${esc(e.lineCode)})</span>`:''}</dd><dt>ฝ่าย</dt><dd>${esc(e.dept||'-')} ${e.deptCode?`<span class="hint">(รหัส ${esc(e.deptCode)})</span>`:''}</dd><dt>แผนก</dt><dd>${esc(e.section||'-')}</dd>
-    <dt>เพศ</dt><dd>${esc(e.sex)}</dd><dt>วันเริ่มงาน</dt><dd>${thDate(e.start)} <b>(อายุงาน ${ymd(e.start)})</b></dd><dt>วันเกิด</dt><dd>${thDate(e.birth)}${e.birth?` (<b>อายุตัว ${ymd(e.birth)}</b>)`:''}</dd>
+    <dt>เพศ</dt><dd>${esc(e.sex)}</dd><dt>วันเริ่มงาน</dt><dd>${thDate(e.start)} <b>(อายุงาน ${ymd(e.start)})</b></dd><dt>อายุงานในตำแหน่งปัจจุบัน</dt><dd><b>${posTen(e)}</b> <span class="hint">${posSince(e).src==='promo'?'นับจากวันที่มีผลล่าสุด '+thDate(posSince(e).iso):'(ไม่มีประวัติปรับตำแหน่ง — นับจากวันเริ่มงาน)'}</span></dd><dt>วันเกิด</dt><dd>${thDate(e.birth)}${e.birth?` (<b>อายุตัว ${ymd(e.birth)}</b>)`:''}</dd>
     <dt>การศึกษาปัจจุบัน</dt><dd>${esc([e.edu.lvl,e.edu.major,e.edu.inst,e.edu.year].filter(Boolean).join(' · ')||'-')}</dd>
     <dt>วุฒิเดิม</dt><dd>${esc([e.edu.lvl0,e.edu.major0,e.edu.inst0,e.edu.year0].filter(Boolean).join(' · ')||'-')}</dd></dl></div>
     <div><h3 style="margin:0 0 6px;font-size:15px">เกรดประเมิน</h3>${bars}<div style="margin-top:8px">เฉลี่ย ${db.cfg.gradeYears} ปีล่าสุด <b>${fmt1(x.avg)}</b> · ${x.pass?'<span class="tag ok">ผ่านเกณฑ์เบื้องต้น</span>':'<span class="tag bad">ไม่ผ่านเกณฑ์</span>'}</div>${x.why.length?`<ul class="hint" style="margin:6px 0 0 18px;padding:0">${x.why.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>`:''}</div></div>
-  <h3 style="margin:16px 0 6px;font-size:15px">ประวัติการปรับตำแหน่ง</h3>${e.hist.length?`<div class="scroll"><table><thead><tr><th>ครั้งที่</th><th>ตำแหน่งเดิม</th><th>ตำแหน่งใหม่</th><th>สังกัดเดิม</th><th>สังกัดใหม่</th><th>เลขคำสั่ง</th><th>วันที่มีผล</th></tr></thead><tbody>${e.hist.map((h,i)=>`<tr><td>${i+1}</td><td>${esc(h.from)}</td><td>${esc(h.to)}</td><td>${esc(h.orgFrom)}</td><td>${esc(h.orgTo)}</td><td>${esc(h.order)}</td><td>${esc(h.date)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="hint">ไม่มีประวัติในไฟล์</div>'}
+  <h3 style="margin:16px 0 6px;font-size:15px">ประวัติการปรับตำแหน่ง</h3>${e.hist.length?`<div class="scroll"><table><thead><tr><th>ครั้งที่</th><th>ตำแหน่งเดิม</th><th>ตำแหน่งใหม่</th><th>สังกัดเดิม</th><th>สังกัดใหม่</th><th>เลขคำสั่ง</th><th>วันที่มีผล</th></tr></thead><tbody>${e.hist.map((h,i)=>`<tr><td>${i+1}</td><td>${esc(h.from)}</td><td>${esc(h.to)}</td><td>${esc(h.orgFrom)}</td><td>${esc(h.orgTo)}</td><td>${esc(h.order)}</td><td style="white-space:nowrap"><b>${esc(effDate(h.date))}</b></td></tr>`).join('')}</tbody></table></div>`:'<div class="hint">ไม่มีประวัติในไฟล์</div>'}
   <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">${n?`<span class="tag ${STCLS[n.status]||'pri'}">ถูกเสนอชื่อ: ${esc(n.status)}</span>`:(nx&&CAN.manage?`<button class="btn pri" onclick="openNom('${esc(e.id)}')">＋ เสนอชื่อปรับเป็น Level ${e.level+1}</button>`:'')}</div>`);
 }
 
