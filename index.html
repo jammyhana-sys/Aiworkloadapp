@@ -672,6 +672,12 @@ body[data-mode=home] #tabbar{display:flex;justify-content:center;gap:2px}
     <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink)"><input type="checkbox" id="stReg" style="width:auto;min-height:0;margin-top:4px"> <span>เปิดให้พนักงานสมัครสมาชิกเองจากหน้า login</span></label>
     <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink);margin-top:8px"><input type="checkbox" id="stAuto" style="width:auto;min-height:0;margin-top:4px"> <span>อนุมัติอัตโนมัติเมื่ออีเมลที่สมัครตรงกับอีเมลในข้อมูลพนักงาน<br><span class="hint">ความเสี่ยง: ใครที่รู้รหัสพนักงานและอีเมลของคนอื่นก็สมัครแทนได้ แนะนำให้ปิดไว้และอนุมัติด้วยตนเอง</span></span></label>
   </div>
+  <div class="card hide" id="maBox"><h2>สิทธิ์การเข้าถึงโมดูล</h2>
+    <div class="hint" style="margin-bottom:10px">กำหนดว่าใครเข้าโมดูลไหนได้ (เช่น Promotion ที่มีข้อมูลเกรดรายบุคคล) · Super Admin เข้าได้ทุกโมดูลเสมอ · พนักงานที่ไม่ได้รับสิทธิ์จะเห็นไอคอนเป็น "เร็ว ๆ นี้"</div>
+    <div class="row" style="align-items:end"><div><label>โมดูล</label><select id="maMod"></select></div><div style="flex:2"><label>พนักงาน</label><select id="maEmp"></select></div>
+      <div><label>สิทธิ์</label><select id="maPerm"><option value="view">ดูอย่างเดียว</option><option value="manage">จัดการ (เสนอชื่อ/แก้ไข)</option></select></div><div style="flex:0"><button class="btn pri" type="button" id="maAdd">＋ กำหนดสิทธิ์</button></div></div>
+    <div class="hint" id="maMsg" style="margin:8px 0"></div>
+    <div class="scroll"><table><thead><tr><th>โมดูล</th><th>พนักงาน</th><th>สิทธิ์</th><th>กำหนดโดย</th><th></th></tr></thead><tbody id="maList"></tbody></table></div></div>
   <div class="card"><h2>คำขอสมัครที่รออนุมัติ <span id="regCount" class="tag sga" style="margin-left:4px"></span></h2>
     <div class="scroll"><table><thead><tr><th>Emp.No</th><th>ชื่อ</th><th>อีเมลที่สมัคร</th><th>ชื่อผู้ใช้</th><th>เมื่อ</th><th></th></tr></thead><tbody id="regList"></tbody></table></div>
   </div>
@@ -2763,6 +2769,7 @@ function renderMem(){
   normDb();
   $('#stReg').checked=!!db.settings.regOpen;$('#stAuto').checked=!!db.settings.autoApprove;
   $('#regCount').textContent=db.regs.length?db.regs.length+' รายการ':'';
+  maRender();
   $('#regList').innerHTML=db.regs.map(r=>{const e=find(db.employees,r.empId)||{};
     return `<tr><td>${esc(r.empId)}</td><td>${esc(e.name||'(ไม่พบในรายชื่อ)')}</td><td>${esc(r.email)}${e.email?(lc(e.email)===lc(r.email)?' <span class="tag cost">ตรงกับข้อมูลพนักงาน</span>':' <span class="tag sga">ไม่ตรงกับข้อมูลพนักงาน</span>'):''}</td><td>${esc(r.username)}</td><td class="hint">${new Date(r.at).toLocaleString('th-TH')}</td>
     <td style="white-space:nowrap"><button class="btn ok" style="padding:6px 12px" data-rgok="${r.id}">อนุมัติ</button> <button class="btn" style="padding:6px 12px;color:var(--bad)" data-rgno="${r.id}">ปฏิเสธ</button></td></tr>`}).join('')||'<tr><td colspan="6" class="hint">ไม่มีคำขอที่รออนุมัติ</td></tr>';
@@ -3470,6 +3477,7 @@ const rpcMsg=e=>{const m=String((e&&e.message)||e||'');const i=m.indexOf(':');re
 let appMode='home',clockTimer=null;
 const WL_TABS=['log','hist','appr','astat','setup','mem','adm','acct'];
 function setMode(m){
+  if(m==='promo'&&canModule('promo')){location.href='promotion/index.html';return}   // Promotion = แอปแยก (Super Admin หรือผู้ที่ได้รับสิทธิ์ในตาราง module_access)
   appMode=m;document.body.dataset.mode=m;clearInterval(clockTimer);
   WL_TABS.forEach(t=>{const s=$('#tab-'+t);if(s)s.classList.add('hide')});
   ['home','mod-att','mod-leave',...Object.keys(SOON).map(k=>'mod-'+k)].forEach(id=>$('#'+id).classList.toggle('hide',id!==(m==='home'?'home':'mod-'+m)));
@@ -3604,7 +3612,7 @@ async function geoStart(){if(geo.w!==null||!me||!me.lineLinked||!hubOn())return;
       ${tile('att','📍','linear-gradient(135deg,#14a37f,#2bb3c0)','ลงเวลา','tileAtt','',!hub)}
       ${tile('leave','🌴','linear-gradient(135deg,#f29b2f,#e8711a)','ลางาน','tileLv','',!hub)}</div></div>
     ${['Performance Management','Leadership & Development','Reward & Recognition'].map(g=>`<div class="grp"><div class="gt">${esc(g)}</div><div class="tiles">${Object.keys(SOON).filter(k=>SOON[k].g===g).map(k=>tile(k,SOON[k].ico,SOON[k].col,SOON[k].t,'tileS_'+k,'',false)).join('')}</div></div>`).join('')}
-    <div class="grp"><div class="gt">ข่าวสาร<a class="more" href="https://www.demco.co.th/th/updates/company-activity" target="_blank" rel="noopener">ดูทั้งหมด ›</a></div><div class="news" id="hmNews"></div></div><div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v199 · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div><div class="gold-cr">Powered by CK72 © All rights reserved</div>`;
+    <div class="grp"><div class="gt">ข่าวสาร<a class="more" href="https://www.demco.co.th/th/updates/company-activity" target="_blank" rel="noopener">ดูทั้งหมด ›</a></div><div class="news" id="hmNews"></div></div><div class="card" id="homeToday"></div>${window.matchMedia&&matchMedia('(display-mode: standalone)').matches?'':'<div style="text-align:center;margin:12px 0"><a class="btn" href="install.html" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block">📲 ติดตั้งไอคอนบนหน้าจอมือถือ</a></div>'}<div class="hint" style="text-align:center;margin:10px 0">เวอร์ชันแอป v${APP_BUILD} · LINE: ${me&&me.lineLinked?'ผูกแล้ว ✓':'ยังไม่ผูก'} (ถ้าเลขไม่ตรง ให้ปิดแอปแล้วเปิดใหม่ หรือกด Ctrl+F5)</div><div class="gold-cr">Powered by CK72 © All rights reserved</div>`;
   const tick=()=>{const t=$('#hmTime');if(t)t.textContent=new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Bangkok'})};
   tick();stkPaint();geoStart();if(Date.now()-stk.at>25000)stkLoad();clearInterval(clockTimer);clockTimer=setInterval(()=>{tick();if(Date.now()-stk.at>30000)stkLoad()},15000);
   {const g=$('#hmGo');if(g)g.onclick=()=>setMode('att');const b=$('#hmBell');if(b)b.onclick=()=>{const s=homeStats();setMode(s.toApprove?'leave':wlPend?'workload':'leave')};
@@ -3613,7 +3621,8 @@ async function geoStart(){if(geo.w!==null||!me||!me.lineLinked||!hubOn())return;
   const paint=()=>{const s=homeStats(),w=$('#tileWl'),a=$('#tileAtt'),l=$('#tileLv');if(!w)return;
     {const st=$('#hmSt');if(st)st.textContent=s.attTxt||'ยังไม่ลงเวลาวันนี้';const bl=$('#hmBell');if(bl){const n=(wlPend||0)+(s.toApprove||0);bl.querySelector('.bd2')?.remove();if(n)bl.insertAdjacentHTML('beforeend',`<span class="bd2">${n}</span>`)}}
     w.textContent=wlPend?`รออนุมัติ ${wlPend} รายการ`:'บันทึกชั่วโมงงาน';
-    Object.keys(SOON).forEach(k=>{const e=$('#tileS_'+k);if(e)e.innerHTML='<span class="soon">เร็ว ๆ นี้</span>'});
+    Object.keys(SOON).forEach(k=>{const e=$('#tileS_'+k);if(e)e.innerHTML=(k==='promo'&&canModule('promo'))?'เสนอชื่อปรับตำแหน่ง':'<span class="soon">เร็ว ๆ นี้</span>'});
+    if(typeof sb!=='undefined'&&sb&&CLOUD&&!modAccLoaded&&!modAccBusy)loadModAcc().then(()=>{if(modAcc.length&&appMode==='home')renderHome()});
     a.textContent=hub?(s.attTxt||'เข้า-ออกงาน · GPS'):'ต้องเชื่อมระบบกลาง';
     l.textContent=hub?(s.toApprove?`รออนุมัติ ${s.toApprove} รายการ`:s.myPend?`รออนุมัติ ${s.myPend} รายการของฉัน`:'ขอลา · ดูสิทธิ์วันลา'):'ต้องเชื่อมระบบกลาง';
     if(s.toApprove&&l.parentElement&&!l.parentElement.querySelector('.bd'))l.parentElement.insertAdjacentHTML('afterbegin',`<em class="bd">${s.toApprove}</em>`);
@@ -4344,6 +4353,25 @@ async function renderAttAdmin(){
 let lv={types:[],reqs:[],loaded:false,msg:'',at:0};
 const APPROVER_ROLES=['mgr','dir','coo','ceo'];
 /* ผู้อนุมัติของระบบลางาน/ลงเวลา: ตาราง hub_approvers (แยกจาก Role and permission ของ Workload) */
+/* สิทธิ์เข้าถึงโมดูล (ตาราง module_access): Super Admin เข้าได้เสมอ · คนอื่นต้องมีแถวสิทธิ์ · โหมดทดลอง (ไม่มีระบบกลาง) ใช้ Admin */
+let modAcc=[],modAccLoaded=false,modAccBusy=false;
+const MOD_TH={promo:'Promotion',kpi:'KPI',okr:'OKR',learn:'Learning',talent:'Talent Management',idp:'IDP',succ:'Successor',career:'Career Path',reward:'Reward'};
+const canModule=k=>isSuperAdmin||((typeof sb!=='undefined'&&sb&&CLOUD)?!!(me&&modAcc.some(a=>a.module===k&&a.emp_id===me.id)):isAdmin);
+async function loadModAcc(){modAccBusy=true;try{const r=await sb.from('module_access').select('*');if(!r.error){modAcc=r.data||[];modAccLoaded=true}}catch(e){}modAccBusy=false}
+async function maRender(){
+  const host=$('#maBox');if(!host)return;
+  if(!isSuperAdmin||typeof sb==='undefined'||!sb||!CLOUD){host.classList.add('hide');return}
+  host.classList.remove('hide');await loadModAcc();
+  const emps=db.employees.slice().sort(byId);
+  $('#maList').innerHTML=modAcc.slice().sort((a,b)=>a.module.localeCompare(b.module)||String(a.emp_id).localeCompare(String(b.emp_id))).map(a=>{const e=find(db.employees,a.emp_id);
+    return `<tr><td>${esc(MOD_TH[a.module]||a.module)}</td><td>${esc(a.emp_id)} ${esc(e?e.name:'(ไม่พบ)')}<div class="hint">${esc(e?e.dept:'')}</div></td><td><span class="tag ${a.perm==='manage'?'cost':'st'}">${a.perm==='manage'?'จัดการ':'ดูอย่างเดียว'}</span></td><td class="hint">${esc(a.granted_by||'')} ${a.granted_at?new Date(a.granted_at).toLocaleDateString('th-TH'):''}</td><td><button class="x" data-madel="${esc(a.module)}|${esc(a.emp_id)}" title="ถอนสิทธิ์">✕</button></td></tr>`}).join('')||'<tr><td colspan="5" class="hint">ยังไม่ได้กำหนดสิทธิ์ (Super Admin เข้าได้เสมอ)</td></tr>';
+  $('#maEmp').innerHTML='<option value="">— เลือกพนักงาน —</option>'+emps.map(e=>`<option value="${esc(e.id)}">${esc(e.id)} — ${esc(e.name)}</option>`).join('');
+  $('#maMod').innerHTML=Object.keys(MOD_TH).map(k=>`<option value="${k}">${esc(MOD_TH[k])}</option>`).join('');
+  try{makeSearch('#maEmp')}catch(_){}
+  $('#maAdd').onclick=async()=>{const emp=$('#maEmp').value,mod=$('#maMod').value;if(!emp)return $('#maMsg').textContent='เลือกพนักงานก่อน';
+    const {error}=await sb.from('module_access').upsert({module:mod,emp_id:emp,perm:$('#maPerm').value,granted_by:meName(),granted_at:new Date().toISOString()});
+    $('#maMsg').textContent=error?'บันทึกไม่สำเร็จ: '+error.message+(/module_access/.test(error.message)?' (ยังไม่ได้รัน supabase_update_hub48.sql)':''):'✓ กำหนดสิทธิ์แล้ว';if(!error)maRender()};
+  $$('#maList [data-madel]').forEach(b=>b.onclick=async()=>{if(!confirm('ถอนสิทธิ์นี้?'))return;const [m,e]=b.dataset.madel.split('|');const {error}=await sb.from('module_access').delete().eq('module',m).eq('emp_id',e);if(error)return alert(error.message);maRender()})}
 let hubAp=[],hubApLoaded=false;
 async function loadHubAp(){try{const r=await sb.from('hub_approvers').select('*');if(!r.error){hubAp=r.data||[];hubApLoaded=true}}catch(e){}}
 const hubMine=m=>hubAp.filter(a=>a.module===m&&me&&a.emp_id===me.id);
@@ -4467,7 +4495,7 @@ if(CLOUD)cloudInit();
 (()=>{const ps=document.getElementById('pinScreen');if(!ps)return;
   ['gesturestart','gesturechange','gestureend'].forEach(t=>ps.addEventListener(t,e=>e.preventDefault()));
   ps.addEventListener('dblclick',e=>e.preventDefault());})();/* ตรวจเวอร์ชันใหม่อัตโนมัติ: เมื่อกลับมาเปิดแอป / ทุก 5 นาที — ถ้ามีเวอร์ชันใหม่ รีโหลดเองเมื่ออยู่หน้าหลัก ไม่งั้นแสดงแถบให้แตะอัปเดต */
-const APP_BUILD=204;
+const APP_BUILD=206;
 async function chkUpdate(){try{const t=await (await fetch('sw.js?'+Date.now(),{cache:'no-store'})).text();const m=t.match(/timesheet-v(\d+)/);if(!m||Number(m[1])<=APP_BUILD)return;
   try{const rg=await navigator.serviceWorker?.getRegistration();if(rg)await rg.update()}catch(_){}
   const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||'');
