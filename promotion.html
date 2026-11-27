@@ -343,7 +343,7 @@ function openNom(id,editId){
 const FLOW={me:'',sup:false,mine:[],ready:false};db.steps=[];db.approvers=[];
 async function loadFlow(){
   try{const [s,a]=await Promise.all([sb.from('promo_flow_steps').select('*').order('step_no'),sb.from('promo_flow_approvers').select('*')]);
-    FLOW.ready=!s.error;db.steps=s.error?[]:(s.data||[]);db.approvers=a.error?[]:(a.data||[])}catch(_){FLOW.ready=false}
+    FLOW.ready=!s.error;db.steps=s.error?[]:(s.data||[]).slice().sort(stepSort);db.approvers=a.error?[]:(a.data||[])}catch(_){FLOW.ready=false}
   try{const me=await sb.rpc('my_emp_id');FLOW.me=(me&&me.data)||'';const su=await sb.rpc('is_super_admin');FLOW.sup=!!(su&&su.data);const mr=await sb.rpc('promo_my_approver_rows');FLOW.mine=mr.error?[]:(mr.data||[])}catch(_){}
 }
 /* โครงสร้างองค์กร (จากหน้า SharePoint HR "โครงสร้างอัตรากำลัง" — อัปเดต 4 พ.ย. 2569, ผลบังคับล่าสุด 1 ก.ย. 2569) กลุ่มงาน › สายงาน/สำนัก › ฝ่าย */
@@ -404,7 +404,8 @@ const empInUnit=(e,set)=>!set||set.has(e.groupCode)||set.has(e.lineCode)||set.ha
 const scopeMatchE=(s,e)=>{const t=(s&&s.type)||'all';if(t==='all')return true;const k=(s.keys||[]);return t==='unit'?(k.includes(e.groupCode)||k.includes(e.lineCode)||k.includes(e.deptCode)):t==='group'?k.includes(e.groupCode):t==='line'?k.includes(e.lineCode):t==='dept'?k.includes(e.deptCode):t==='section'?k.includes(e.section):false};
 const SC_TH={unit:'หน่วยงาน',group:'กลุ่มงาน',line:'สายงาน',dept:'ฝ่าย',section:'แผนก'};
 const scopeTxt=s=>!s||!s.type||s.type==='all'?'ทั้งบริษัท':s.type==='unit'?`หน่วยงาน: ${(s.labels||(s.keys||[]).map(k=>(orgOf(k)||{n:k}).n)).join(', ')}`:`${SC_TH[s.type]||s.type}: ${(s.keys||[]).join(', ')}`;
-const activeSteps=()=>(db.steps||[]).filter(s=>s.active).sort((a,b)=>a.step_no-b.step_no);
+const activeSteps=()=>(db.steps||[]).filter(s=>s.active).sort(stepSort);
+const stepPos=n=>{const i=activeSteps().findIndex(s=>s.step_no===n.step);return i<0?n.step:i+1};
 const stepName=n=>{const s=(db.steps||[]).find(x=>x.step_no===n.step);return s?s.name:''};
 function canAct(n){if(n.status!=='เสนอแล้ว'||!n.step)return false;if(FLOW.sup)return true;if(n.empId===FLOW.me)return false;const e=empOf(n.empId);return !!e&&FLOW.mine.some(r=>r.step_no===n.step&&scopeMatchE(r.scope,e))}
 const myPending=()=>db.noms.filter(canAct);
@@ -417,7 +418,7 @@ async function openNomLog(id){
   const n=db.noms.find(x=>x.id===id),e=empOf(n.empId)||{};
   const r=await sb.from('promo_nom_log').select('*').eq('nom_id',id).order('id');
   const rows=r.error?[]:(r.data||[]);
-  modal(`<div style="display:flex;justify-content:space-between;gap:10px"><div><h2 style="margin:0;font-size:19px">ประวัติการอนุมัติ</h2><div class="hint">${esc(n.empId)} ${esc(e.name||'')} → ${esc(n.toPos)} (L${n.toLevel}) · สถานะ ${esc(n.status)}${n.status==='เสนอแล้ว'?` · รอขั้นที่ ${n.step} ${esc(stepName(n))}`:''}</div></div><button class="btn sm" onclick="closeModal()">✕</button></div>
+  modal(`<div style="display:flex;justify-content:space-between;gap:10px"><div><h2 style="margin:0;font-size:19px">ประวัติการอนุมัติ</h2><div class="hint">${esc(n.empId)} ${esc(e.name||'')} → ${esc(n.toPos)} (L${n.toLevel}) · สถานะ ${esc(n.status)}${n.status==='เสนอแล้ว'?` · รอขั้นที่ ${stepPos(n)} ${esc(stepName(n))}`:''}</div></div><button class="btn sm" onclick="closeModal()">✕</button></div>
     <div class="scroll" style="margin-top:12px"><table><thead><tr><th>เวลา</th><th>ขั้น</th><th>การดำเนินการ</th><th>โดย</th><th>เหตุผล</th></tr></thead><tbody>${rows.map(x=>`<tr><td style="white-space:nowrap">${new Date(x.at).toLocaleString('th-TH')}</td><td>${x.step_no?x.step_no+' '+esc(x.step_name):'-'}</td><td><span class="tag ${x.action==='approve'?'ok':x.action==='reject'?'bad':x.action==='return'?'warn':'pri'}">${ACT_TH[x.action]||esc(x.action)}</span></td><td>${esc(x.by_emp)} ${esc(x.by_name)}</td><td>${esc(x.note)}</td></tr>`).join('')||'<tr><td colspan="5" class="hint">ยังไม่มีประวัติ</td></tr>'}</tbody></table></div>`);
 }
 function rNoms(){
@@ -436,7 +437,7 @@ function rNoms(){
       const apprs=n.status==='เสนอแล้ว'?(db.approvers||[]).filter(x=>x.step_no===n.step&&scopeMatchE(x.scope,e)).map(x=>x.name||x.emp_id).join(', '):'';
       return `<tr><td>${esc(n.date||'')}</td><td>${esc(n.empId)}</td><td>${esc(e.name)}</td><td>${esc(n.fromPos)} <span class="tag">L${n.fromLevel}</span></td>
       <td>${esc(n.toPos)} <span class="tag pri">L${n.toLevel}</span></td><td>${fmt1(n.snap?.avg)}</td><td>${ck.length?`${ok}/${ck.length} ข้อ`:'-'}</td><td>${esc(n.by||'')}</td>
-      <td><span class="tag ${STCLS[n.status]}">${esc(n.status)}</span>${n.status==='เสนอแล้ว'?`<div style="font-size:12.5px;margin-top:4px">รอขั้นที่ <b>${n.step}${total?'/'+total:''}</b> ${esc(stepName(n))}</div>${apprs?`<div class="hint">ผู้อนุมัติ: ${esc(apprs)}</div>`:'<div class="hint" style="color:var(--bad)">ยังไม่มีผู้อนุมัติขั้นนี้ในขอบเขต</div>'}`:''}${n.note?`<div class="hint">${esc(n.note)}</div>`:''}</td>
+      <td><span class="tag ${STCLS[n.status]}">${esc(n.status)}</span>${n.status==='เสนอแล้ว'?`<div style="font-size:12.5px;margin-top:4px">รอขั้นที่ <b>${stepPos(n)}${total?'/'+total:''}</b> ${esc(stepName(n))}</div>${apprs?`<div class="hint">ผู้อนุมัติ: ${esc(apprs)}</div>`:'<div class="hint" style="color:var(--bad)">ยังไม่มีผู้อนุมัติขั้นนี้ในขอบเขต</div>'}`:''}${n.note?`<div class="hint">${esc(n.note)}</div>`:''}</td>
       <td class="noprint" style="white-space:nowrap">
         ${n.status==='ร่าง'&&CAN.manage?`<button class="btn sm pri" data-sub="${esc(n.id)}">ส่งขออนุมัติ</button> <button class="btn sm" data-e="${esc(n.id)}">แก้ไข</button> <button class="btn sm bad" data-x="${esc(n.id)}">ลบ</button> `:''}
         ${act?`<button class="btn sm ok" data-ap="${esc(n.id)}">✓ อนุมัติ</button> <button class="btn sm" data-rt="${esc(n.id)}">↩ ส่งกลับ</button> <button class="btn sm bad" data-rj="${esc(n.id)}">✕ ไม่อนุมัติ</button> `:''}
@@ -455,62 +456,61 @@ function rNoms(){
   $$('#v-noms [data-x]').forEach(b=>b.onclick=async()=>{if(!confirm('ลบรายการเสนอชื่อนี้? (ลบแล้วกู้คืนไม่ได้)'))return;
     const r=await sb.from('promo_nominations').delete().eq('id',b.dataset.x);if(r.error)return alert('ลบไม่สำเร็จ: '+errTxt(r.error));db.noms=db.noms.filter(x=>x.id!==b.dataset.x);rNoms()});
 }
+const apKey=s=>!s||!s.type||s.type==='all'?'all':(s.type+':'+((s.keys||[])[0]||''));
+const secKey=(d,n)=>'s:'+d+'|'+n;
+const unitNodes=()=>{const out=[];orgTree().forEach(u=>{out.push({v:u.c,key:'unit:'+u.c,label:u.n,indent:orgDepth(u),icon:u.t==='group'?'■':u.t==='line'?'▸':'·',n:db.emps.filter(e=>empInUnit(e,orgUnder(u.c))).length,unit:u});
+  if(u.t==='dept'){[...new Set(db.emps.filter(e=>e.deptCode===u.c&&e.section).map(e=>e.section))].sort((a,b)=>a.localeCompare(b,'th')).forEach(sn=>out.push({v:secKey(u.c,sn),key:'section:'+sn,label:sn,indent:orgDepth(u)+1,icon:'‣',n:db.emps.filter(e=>e.deptCode===u.c&&e.section===sn).length,sec:{d:u.c,n:sn}}))}});return out};
+const stepSort=(a,b)=>((a.ord||a.step_no)-(b.ord||b.step_no))||a.step_no-b.step_no;
 function rFlow(){
-  const el=$('#v-flow'),sup=FLOW.sup,steps=(db.steps||[]).slice().sort((a,b)=>a.step_no-b.step_no);
+  const el=$('#v-flow'),sup=FLOW.sup,steps=(db.steps||[]).slice().sort(stepSort),act=steps.filter(s=>s.active);
   if(!FLOW.ready){el.innerHTML='<div class="card"><div class="hint">ยังไม่ได้ติดตั้ง Flow อนุมัติ — รัน supabase_update_hub51.sql ใน Supabase SQL Editor หนึ่งครั้ง แล้วรีเฟรชหน้านี้</div></div>';return}
-  const empOpts=db.emps.slice().sort((a,b)=>a.id.localeCompare(b.id)).map(e=>`<option value="${esc(e.id)}">${esc(e.id)} — ${esc(e.name)}</option>`).join('');
-  const lvOpts=[...new Set(db.emps.map(e=>e.level))].sort((a,b)=>b-a).map(l=>`<option value="${l}">Level ${l}</option>`).join('');
-  el.innerHTML=`<div class="card"><h2>Flow การอนุมัติการเสนอชื่อปรับตำแหน่ง</h2>
-    <div class="hint" style="margin-bottom:12px">เมื่อกด "ส่งขออนุมัติ" รายการจะผ่านทีละขั้นตามลำดับ (ขั้นที่ 1 ก่อน) ผู้อนุมัติแต่ละขั้นเห็นและอนุมัติได้เฉพาะพนักงานในขอบเขตของตน (ทั้งหมด / กลุ่มงาน / สายงาน / ฝ่าย) · ครบทุกขั้น = ผ่านการพิจารณา · ไม่อนุมัติ/ส่งกลับต้องใส่เหตุผล · อนุมัติรายการของตัวเองไม่ได้ · Super Admin อนุมัติแทนได้ทุกขั้น${sup?'':' · <b>แก้ไขได้เฉพาะ Super Admin</b>'}</div>
-    ${steps.map(s=>{const ap=(db.approvers||[]).filter(x=>x.step_no===s.step_no);
-      return `<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-bottom:12px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="tag pri" style="font-size:13px">ขั้นที่ ${s.step_no}</span>
-        ${sup?`<input data-sn="${s.step_no}" value="${esc(s.name)}" style="max-width:300px"> <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-sa="${s.step_no}" ${s.active?'checked':''} style="width:auto;min-height:0"> ใช้งาน</label> <button class="btn sm bad" data-sd="${s.step_no}">ลบขั้นนี้</button>`:`<b>${esc(s.name)}</b> ${s.active?'':'<span class="tag warn">ปิดใช้งาน</span>'}`}</div>
-        <div style="margin-top:10px">${ap.map(x=>`<span class="tag" style="margin:0 6px 6px 0;font-size:12.5px;padding:4px 12px">${esc(x.emp_id)} ${esc(x.name)} · ${esc(scopeTxt(x.scope))}${sup?` <a href="#" data-ad="${s.step_no}|${esc(x.emp_id)}" style="color:var(--bad);text-decoration:none">✕</a>`:''}</span>`).join('')||'<span class="hint">ยังไม่มีผู้อนุมัติขั้นนี้ (Super Admin อนุมัติแทนได้)</span>'}</div>
-        ${sup?`<div style="margin-top:12px;padding:14px;background:#f8f9ff;border-radius:14px" data-pk="${s.step_no}"><b>＋ เพิ่มผู้อนุมัติขั้นนี้</b>
-          <div class="row" style="margin-top:8px"><div style="flex:2"><label>1) เลือกหน่วยงาน <span class="hint">(ตัวเลขคือจำนวนพนักงานสังกัด)</span></label><select data-u="${s.step_no}"></select></div>
-            <div><label>กรองตามระดับ (ไม่บังคับ)</label><select data-lv="${s.step_no}"><option value="">ทุก Level</option>${lvOpts}</select></div></div>
-          <div class="hint" data-hd="${s.step_no}" style="margin:8px 0"></div>
-          <div class="row"><div style="flex:2"><label>2) เลือกคนที่เป็นผู้อนุมัติ <span class="hint" data-fc="${s.step_no}"></span></label><select data-ae="${s.step_no}"><option value="">— เลือกพนักงาน —</option></select></div></div>
-          <div style="margin-top:10px"><label>3) ผู้อนุมัติคนนี้อนุมัติให้พนักงานกลุ่มไหน</label>
-            <label class="chk" style="margin:4px 0"><input type="radio" name="sc${s.step_no}" value="unit" checked><span data-rl="${s.step_no}">เฉพาะหน่วยงานที่เลือกในข้อ 1</span></label>
-            <label class="chk" style="margin:4px 0"><input type="radio" name="sc${s.step_no}" value="all"><span>ทั้งบริษัท (${db.emps.length} คน)</span></label></div>
-          <div style="margin-top:8px"><button class="btn pri" data-aa="${s.step_no}">＋ เพิ่มผู้อนุมัติ</button></div></div>`:''}</div>`}).join('')||'<div class="hint">ยังไม่มีขั้นตอน</div>'}
-    ${sup?`<button class="btn" id="fAddStep">＋ เพิ่มขั้นอนุมัติ</button> <span class="hint" id="fMsg"></span>`:''}</div>`;
+  const NB='\u00A0\u00A0\u00A0',nodes=unitNodes(),byV=new Map(nodes.map(x=>[x.v,x])),roleName=n=>(steps.find(s=>s.step_no===n)||{}).name||('ขั้น '+n);
+  const posOf=s=>s.active?(s.ord||s.step_no):'no';
+  const psel=s=>{const v=posOf(s);return `<select data-pp="${s.step_no}" style="min-height:0;padding:5px 8px;min-width:128px" ${sup?'':'disabled'}><option value="no" ${v==='no'?'selected':''}>— ไม่เกี่ยวข้อง</option>${Array.from({length:Math.max(steps.length,5)},(_,i)=>i+1).map(n=>`<option value="${n}" ${v===n?'selected':''}>ขั้นที่ ${n}</option>`).join('')}</select>`};
+  const flowTxt=act.length?act.map(s=>`<b>${esc(s.name)}</b>`).join(' → '):'<span class="hint">ไม่มี (ยังไม่ได้กำหนดขั้น)</span>';
+  const cntSc=a=>a.scope_key==='all'||!a.scope||a.scope.type==='all'?db.emps.length:db.emps.filter(e=>scopeMatchE(a.scope,e)).length;
+  const scopeLabel=a=>!a.scope||a.scope.type==='all'?'<span class="tag st">ทั้งบริษัท</span>':a.scope.type==='unit'?`<span class="tag st">หน่วยงาน</span> ${esc((a.scope.labels||[])[0]||scopeTxt(a.scope))}`:a.scope.type==='section'?`<span class="tag st">แผนก</span> ${esc((a.scope.keys||[])[0]||'')}`:esc(scopeTxt(a.scope));
+  const apList=(db.approvers||[]).slice().sort((x,y)=>{const sx=steps.find(s=>s.step_no===x.step_no)||{step_no:x.step_no},sy=steps.find(s=>s.step_no===y.step_no)||{step_no:y.step_no};return stepSort(sx,sy)||String(x.emp_id).localeCompare(String(y.emp_id))});
+  el.innerHTML=`<div class="card"><h2>Role and permission — Flow อนุมัติการเสนอชื่อปรับตำแหน่ง</h2>
+    <p class="hint">กำหนด <b>ลำดับขั้น</b> ของแต่ละ Role (ขั้นที่ 1 อนุมัติก่อน แล้วส่งต่อขั้นถัดไปตามลำดับ) · แต่ละรายการเสนอชื่อต้องผ่านครบทุกขั้นจึงเป็น "ผ่านการพิจารณา" · ขอบเขตของผู้อนุมัติแต่ละคนเลือกได้ <b>หน่วยงานตามโครงสร้าง (กลุ่มงาน/สายงาน/ฝ่าย) / แผนก / ทั้งบริษัท</b> (เพิ่มได้หลายแถวต่อคน) · อนุมัติรายการของตัวเองไม่ได้ · ไม่อนุมัติ/ส่งกลับต้องใส่เหตุผล · Super Admin อนุมัติแทนได้ทุกขั้น${sup?'':' · <b>แก้ไขได้เฉพาะ Super Admin</b>'}</p>
+    <div class="scroll"><table><thead><tr><th>รายการ</th>${steps.map(s=>`<th style="text-align:center">${sup?`<input data-sn="${s.step_no}" value="${esc(s.name)}" style="min-height:0;padding:4px 8px;text-align:center;min-width:130px"> <a href="#" data-sd="${s.step_no}" title="ลบ Role นี้" style="color:var(--bad);text-decoration:none">✕</a>`:esc(s.name)}</th>`).join('')}${sup?'<th><button class="btn sm" id="fAddRole">＋ Role</button></th>':''}</tr></thead><tbody>
+      <tr><td><span class="tag pri">เสนอชื่อปรับตำแหน่ง</span></td>${steps.map(s=>`<td style="text-align:center">${psel(s)}</td>`).join('')}${sup?'<td></td>':''}</tr></tbody></table></div>
+    <div style="margin-top:10px;line-height:1.9"><span class="tag pri">เสนอชื่อปรับตำแหน่ง</span> เส้นทางอนุมัติ: ${flowTxt}</div>
+    <h3 style="margin:18px 0 8px;font-size:16px">ผู้อนุมัติและขอบเขต</h3>
+    <div class="scroll"><table><thead><tr><th>พนักงาน</th><th>Role</th><th>ขอบเขต</th><th>จำนวนพนักงานในขอบเขต</th>${sup?'<th></th>':''}</tr></thead><tbody>
+      ${apList.map(a=>{const e=empOf(a.emp_id)||{};return `<tr><td>${esc(a.emp_id)} ${esc(a.name||e.name||'')}</td><td><span class="tag st">${esc(roleName(a.step_no))}</span></td><td>${scopeLabel(a)}</td><td>${cntSc(a)} คน</td>${sup?`<td><button class="x" data-ad="${a.step_no}|${esc(a.emp_id)}|${esc(a.scope_key||apKey(a.scope))}" title="ลบ" style="color:var(--bad);background:none;border:0;cursor:pointer">✕</button></td>`:''}</tr>`}).join('')||`<tr><td colspan="5" class="hint">ยังไม่มีผู้อนุมัติ — มีเพียง Super Admin ที่อนุมัติแทนได้</td></tr>`}</tbody></table></div>
+    ${sup?`<div class="row" style="margin-top:12px;align-items:end">
+      <div><label>ค้นหาพนักงาน (รหัส/ชื่อ)</label><input id="afQ" type="search" placeholder="พิมพ์เพื่อกรองรายชื่อ"></div>
+      <div style="flex:2"><label>พนักงาน</label><select id="afEmp"></select></div>
+      <div><label>Role</label><select id="afRole">${steps.map(s=>`<option value="${s.step_no}">${esc(s.name)}${s.active?'':' (ไม่เกี่ยวข้อง)'}</option>`).join('')}</select></div>
+      <div style="flex:2"><label>ขอบเขตการอนุมัติ <span class="hint">(ตัวเลขคือจำนวนพนักงานสังกัด)</span></label><select id="afScope"><option value="__all">ทั้งบริษัท (${db.emps.length} คน)</option>${nodes.map(x=>`<option value="${esc(x.v)}">${NB.repeat(x.indent)}${x.icon} ${esc(x.label)} — ${x.n} คน</option>`).join('')}</select></div>
+      <div style="flex:0"><button class="btn pri" id="afAdd">+ เพิ่มผู้อนุมัติ</button></div></div>
+    <div class="hint" id="afHd" style="margin-top:8px"></div><div class="err" id="afMsg" style="margin-top:6px;color:var(--bad)"></div>`:''}</div>`;
   if(!sup)return;
-  const reload=async()=>{await loadFlow();rFlow()},fail=er=>alert('บันทึกไม่สำเร็จ: '+errTxt(er));
-  $('#fAddStep').onclick=async()=>{const nx=(steps.length?Math.max(...steps.map(s=>s.step_no)):0)+1;const r=await sb.from('promo_flow_steps').insert({step_no:nx,name:'ขั้นใหม่',active:true});if(r.error)return fail(r.error);reload()};
+  const reload=async()=>{await loadFlow();rFlow()},fail=er=>alert('บันทึกไม่สำเร็จ: '+errTxt(er)+(/scope_key/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub54.sql)':/ord/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub55.sql)':''));
+  $('#fAddRole').onclick=async()=>{const nm=prompt('ชื่อ Role ใหม่ (เช่น คณะกรรมการ)');if(!nm||!nm.trim())return;const nx=(steps.length?Math.max(...steps.map(s=>s.step_no)):0)+1;const r=await sb.from('promo_flow_steps').insert({step_no:nx,name:nm.trim(),active:false,ord:nx});if(r.error)return fail(r.error);reload()};
   $$('#v-flow [data-sn]').forEach(i=>i.onchange=async()=>{const v=i.value.trim();if(!v)return;const r=await sb.from('promo_flow_steps').update({name:v}).eq('step_no',+i.dataset.sn);if(r.error)return fail(r.error);reload()});
-  $$('#v-flow [data-sa]').forEach(i=>i.onchange=async()=>{const r=await sb.from('promo_flow_steps').update({active:i.checked}).eq('step_no',+i.dataset.sa);if(r.error)return fail(r.error);reload()});
-  $$('#v-flow [data-sd]').forEach(b=>b.onclick=async()=>{if(!confirm('ลบขั้นนี้และผู้อนุมัติของขั้นนี้? (รายการที่รออยู่ขั้นนี้ต้องให้ Super Admin ดำเนินการ)'))return;const r=await sb.from('promo_flow_steps').delete().eq('step_no',+b.dataset.sd);if(r.error)return fail(r.error);reload()});
-  $$('#v-flow [data-ad]').forEach(a=>a.onclick=async ev=>{ev.preventDefault();const [s,e]=a.dataset.ad.split('|');const r=await sb.from('promo_flow_approvers').delete().eq('step_no',+s).eq('emp_id',e);if(r.error)return fail(r.error);reload()});
-  /* รายการหน่วยงานเดียว (ต้นไม้): กลุ่มงาน ▸ สายงาน · ฝ่าย ‣ แผนก พร้อมจำนวนพนักงาน */
-  const secKey=(d,n)=>'s:'+d+'|'+n;
-  const unitNodes=()=>{const out=[];orgTree().forEach(u=>{out.push({v:u.c,label:u.n,indent:orgDepth(u),icon:u.t==='group'?'■':u.t==='line'?'▸':'·',n:db.emps.filter(e=>empInUnit(e,orgUnder(u.c))).length,unit:u});
-    if(u.t==='dept'){[...new Set(db.emps.filter(e=>e.deptCode===u.c&&e.section).map(e=>e.section))].sort((a,b)=>a.localeCompare(b,'th')).forEach(sn=>out.push({v:secKey(u.c,sn),label:sn,indent:orgDepth(u)+1,icon:'‣',n:db.emps.filter(e=>e.deptCode===u.c&&e.section===sn).length,sec:{d:u.c,n:sn}}))}});return out};
-  const NB='\u00A0\u00A0\u00A0';
-  $$('#v-flow [data-pk]').forEach(pk=>{const s=pk.dataset.pk,U=$(`[data-u="${s}"]`),LV=$(`[data-lv="${s}"]`),sel=$(`[data-ae="${s}"]`),cnt=$(`[data-fc="${s}"]`),hd=$(`[data-hd="${s}"]`),rl=$(`[data-rl="${s}"]`);
-    const nodes=unitNodes(),byV=new Map(nodes.map(x=>[x.v,x]));
-    U.innerHTML=`<option value="">— ทั้งบริษัท (${db.emps.length} คน) —</option>`+nodes.map(x=>`<option value="${esc(x.v)}">${NB.repeat(x.indent)}${x.icon} ${esc(x.label)} — ${x.n} คน</option>`).join('');
-    const inNode=(e,x)=>!x?true:x.sec?(e.deptCode===x.sec.d&&e.section===x.sec.n):empInUnit(e,orgUnder(x.v));
-    const refresh=()=>{const x=byV.get(U.value),lv=LV.value,all=db.emps.filter(e=>inNode(e,x)),list=all.filter(e=>!lv||String(e.level)===lv).sort((a,b)=>b.level-a.level||a.id.localeCompare(b.id));
-      const keep=sel.value;sel.innerHTML='<option value="">— เลือกพนักงาน —</option>'+list.map(e=>`<option value="${esc(e.id)}">${esc(e.name)} · Level ${e.level} · ${esc(e.pos)}</option>`).join('');
-      if(list.some(e=>e.id===keep))sel.value=keep;cnt.textContent=`(${list.length} คน${lv?' ใน Level '+lv:''})`;
-      rl.textContent=x?`เฉพาะ "${x.label}" (${all.length} คน)`:'เฉพาะหน่วยงานที่เลือกในข้อ 1 (ยังไม่ได้เลือก)';
-      let u=x&&x.unit?x.unit:x&&x.sec?orgOf(x.sec.d):null;while(u&&!u.h&&u.p)u=orgOf(u.p);
-      hd.innerHTML=x?`${esc(x.label)} มีพนักงานสังกัด <b style="color:var(--pri)">${all.length} คน</b>`:`ยังไม่ได้เลือกหน่วยงาน — แสดงพนักงานทั้งบริษัท <b>${db.emps.length} คน</b>`;
-      if(u&&u.h){const he=db.emps.find(e=>nname(e.name)===nname(headName(u)));hd.innerHTML+=`<br>ผู้บริหารตามโครงสร้าง: <b>${esc(u.h.replace(/\s+/g,' '))}</b> ${he?`<a href="#" data-hp="${esc(he.id)}" style="color:var(--pri);font-weight:600">เลือกท่านนี้</a>`:''}`;
-        const a=hd.querySelector('[data-hp]');if(a)a.onclick=ev=>{ev.preventDefault();LV.value='';refresh();if(![...sel.options].some(o=>o.value===a.dataset.hp))sel.insertAdjacentHTML('beforeend',`<option value="${esc(a.dataset.hp)}">${esc(he.name)} · Level ${he.level}</option>`);sel.value=a.dataset.hp}}};
-    U.onchange=refresh;LV.onchange=refresh;refresh()});
-  $$('#v-flow [data-aa]').forEach(b=>b.onclick=async()=>{const s=+b.dataset.aa,emp=$(`[data-ae="${s}"]`).value,uv=$(`[data-u="${s}"]`).value,rad=document.querySelector(`input[name="sc${s}"]:checked`),ty=rad?rad.value:'unit';
-    if(!emp)return alert('เลือกคนที่เป็นผู้อนุมัติก่อน (ข้อ 2)');
-    if(ty==='unit'&&!uv)return alert('ยังไม่ได้เลือกหน่วยงานในข้อ 1 — เลือกหน่วยงาน หรือเลือก "ทั้งบริษัท" ในข้อ 3');
-    const e=empOf(emp);let scope={type:'all'};
-    if(ty==='unit'){if(uv.startsWith('s:')){const sn=uv.slice(uv.indexOf('|')+1);scope={type:'section',keys:[sn]}}else scope={type:'unit',keys:[...orgUnder(uv)],labels:[(orgOf(uv)||{n:uv}).n]}}
-    let r=await sb.from('promo_flow_approvers').upsert({step_no:s,emp_id:emp,name:e?e.name:'',scope});if(r.error)return fail(r.error);
-    /* ผู้อนุมัติต้องเข้าโมดูลได้ (อ่านรายการเสนอชื่อ) — ถ้ายังไม่มีสิทธิ์ ให้เพิ่มสิทธิ์ "ดูอย่างเดียว" ตามขอบเขตเดียวกัน */
+  $$('#v-flow [data-pp]').forEach(s=>s.onchange=async()=>{const no=+s.dataset.pp,v=s.value;const patch=v==='no'?{active:false}:{active:true,ord:+v};const r=await sb.from('promo_flow_steps').update(patch).eq('step_no',no);if(r.error)return fail(r.error);reload()});
+  $$('#v-flow [data-sd]').forEach(a=>a.onclick=async ev=>{ev.preventDefault();if(!confirm('ลบ Role นี้และผู้อนุมัติของ Role นี้?'))return;const r=await sb.from('promo_flow_steps').delete().eq('step_no',+a.dataset.sd);if(r.error)return fail(r.error);reload()});
+  $$('#v-flow [data-ad]').forEach(a=>a.onclick=async()=>{if(!confirm('ลบผู้อนุมัติแถวนี้?'))return;const [s,e,k]=a.dataset.ad.split('|');const r=await sb.from('promo_flow_approvers').delete().eq('step_no',+s).eq('emp_id',e).eq('scope_key',k);if(r.error)return fail(r.error);reload()});
+  /* เพิ่มผู้อนุมัติ */
+  const Q=$('#afQ'),EMP=$('#afEmp'),SC=$('#afScope'),HD=$('#afHd');
+  const fillEmp=()=>{const q=Q.value.trim().toLowerCase(),x=byV.get(SC.value);const inNode=e=>!x?false:x.sec?(e.deptCode===x.sec.d&&e.section===x.sec.n):empInUnit(e,orgUnder(x.v));
+    const cand=db.emps.filter(e=>!q||(e.id+' '+e.name+' '+e.pos).toLowerCase().includes(q)).sort((a,b)=>b.level-a.level||a.id.localeCompare(b.id));
+    const opt=e=>`<option value="${esc(e.id)}">${esc(e.id)} — ${esc(e.name)} · Level ${e.level} · ${esc(e.pos)}</option>`;
+    const inU=cand.filter(inNode),rest=cand.filter(e=>!inNode(e));const keep=EMP.value;
+    EMP.innerHTML=(inU.length?`<optgroup label="สังกัดขอบเขตที่เลือก (${inU.length} คน)">${inU.map(opt).join('')}</optgroup>`:'')+`<optgroup label="พนักงานทั้งหมด (${rest.length} คน)">${rest.map(opt).join('')}</optgroup>`;if(keep&&[...EMP.options].some(o=>o.value===keep))EMP.value=keep;
+    let u=x&&x.unit?x.unit:x&&x.sec?orgOf(x.sec.d):null;while(u&&!u.h&&u.p)u=orgOf(u.p);
+    HD.innerHTML=x?`${esc(x.label)} มีพนักงานสังกัด <b style="color:var(--pri)">${x.n} คน</b>${u&&u.h?` · ผู้บริหารตามโครงสร้าง: <b>${esc(u.h.replace(/\s+/g,' '))}</b>`:''}`:`ขอบเขต: ทั้งบริษัท <b>${db.emps.length} คน</b>`};
+  Q.oninput=fillEmp;SC.onchange=fillEmp;fillEmp();
+  $('#afAdd').onclick=async()=>{const emp=EMP.value,no=+$('#afRole').value,v=SC.value;if(!emp)return alert('เลือกพนักงานก่อน');
+    const x=byV.get(v),all=v==='__all';let scope={type:'all'},k='all';if(!all){k=x.key;scope=x.sec?{type:'section',keys:[x.sec.n]}:{type:'unit',keys:[...orgUnder(x.v)],labels:[x.label]}}
+    const e=empOf(emp),msg=$('#afMsg');msg.textContent='';
+    const r=await sb.from('promo_flow_approvers').upsert({step_no:no,emp_id:emp,name:e?e.name:'',scope,scope_key:k});if(r.error)return fail(r.error);
     const m=await sb.from('module_access').select('emp_id').eq('module','promo').eq('emp_id',emp);
     if(!m.error&&!(m.data||[]).length){const r2=await sb.from('module_access').insert({module:'promo',emp_id:emp,perm:'view',scope,granted_by:'Flow อนุมัติ'});if(r2.error)alert('เพิ่มผู้อนุมัติแล้ว แต่เพิ่มสิทธิ์เข้าโมดูลไม่สำเร็จ — กำหนดที่เมนู สมาชิก › สิทธิ์การเข้าถึงโมดูล: '+errTxt(r2.error))}
-    reload()});
+    if(!steps.find(s=>s.step_no===no).active)alert('เพิ่มผู้อนุมัติแล้ว แต่ Role นี้ยัง "ไม่เกี่ยวข้อง" — ตั้งลำดับขั้นในตารางด้านบนเพื่อเปิดใช้');
+    reload()};
 }
 function exportNoms(){
   const rows=db.noms.map(n=>{const e=empOf(n.empId)||{};return{วันที่เสนอ:n.date,รหัส:n.empId,'ชื่อ-สกุล':e.name,ฝ่าย:e.dept,ตำแหน่งเดิม:n.fromPos,'Level เดิม':n.fromLevel,ตำแหน่งที่เสนอ:n.toPos,'Level ที่เสนอ':n.toLevel,เกรดเฉลี่ย:n.snap?.avg!=null?Math.round(n.snap.avg*100)/100:'',
