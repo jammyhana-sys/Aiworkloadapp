@@ -346,9 +346,13 @@ async function loadFlow(){
     FLOW.ready=!s.error;db.steps=s.error?[]:(s.data||[]);db.approvers=a.error?[]:(a.data||[])}catch(_){FLOW.ready=false}
   try{const me=await sb.rpc('my_emp_id');FLOW.me=(me&&me.data)||'';const su=await sb.rpc('is_super_admin');FLOW.sup=!!(su&&su.data);const mr=await sb.rpc('promo_my_approver_rows');FLOW.mine=mr.error?[]:(mr.data||[])}catch(_){}
 }
-const scopeMatchE=(s,e)=>{const t=(s&&s.type)||'all';if(t==='all')return true;const k=(s.keys||[]);return t==='group'?k.includes(e.groupCode):t==='line'?k.includes(e.lineCode):k.includes(e.deptCode)};
-const SC_TH={group:'กลุ่มงาน',line:'สายงาน',dept:'ฝ่าย'};
-const scopeTxt=s=>!s||!s.type||s.type==='all'?'ทั้งหมด':`${SC_TH[s.type]||s.type} ${(s.keys||[]).join(', ')}`;
+const scopeMatchE=(s,e)=>{const t=(s&&s.type)||'all';if(t==='all')return true;const k=(s.keys||[]);return t==='group'?k.includes(e.groupCode):t==='line'?k.includes(e.lineCode):t==='dept'?k.includes(e.deptCode):t==='section'?k.includes(e.section):false};
+const SC_TH={group:'กลุ่มงาน',line:'สายงาน',dept:'ฝ่าย',section:'แผนก'};
+/* ตัวเลือกขอบเขต: key ที่ใช้เทียบ (รหัส หรือชื่อแผนก) + ชื่อที่แสดง */
+function scopeOptions(type){const m=new Map();db.emps.forEach(e=>{const [k,n]=type==='group'?[e.groupCode,e.group]:type==='line'?[e.lineCode,e.line]:type==='dept'?[e.deptCode,e.dept]:[e.section,e.section];if(k&&!m.has(k))m.set(k,n||k)});
+  return [...m.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'th'))}
+const keyLabel=(type,k)=>{const o=scopeOptions(type).find(x=>x[0]===k);return o?(type==='section'?o[1]:`${o[1]} (${k})`):k};
+const scopeTxt=s=>!s||!s.type||s.type==='all'?'ทั้งหมด':`${SC_TH[s.type]||s.type}: ${(s.keys||[]).map(k=>keyLabel(s.type,k)).join(', ')}`;
 const activeSteps=()=>(db.steps||[]).filter(s=>s.active).sort((a,b)=>a.step_no-b.step_no);
 const stepName=n=>{const s=(db.steps||[]).find(x=>x.step_no===n.step);return s?s.name:''};
 function canAct(n){if(n.status!=='เสนอแล้ว'||!n.step)return false;if(FLOW.sup)return true;if(n.empId===FLOW.me)return false;const e=empOf(n.empId);return !!e&&FLOW.mine.some(r=>r.step_no===n.step&&scopeMatchE(r.scope,e))}
@@ -404,15 +408,23 @@ function rFlow(){
   const el=$('#v-flow'),sup=FLOW.sup,steps=(db.steps||[]).slice().sort((a,b)=>a.step_no-b.step_no);
   if(!FLOW.ready){el.innerHTML='<div class="card"><div class="hint">ยังไม่ได้ติดตั้ง Flow อนุมัติ — รัน supabase_update_hub51.sql ใน Supabase SQL Editor หนึ่งครั้ง แล้วรีเฟรชหน้านี้</div></div>';return}
   const empOpts=db.emps.slice().sort((a,b)=>a.id.localeCompare(b.id)).map(e=>`<option value="${esc(e.id)}">${esc(e.id)} — ${esc(e.name)}</option>`).join('');
+  const lvOpts=[...new Set(db.emps.map(e=>e.level))].sort((a,b)=>b-a).map(l=>`<option value="${l}">Level ${l}</option>`).join(''),orgOpts=t=>scopeOptions(t).map(([k,n])=>`<option value="${esc(k)}">${esc(n)}</option>`).join('');
   el.innerHTML=`<div class="card"><h2>Flow การอนุมัติการเสนอชื่อปรับตำแหน่ง</h2>
     <div class="hint" style="margin-bottom:12px">เมื่อกด "ส่งขออนุมัติ" รายการจะผ่านทีละขั้นตามลำดับ (ขั้นที่ 1 ก่อน) ผู้อนุมัติแต่ละขั้นเห็นและอนุมัติได้เฉพาะพนักงานในขอบเขตของตน (ทั้งหมด / กลุ่มงาน / สายงาน / ฝ่าย) · ครบทุกขั้น = ผ่านการพิจารณา · ไม่อนุมัติ/ส่งกลับต้องใส่เหตุผล · อนุมัติรายการของตัวเองไม่ได้ · Super Admin อนุมัติแทนได้ทุกขั้น${sup?'':' · <b>แก้ไขได้เฉพาะ Super Admin</b>'}</div>
     ${steps.map(s=>{const ap=(db.approvers||[]).filter(x=>x.step_no===s.step_no);
       return `<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-bottom:12px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="tag pri" style="font-size:13px">ขั้นที่ ${s.step_no}</span>
         ${sup?`<input data-sn="${s.step_no}" value="${esc(s.name)}" style="max-width:300px"> <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-sa="${s.step_no}" ${s.active?'checked':''} style="width:auto;min-height:0"> ใช้งาน</label> <button class="btn sm bad" data-sd="${s.step_no}">ลบขั้นนี้</button>`:`<b>${esc(s.name)}</b> ${s.active?'':'<span class="tag warn">ปิดใช้งาน</span>'}`}</div>
         <div style="margin-top:10px">${ap.map(x=>`<span class="tag" style="margin:0 6px 6px 0;font-size:12.5px;padding:4px 12px">${esc(x.emp_id)} ${esc(x.name)} · ${esc(scopeTxt(x.scope))}${sup?` <a href="#" data-ad="${s.step_no}|${esc(x.emp_id)}" style="color:var(--bad);text-decoration:none">✕</a>`:''}</span>`).join('')||'<span class="hint">ยังไม่มีผู้อนุมัติขั้นนี้ (Super Admin อนุมัติแทนได้)</span>'}</div>
-        ${sup?`<div class="row" style="margin-top:8px"><div style="flex:2"><label>เพิ่มผู้อนุมัติ</label><select data-ae="${s.step_no}"><option value="">— เลือกพนักงาน —</option>${empOpts}</select></div>
-          <div><label>ขอบเขต</label><select data-as="${s.step_no}"><option value="all">ทั้งหมด</option><option value="group">กลุ่มงาน (รหัส)</option><option value="line">สายงาน (รหัส)</option><option value="dept">ฝ่าย (รหัส)</option></select></div>
-          <div><label>รหัส (คั่นด้วย ,)</label><input data-ak="${s.step_no}" placeholder="เช่น 32002, 43001"></div><div style="flex:0"><button class="btn pri" data-aa="${s.step_no}">＋ เพิ่ม</button></div></div>`:''}</div>`}).join('')||'<div class="hint">ยังไม่มีขั้นตอน</div>'}
+        ${sup?`<div style="margin-top:10px"><label style="margin-bottom:6px">เพิ่มผู้อนุมัติ — เลือกจาก Level / กลุ่มงาน / สายงาน / ฝ่าย / แผนก แล้วเลือกชื่อ</label>
+          <div class="row" data-pk="${s.step_no}"><div><label>Level</label><select data-f="lv"><option value="">ทั้งหมด</option>${lvOpts}</select></div>
+            <div><label>กลุ่มงาน</label><select data-f="group"><option value="">ทั้งหมด</option>${orgOpts('group')}</select></div>
+            <div><label>สายงาน</label><select data-f="line"><option value="">ทั้งหมด</option>${orgOpts('line')}</select></div>
+            <div><label>ฝ่าย</label><select data-f="dept"><option value="">ทั้งหมด</option>${orgOpts('dept')}</select></div>
+            <div><label>แผนก</label><select data-f="section"><option value="">ทั้งหมด</option>${orgOpts('section')}</select></div></div>
+          <div class="row" style="margin-top:8px"><div style="flex:2"><label>ชื่อ <span class="hint" data-fc="${s.step_no}"></span></label><select data-ae="${s.step_no}"><option value="">— เลือกพนักงาน —</option></select></div>
+            <div><label>ผู้อนุมัติคนนี้อนุมัติให้พนักงานใน</label><select data-as="${s.step_no}"><option value="all">ทั้งบริษัท</option><option value="group">เฉพาะกลุ่มงาน</option><option value="line">เฉพาะสายงาน</option><option value="dept">เฉพาะฝ่าย</option><option value="section">เฉพาะแผนก</option></select></div></div>
+          <div class="row hide" style="margin-top:8px" data-akw="${s.step_no}"><div><label>เลือกชื่อที่รับผิดชอบ (กด Ctrl ค้างเพื่อเลือกหลายรายการ)</label><select multiple size="6" data-ak="${s.step_no}" style="min-height:130px"></select></div></div>
+          <div style="margin-top:8px"><button class="btn pri" data-aa="${s.step_no}">＋ เพิ่มผู้อนุมัติ</button></div></div>`:''}</div>`}).join('')||'<div class="hint">ยังไม่มีขั้นตอน</div>'}
     ${sup?`<button class="btn" id="fAddStep">＋ เพิ่มขั้นอนุมัติ</button> <span class="hint" id="fMsg"></span>`:''}</div>`;
   if(!sup)return;
   const reload=async()=>{await loadFlow();rFlow()},fail=er=>alert('บันทึกไม่สำเร็จ: '+errTxt(er));
@@ -421,7 +433,15 @@ function rFlow(){
   $$('#v-flow [data-sa]').forEach(i=>i.onchange=async()=>{const r=await sb.from('promo_flow_steps').update({active:i.checked}).eq('step_no',+i.dataset.sa);if(r.error)return fail(r.error);reload()});
   $$('#v-flow [data-sd]').forEach(b=>b.onclick=async()=>{if(!confirm('ลบขั้นนี้และผู้อนุมัติของขั้นนี้? (รายการที่รออยู่ขั้นนี้ต้องให้ Super Admin ดำเนินการ)'))return;const r=await sb.from('promo_flow_steps').delete().eq('step_no',+b.dataset.sd);if(r.error)return fail(r.error);reload()});
   $$('#v-flow [data-ad]').forEach(a=>a.onclick=async ev=>{ev.preventDefault();const [s,e]=a.dataset.ad.split('|');const r=await sb.from('promo_flow_approvers').delete().eq('step_no',+s).eq('emp_id',e);if(r.error)return fail(r.error);reload()});
-  $$('#v-flow [data-aa]').forEach(b=>b.onclick=async()=>{const s=+b.dataset.aa,emp=$(`[data-ae="${s}"]`).value,ty=$(`[data-as="${s}"]`).value,keys=$(`[data-ak="${s}"]`).value.split(/[\s,;]+/).filter(Boolean);
+  $$('#v-flow [data-pk]').forEach(pk=>{const s=pk.dataset.pk,sel=$(`[data-ae="${s}"]`),cnt=$(`[data-fc="${s}"]`);
+    const refresh=()=>{const f={};$$('[data-f]',pk).forEach(x=>f[x.dataset.f]=x.value);
+      const list=db.emps.filter(e=>(!f.lv||String(e.level)===f.lv)&&(!f.group||e.groupCode===f.group)&&(!f.line||e.lineCode===f.line)&&(!f.dept||e.deptCode===f.dept)&&(!f.section||e.section===f.section)).sort((a,b)=>b.level-a.level||a.id.localeCompare(b.id));
+      const keep=sel.value;sel.innerHTML='<option value="">— เลือกพนักงาน —</option>'+list.map(e=>`<option value="${esc(e.id)}">${esc(e.name)} · ${esc(e.id)} · L${e.level} ${esc(e.pos)}</option>`).join('');
+      if(list.some(e=>e.id===keep))sel.value=keep;cnt.textContent=`(${list.length} คน)`};
+    $$('[data-f]',pk).forEach(x=>x.onchange=refresh);refresh()});
+  $$('#v-flow [data-as]').forEach(sl=>sl.onchange=()=>{const s=sl.dataset.as,t=sl.value,w=$(`[data-akw="${s}"]`),k=$(`[data-ak="${s}"]`);w.classList.toggle('hide',t==='all');
+    k.innerHTML=t==='all'?'':scopeOptions(t).map(([v,n])=>`<option value="${esc(v)}">${esc(n)}${t==='section'?'':' ('+esc(v)+')'}</option>`).join('')});
+  $$('#v-flow [data-aa]').forEach(b=>b.onclick=async()=>{const s=+b.dataset.aa,emp=$(`[data-ae="${s}"]`).value,ty=$(`[data-as="${s}"]`).value,keys=[...$(`[data-ak="${s}"]`).selectedOptions].map(o=>o.value);
     if(!emp)return alert('เลือกพนักงานก่อน');if(ty!=='all'&&!keys.length)return alert('ระบุรหัสขอบเขตอย่างน้อย 1 รหัส (หรือเลือก ทั้งหมด)');
     const e=empOf(emp),scope=ty==='all'?{type:'all'}:{type:ty,keys};
     let r=await sb.from('promo_flow_approvers').upsert({step_no:s,emp_id:emp,name:e?e.name:'',scope});if(r.error)return fail(r.error);
