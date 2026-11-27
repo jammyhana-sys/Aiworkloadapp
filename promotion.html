@@ -529,9 +529,9 @@ function rFlow(){
     /* สลับตำแหน่ง: จัดลำดับใหม่ทั้งหมดเป็น 1..n แล้วสลับสองขั้น */
     const order=steps.map(s=>s.step_no);[order[i],order[j]]=[order[j],order[i]];
     for(let k=0;k<order.length;k++){const r=await sb.from('promo_flow_steps').update({ord:k+1}).eq('step_no',order[k]);if(r.error)return fail(r.error)}reload()});
-  $$('#v-flow [data-ad]').forEach(a=>a.onclick=async ev=>{ev.preventDefault();const [s,e,k]=a.dataset.ad.split('|');const r=await sb.from('promo_flow_approvers').delete().eq('step_no',+s).eq('emp_id',e).eq('scope_key',k);if(r.error)return fail(r.error);reload()});
+  $$('#v-flow [data-ad]').forEach(a=>a.onclick=async ev=>{ev.preventDefault();const [s,e,...kk]=a.dataset.ad.split('|'),k=kk.join('|');const r=await sb.from('promo_flow_approvers').delete().eq('step_no',+s).eq('emp_id',e).eq('scope_key',k);if(r.error)return fail(r.error);reload()});
   /* เลือกคนอนุมัติของช่อง (หน่วยงาน × ขั้น) */
-  $$('#v-flow [data-pick]').forEach(b=>b.onclick=()=>{const [no,v]=b.dataset.pick.split('|'),s=steps.find(x=>x.step_no===+no),x=rows.find(r=>r.v===v);
+  $$('#v-flow [data-pick]').forEach(b=>b.onclick=()=>{const pk=b.dataset.pick,no=pk.slice(0,pk.indexOf('|')),v=pk.slice(pk.indexOf('|')+1),s=steps.find(x=>x.step_no===+no),x=rows.find(r=>r.v===v);
     const inNode=e=>x.v==='__all'?false:x.sec?(e.deptCode===x.sec.d&&e.section===x.sec.n):empInUnit(e,orgUnder(x.v));
     modal(`<div style="display:flex;justify-content:space-between;gap:10px"><div><h2 style="margin:0;font-size:19px">เลือกผู้อนุมัติ</h2><div class="hint">ขั้น <b>${esc(s.name)}</b> · หน่วยงาน <b>${esc(x.label)}</b> (${x.n} คน)</div></div><button class="btn sm" onclick="closeModal()">✕</button></div>
       <div class="row" style="margin-top:12px"><div style="flex:2"><label>ค้นหาพนักงาน (รหัส / ชื่อ / ตำแหน่ง)</label><input id="pkQ" type="search" autofocus></div><div><label>กรองระดับ</label><select id="pkLv"><option value="">ทุก Level</option>${[...new Set(db.emps.map(e=>e.level))].sort((a,b)=>b-a).map(l=>`<option value="${l}">Level ${l}</option>`).join('')}</select></div></div>
