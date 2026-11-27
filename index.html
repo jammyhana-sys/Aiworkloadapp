@@ -4495,7 +4495,7 @@ if(CLOUD)cloudInit();
 (()=>{const ps=document.getElementById('pinScreen');if(!ps)return;
   ['gesturestart','gesturechange','gestureend'].forEach(t=>ps.addEventListener(t,e=>e.preventDefault()));
   ps.addEventListener('dblclick',e=>e.preventDefault());})();/* ตรวจเวอร์ชันใหม่อัตโนมัติ: เมื่อกลับมาเปิดแอป / ทุก 5 นาที — ถ้ามีเวอร์ชันใหม่ รีโหลดเองเมื่ออยู่หน้าหลัก ไม่งั้นแสดงแถบให้แตะอัปเดต */
-const APP_BUILD=213;
+const APP_BUILD=214;
 async function chkUpdate(){try{const t=await (await fetch('sw.js?'+Date.now(),{cache:'no-store'})).text();const m=t.match(/timesheet-v(\d+)/);if(!m||Number(m[1])<=APP_BUILD)return;
   try{const rg=await navigator.serviceWorker?.getRegistration();if(rg)await rg.update()}catch(_){}
   const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||'');

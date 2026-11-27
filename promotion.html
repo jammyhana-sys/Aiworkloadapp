@@ -74,6 +74,7 @@ tr:hover td{background:#fafbff}
 <div id="modal" class="modal hide"><div id="modalBody"></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 /* ============ ข้อมูลและค่าตั้งต้น ============ */
@@ -83,7 +84,7 @@ const STATUS=['ร่าง','เสนอแล้ว','ผ่านการ�
 const STCLS={'ร่าง':'','เสนอแล้ว':'pri','ผ่านการพิจารณา':'ok','ไม่ผ่านการพิจารณา':'bad','ยกเลิก':'warn'};
 const GRADE_YEARS=['2564','2565','2566','2567','2568'];
 const DEF={minAvg:3.0,minGrade:2.7,gradeYears:3,minTenure:1,yearBE:2569};
-let db={emps:[],reqs:[],noms:[],cfg:{...DEF},imported:null};
+let db={emps:[],reqs:[],noms:[],orders:[],cfg:{...DEF},imported:null};
 /* ============ ระบบกลาง (Supabase) — ใช้ session เดียวกับแอปหลัก ============ */
 const SB_URL='https://vhhekmpkcqlgesojvlws.supabase.co',SB_KEY='sb_publishable_I5aGYPaJKemi6HP8Liijeg_Hb_M7-SQ';
 let sb=null,CAN={view:false,manage:false},READY=false;
@@ -94,7 +95,7 @@ async function loadAll(){
   const all=async t=>{const r=await sb.from(t).select('*').range(0,9999);if(r.error)throw r.error;return r.data||[]};
   const [E,R,N,C]=await Promise.all([all('promo_employees'),all('promo_reqs'),all('promo_nominations'),all('promo_config')]);
   db.emps=E.map(r=>r.data);db.reqs=R.map(r=>r.data);db.noms=N.map(r=>({...r.data,id:r.id,empId:r.emp_id,status:r.status}));
-  const cf=C.find(x=>x.k==='cfg'),im=C.find(x=>x.k==='imported');db.cfg={...DEF,...(cf?cf.data:{})};db.imported=im?im.data:null;
+  db.orders=C.filter(x=>/^order:/.test(x.k)).map(x=>x.data);db.orders.forEach(applyOrder);const cf=C.find(x=>x.k==='cfg'),im=C.find(x=>x.k==='imported');db.cfg={...DEF,...(cf?cf.data:{})};db.imported=im?im.data:null;
 }
 async function boot(){
   if(!sb)return gate('<h2 style="margin:0 0 8px">โหลดตัวเชื่อมต่อระบบกลางไม่สำเร็จ</h2><div class="hint">ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่</div>');
@@ -132,6 +133,38 @@ const thDate=iso=>{if(!iso)return '-';const [y,m,d]=iso.split('-');return `${d}/
 const reqOf=l=>db.reqs.find(r=>r.level===l);
 const empOf=id=>db.emps.find(e=>e.id===id);
 
+/* ============ ประกาศแต่งตั้ง/เลื่อนตำแหน่ง (.docx) → เพิ่มเข้าประวัติการปรับตำแหน่ง ============ */
+const nname=s=>String(s||'').replace(/\s+/g,'').replace(/^(ว่าที่ร้อยตรี|ว่าที่ร\.ต\.|นางสาว|นาง|นาย|น\.ส\.|นส\.|ดร\.|คุณ)/,'');
+function matchEmp(name){const k=nname(name);if(!k)return null;let c=db.emps.filter(e=>nname(e.name)===k);if(c.length===1)return{e:c[0],how:'ชื่อ-สกุล'};if(c.length>1)return{e:null,how:'ชื่อซ้ำ'};
+  c=db.emps.filter(e=>{const x=nname(e.name);return x.length>=4&&k.startsWith(x)});return c.length===1?{e:c[0],how:'ชื่อต้น'}:{e:null,how:c.length?'ชื่อซ้ำ':'ไม่พบ'}}
+function applyOrder(o){(o.entries||[]).forEach(en=>{const e=empOf(en.empId);if(!e)return;e.hist=e.hist||[];if(e.hist.some(h=>h.src==='order'&&h.order===o.no))return;
+  e.hist.push({from:en.from,to:en.to,orgFrom:en.orgFrom,orgTo:en.orgTo,order:o.no,date:o.date,src:'order'});e.hist.sort((a,b)=>beToISO(a.date).localeCompare(beToISO(b.date)))})}
+async function parseOrderDocx(buf){
+  if(!window.JSZip)throw new Error('โหลดไลบรารีอ่านไฟล์ Word ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');
+  const zip=await JSZip.loadAsync(buf),f=zip.file('word/document.xml');if(!f)throw new Error('ไม่ใช่ไฟล์ .docx');
+  const doc=new DOMParser().parseFromString(await f.async('string'),'application/xml'),W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  const kids=(el,n)=>[...el.childNodes].filter(x=>x.localName===n&&x.namespaceURI===W);
+  const ptxt=p=>[...p.getElementsByTagNameNS(W,'t')].map(t=>t.textContent).join('').replace(/\s+/g,' ').trim();
+  const all=[...doc.getElementsByTagNameNS(W,'p')].map(ptxt).filter(Boolean);
+  const no=((all.find(s=>/^ที่\s*\S+\/\d{4}/.test(s))||'').match(/ที่\s*(\S+\/\d{4})/)||[])[1]||'';
+  const tbl=doc.getElementsByTagNameNS(W,'tbl')[0];if(!tbl)throw new Error('ไม่พบตารางรายชื่อในประกาศ');
+  const cellLines=tc=>kids(tc,'p').map(ptxt).filter(Boolean);
+  const val=(ls,key)=>{const l=ls.find(x=>x.replace(/\s+/g,'').startsWith(key.replace(/\s+/g,'')));if(!l)return '';const i=l.indexOf(':');return (i<0?'':l.slice(i+1)).trim().replace(/^[-–]$/,'')};
+  const pc=ls=>{const acting=ls.some(x=>/^รักษาการ/.test(x)),en=(ls.find(x=>/^\(.*\)$/.test(x))||'').replace(/^\(|\)$/g,'');
+    return{acting,pos:val(ls,'ตำแหน่ง'),en,level:val(ls,'ระดับตำแหน่ง'),group:val(ls,'กลุ่มงาน'),unit:val(ls,'สำนัก')||val(ls,'ฝ่าย')}};
+  const out=[];let sec='',cur=null;
+  kids(tbl,'tr').forEach(tr=>{const tcs=kids(tr,'tc');
+    if(tcs.length===1){sec=cellLines(tcs[0]).join(' ');return}
+    if(tcs.length<3)return;
+    const nm=cellLines(tcs[0]).join(' ').trim();
+    if(/^ชื่อ.*นามสกุล/.test(nm))return;
+    const oldC=pc(cellLines(tcs[1])),newC=pc(cellLines(tcs[2]));
+    if(!nm){if(cur&&newC.pos){cur.to+=(newC.acting?' และรักษาการ':' และ')+' '+newC.pos}return}
+    cur={name:nm,from:oldC.pos+(oldC.level?` (ระดับ ${oldC.level})`:''),to:newC.pos+(newC.level?` (ระดับ ${newC.level})`:''),orgFrom:[oldC.unit,oldC.group].filter(Boolean).join(' / '),orgTo:[sec,newC.group].filter(Boolean).join(' / ')};out.push(cur)});
+  return{no,people:out};
+}
+let ORD=null;
+const beStr=iso=>{const [y,m,d]=iso.split('-');return `${d}/${m}/${+y+543}`};
 /* ============ นำเข้าไฟล์ Excel ============ */
 function parseWorkbook(buf){
   const wb=XLSX.read(buf,{type:'array',cellDates:false});
@@ -143,7 +176,7 @@ function parseWorkbook(buf){
   E.forEach(r=>{const id=String(r.B??'').trim();if(!/^\d{3,}$/.test(id))return;
     const g={};GRADE_YEARS.forEach((y,i)=>{const v=String(r['IJKLM'[i]]??'').trim();g[y]=GP[v]!=null?v:''});
     const hist=[['AS','AT','AU','AV','AW','AX'],['AY','AZ','BA','BB','BC','BD'],['BE','BF','BG','BH','BI','BJ']].map(c=>({from:String(r[c[0]]||''),to:String(r[c[1]]||''),orgFrom:String(r[c[2]]||''),orgTo:String(r[c[3]]||''),order:String(r[c[4]]||''),date:effDate(r[c[5]])})).filter(h=>h.from||h.to);
-    emps.push({id,sex:r.C||'',name:String(r.D||'').trim(),nick:String(r.F||'').trim(),pos:String(r.G||'').trim(),level:lv(r.H),grades:g,
+    emps.push({id,sex:r.C||'',name:(String(r.D||'').trim()+' '+String(r.E||'').trim()).trim(),nick:String(r.F||'').trim(),pos:String(r.G||'').trim(),level:lv(r.H),grades:g,
       reqLevel:lv(r.N),group:String(r.W||''),line:String(r.Y||''),dept:String(r.AA||''),deptCode:String(r.Z||''),groupCode:String(r.V||''),lineCode:String(r.X||''),section:String(r.AB||''),
       start:toISO(r.AC),birth:toISO(r.AG),
       edu:{lvl:String(r.AK||''),major:String(r.AL||''),inst:String(r.AM||''),year:String(r.AN||''),lvl0:String(r.AO||''),major0:String(r.AP||''),inst0:String(r.AQ||''),year0:String(r.AR||'')},hist})});
@@ -158,7 +191,7 @@ async function pushImport(r,name){
   const {error}=await sb.rpc('promo_import',{p_emps:r.emps,p_reqs:r.reqs});if(error)throw error;
   const imp={at:new Date().toISOString(),file:name,n:r.emps.length};
   const c=await sb.from('promo_config').upsert({k:'imported',data:imp,updated_at:imp.at});if(c.error)throw c.error;
-  const old=new Set(db.emps.map(e=>e.id));db.emps=r.emps;if(r.reqs.length)db.reqs=r.reqs;db.imported=imp;
+  const old=new Set(db.emps.map(e=>e.id));db.emps=r.emps;if(r.reqs.length)db.reqs=r.reqs;db.imported=imp;db.orders.forEach(applyOrder);
   return{emps:r.emps.length,reqs:r.reqs.length,added:r.emps.filter(e=>!old.has(e.id)).length};
 }
 const doImport=(buf,name)=>pushImport(parseWorkbook(buf),name);
@@ -339,7 +372,11 @@ function rData(){
   el.innerHTML=`<div class="card"><h2>นำเข้าข้อมูลจาก Excel</h2>
     <div class="hint" style="margin-bottom:10px">ใช้ไฟล์ "ไฟล์พิจารณาคุณสมบัติ" (ชีต <b>ข้อกำหนด</b> + <b>พนักงานปัจจุบัน</b>) — ระบบอ่านเกรดปี 2564–2568 การศึกษาปัจจุบัน/เดิม วันเริ่มงาน สังกัด และประวัติปรับตำแหน่ง · นำเข้าซ้ำได้ (รายการเสนอชื่อเดิมไม่หาย)</div>
     <input type="file" id="fx" accept=".xlsx,.xls" style="max-width:420px"> <div id="fmsg" class="hint" style="margin-top:10px">${db.imported?`ข้อมูลล่าสุด: ${esc(db.imported.file)} · ${db.imported.n} คน · นำเข้า ${new Date(db.imported.at).toLocaleString('th-TH')}`:'ยังไม่เคยนำเข้า'}</div></div>
-  <div class="card"><h2>เกณฑ์พิจารณาเบื้องต้น (ปรับตามนโยบายบริษัท)</h2><div class="row">
+  ${CAN.manage?`<div class="card"><h2>นำเข้าประกาศแต่งตั้ง / เลื่อนตำแหน่ง (.docx) → เพิ่มประวัติการปรับตำแหน่ง</h2>
+    <div class="hint" style="margin-bottom:10px">อ่านตารางในประกาศ (ชื่อ · ตำแหน่งเดิม → ตำแหน่งใหม่ · สังกัด) จับคู่กับพนักงานด้วยชื่อ แล้วเพิ่มเป็นรายการในประวัติของทุกคนที่อยู่ในประกาศ ด้วยวันที่มีผลที่ระบุ · เก็บแยกจากไฟล์ Excel จึงไม่หายเมื่อนำเข้า Excel ใหม่</div>
+    <div class="row"><div style="flex:2"><label>ไฟล์ประกาศ (.docx)</label><input type="file" id="odx" accept=".docx"></div><div><label>เลขที่ประกาศ</label><input id="ono" placeholder="เช่น ป.002/2569"></div><div><label>วันที่มีผล (ใช้กับทุกคน)</label><input id="odt" type="date" value="2026-01-01"></div></div>
+    <div id="oprev" class="hint" style="margin-top:10px"></div>
+    ${db.orders.length?`<div style="margin-top:12px"><b>ประกาศที่นำเข้าแล้ว</b>${db.orders.map(o=>`<div class="bar"><span class="n" style="min-width:140px">${esc(o.no)}</span><span>${o.entries.length} คน · มีผล ${esc(o.date)}</span><button class="btn sm bad" data-odel="${esc(o.no)}">ลบ</button></div>`).join('')}</div>`:''}</div>`:''}  <div class="card"><h2>เกณฑ์พิจารณาเบื้องต้น (ปรับตามนโยบายบริษัท)</h2><div class="row">
     <div><label>เกรดเฉลี่ยขั้นต่ำ (4.0 = A)</label><input id="cAvg" type="number" step="0.1" value="${c.minAvg}"></div>
     <div><label>เกรดต่ำสุดที่ยอมรับ</label><select id="cMin">${Object.entries(GP).map(([g,p])=>`<option value="${p}" ${p===c.minGrade?'selected':''}>${g} (${p})</option>`).join('')}</select></div>
     <div><label>จำนวนปีล่าสุดที่นับเกรด</label><select id="cYrs">${[1,2,3,4,5].map(n=>`<option ${n===c.gradeYears?'selected':''}>${n}</option>`).join('')}</select></div>
@@ -359,7 +396,25 @@ function rData(){
     try{if(lg.emps.length)await pushImport({emps:lg.emps,reqs:lg.reqs||[]},'ข้อมูลเดิมในเครื่อง');
       for(const n of lg.noms){const r=await sb.from('promo_nominations').upsert({id:n.id,emp_id:n.empId,status:n.status,data:n,created_by:n.by||'',updated_at:n.at||new Date().toISOString()});if(r.error)throw r.error}
       localStorage.removeItem(KEY);await loadAll();alert('ย้ายขึ้นระบบกลางแล้ว และลบข้อมูลเดิมในเครื่องนี้แล้ว');render()}catch(er){alert('ย้ายไม่สำเร็จ: '+errTxt(er))}};
-  if(!CAN.manage){['#fx','#cAvg','#cMin','#cYrs','#cTen','#cSave'].forEach(s=>$(s).disabled=true);$('#fmsg').insertAdjacentHTML('beforeend',' · <b>สิทธิ์ดูอย่างเดียว — นำเข้า/แก้เกณฑ์ไม่ได้</b>')}
+  if($('#odx'))$('#odx').onchange=async e=>{const f=e.target.files[0];if(!f)return;const pv=$('#oprev');pv.textContent='กำลังอ่านประกาศ…';ORD=null;
+    try{const r=await parseOrderDocx(await f.arrayBuffer());if(r.no&&!$('#ono').value)$('#ono').value=r.no;
+      const ok=[],bad=[];r.people.forEach(x=>{const m=matchEmp(x.name);if(m.e)ok.push({...x,empId:m.e.id,how:m.how});else bad.push({...x,why:m.how})});ORD={people:r.people,ok,bad};
+      pv.innerHTML=`พบในประกาศ <b>${r.people.length}</b> คน · จับคู่ได้ <b style="color:var(--ok)">${ok.length}</b> · จับคู่ไม่ได้ <b style="color:${bad.length?'var(--bad)':'inherit'}">${bad.length}</b>${ok.some(x=>x.how==='ชื่อต้น')?' <span class="hint">(บางคนจับคู่ด้วยชื่อต้นเพราะข้อมูลพนักงานยังไม่มีนามสกุล — นำเข้า Excel ใหม่หนึ่งครั้งจะแม่นขึ้น)</span>':''}
+        ${bad.length?`<div style="margin-top:8px"><b>จับคู่ไม่ได้ — เลือกพนักงานให้เอง หรือปล่อยว่างเพื่อไม่บันทึก:</b><div class="scroll" style="max-height:240px;margin-top:6px"><table><tbody>${bad.map((x,i)=>{const used=new Set(ok.map(y=>y.empId)),k=nname(x.name),free=db.emps.filter(e=>!used.has(e.id)),guess=free.find(e=>nname(e.name).slice(0,4)===k.slice(0,4));
+          return `<tr><td>${esc(x.name)}<div class="hint">${esc(x.why)}</div></td><td><select data-bm="${i}" style="min-width:260px"><option value="">— ไม่บันทึก —</option>${free.map(e=>`<option value="${esc(e.id)}" ${guess&&guess.id===e.id?'selected':''}>${esc(e.id)} ${esc(e.name)}</option>`).join('')}</select></td></tr>`}).join('')}</tbody></table></div></div>`:''}
+        <div style="margin-top:10px"><button class="btn pri" id="oapply" ${ok.length?'':'disabled'}>บันทึกประวัติ</button></div>`;
+      $('#oapply').onclick=async()=>{const no=$('#ono').value.trim(),dt=$('#odt').value;if(!no||!dt)return alert('ระบุเลขที่ประกาศและวันที่มีผล');
+        if(db.orders.some(o=>o.no===no)&&!confirm('มีประกาศเลขที่นี้แล้ว — แทนที่ข้อมูลเดิม?'))return;
+        if(!confirm(`เพิ่มรายการในประวัติการปรับตำแหน่ง (จับคู่อัตโนมัติ ${ORD.ok.length} คน + เลือกเอง ${$$('[data-bm]').filter(s=>s.value).length} คน)\nประกาศ ${no} · มีผล ${beStr(dt)}`))return;
+        const manual=$$('[data-bm]').map(s=>s.value?{...ORD.bad[+s.dataset.bm],empId:s.value}:null).filter(Boolean),ids=new Set(),list=[...ORD.ok,...manual].filter(x=>!ids.has(x.empId)&&ids.add(x.empId));
+        const o={no,date:beStr(dt),entries:list.map(x=>({empId:x.empId,name:x.name,from:x.from,to:x.to,orgFrom:x.orgFrom,orgTo:x.orgTo})),at:new Date().toISOString()};
+        const b=$('#oapply');b.disabled=true;b.textContent='กำลังบันทึก…';
+        const r2=await sb.from('promo_config').upsert({k:'order:'+no,data:o,updated_at:o.at});if(r2.error){b.disabled=false;b.textContent='บันทึก';return alert('บันทึกไม่สำเร็จ: '+errTxt(r2.error))}
+        db.emps.forEach(e=>{e.hist=(e.hist||[]).filter(h=>!(h.src==='order'&&h.order===no))});db.orders=db.orders.filter(x=>x.no!==no);db.orders.push(o);applyOrder(o);ORD=null;alert('บันทึกประวัติแล้ว');render()}}
+    catch(er){pv.innerHTML=`<span style="color:var(--bad)">อ่านประกาศไม่สำเร็จ: ${esc(er.message)}</span>`}};
+  $$('[data-odel]').forEach(b=>b.onclick=async()=>{const no=b.dataset.odel;if(!confirm(`ลบประกาศ ${no} ออกจากประวัติของทุกคน?`))return;
+    const r=await sb.from('promo_config').delete().eq('k','order:'+no);if(r.error)return alert('ลบไม่สำเร็จ: '+errTxt(r.error));
+    db.emps.forEach(e=>{e.hist=(e.hist||[]).filter(h=>!(h.src==='order'&&h.order===no))});db.orders=db.orders.filter(x=>x.no!==no);render()});  if(!CAN.manage){['#fx','#cAvg','#cMin','#cYrs','#cTen','#cSave'].forEach(s=>$(s).disabled=true);$('#fmsg').insertAdjacentHTML('beforeend',' · <b>สิทธิ์ดูอย่างเดียว — นำเข้า/แก้เกณฑ์ไม่ได้</b>')}
   if($('#lgDel'))$('#lgDel').onclick=()=>{if(confirm('ลบข้อมูลเดิมที่ค้างในเบราว์เซอร์เครื่องนี้? (ไม่กระทบข้อมูลในระบบกลาง)')){localStorage.removeItem(KEY);render()}};
 }
 const legacyLocal=()=>{try{const s=localStorage.getItem(KEY);if(!s)return null;const o=JSON.parse(s);return(o.emps&&o.emps.length)||(o.noms&&o.noms.length)?{emps:o.emps||[],reqs:o.reqs||[],noms:o.noms||[]}:null}catch(_){return null}};
