@@ -401,9 +401,10 @@ const orgDepth=u=>u.t==='group'?0:u.t==='line'?1:(orgOf(u.p)&&orgOf(u.p).t==='li
 const orgTree=()=>{const out=[];ORG.filter(u=>u.t==='group').forEach(g=>{out.push(g);const walk=p=>ORG.filter(u=>u.p===p).forEach(u=>{out.push(u);walk(u.c)});walk(g.c)});return out};
 const headName=u=>u&&u.h?u.h.split(/\s+(?=ประธาน|รักษาการ)/)[0].trim():'';
 const empInUnit=(e,set)=>!set||set.has(e.groupCode)||set.has(e.lineCode)||set.has(e.deptCode);
-const scopeMatchE=(s,e)=>{const t=(s&&s.type)||'all';if(t==='all')return true;const k=(s.keys||[]);return t==='unit'?(k.includes(e.groupCode)||k.includes(e.lineCode)||k.includes(e.deptCode)):t==='group'?k.includes(e.groupCode):t==='line'?k.includes(e.lineCode):t==='dept'?k.includes(e.deptCode):t==='section'?(k.includes(e.deptCode+'|'+e.section)||k.includes(e.section)):false};
+const scopeMatch0=(s,e)=>{const t=(s&&s.type)||'all';if(t==='all')return true;const k=(s.keys||[]);return t==='unit'?(k.includes(e.groupCode)||k.includes(e.lineCode)||k.includes(e.deptCode)):t==='group'?k.includes(e.groupCode):t==='line'?k.includes(e.lineCode):t==='dept'?k.includes(e.deptCode):t==='section'?(k.includes(e.deptCode+'|'+e.section)||k.includes(e.section)):false};
+const scopeMatchE=(s,e)=>scopeMatch0(s,e)&&!(((s&&s.exclude)||[]).includes(e.deptCode+'|'+e.section));
 const SC_TH={unit:'หน่วยงาน',group:'กลุ่มงาน',line:'สายงาน',dept:'ฝ่าย',section:'แผนก'};
-const scopeTxt=s=>!s||!s.type||s.type==='all'?'ทั้งบริษัท':s.type==='unit'?`หน่วยงาน: ${(s.labels||(s.keys||[]).map(k=>(orgOf(k)||{n:k}).n)).join(', ')}`:`${SC_TH[s.type]||s.type}: ${(s.keys||[]).map(k=>String(k).split('|').pop()).join(', ')}`;
+const scopeTxt=s=>!s||!s.type||s.type==='all'?'ทั้งบริษัท':s.type==='unit'?`หน่วยงาน: ${(s.labels||(s.keys||[]).map(k=>(orgOf(k)||{n:k}).n)).join(', ')}`+(s.exclude&&s.exclude.length?` (ไม่รวมแผนก ${s.exclude.map(q=>String(q).split('|').pop()).join(', ')})`:''):`${SC_TH[s.type]||s.type}: ${(s.keys||[]).map(k=>String(k).split('|').pop()).join(', ')}`;
 const activeSteps=()=>(db.steps||[]).filter(s=>s.active).sort(stepSort);
 const stepPos=n=>{const i=activeSteps().findIndex(s=>s.step_no===n.step);return i<0?n.step:i+1};
 const stepName=n=>{const s=(db.steps||[]).find(x=>x.step_no===n.step);return s?s.name:''};
@@ -472,13 +473,18 @@ function rFlow(){
   const gSet=FLOW_VIEW.group?orgUnder(FLOW_VIEW.group):null;
   const hasKey=new Set(apps.map(a=>a.scope_key||apKey(a.scope))),drafts=FLOW_VIEW.drafts||(FLOW_VIEW.drafts=new Set());
   const rows=[{key:'all',v:'__all',label:'ทั้งบริษัท',indent:0,icon:'★',n:db.emps.length}].concat(allNodes.filter(x=>FLOW_VIEW.all?((FLOW_VIEW.sec||!x.sec)&&(!gSet||(x.unit?gSet.has(x.unit.c):gSet.has(x.sec.d)))):(hasKey.has(x.key)||drafts.has(x.key))));
+  const idxOf=new Map(allNodes.map((x,i)=>[x.key,i]));
+  [...new Set([...hasKey,...drafts])].filter(k=>k.includes('!')).forEach(k=>{const i=k.indexOf('!'),bk=k.slice(0,i),ex=k.slice(i+1).split(',').filter(Boolean),b=allNodes.find(x=>x.key===bk);if(!b||rows.some(r=>r.key===k))return;
+    const exN=ex.reduce((s,q)=>{const [dc,nm]=q.split('|');return s+db.emps.filter(e=>e.deptCode===dc&&e.section===nm&&empInUnit(e,orgUnder(b.v))).length},0);
+    rows.push({...b,key:k,v:'x:'+k,excl:ex,n:Math.max(0,b.n-exN),base:b})});
+  rows.sort((a,b)=>{const ia=a.key==='all'?-1:(idxOf.has(a.key)?idxOf.get(a.key):(a.base?idxOf.get(a.base.key)+0.5:999)),ib=b.key==='all'?-1:(idxOf.has(b.key)?idxOf.get(b.key):(b.base?idxOf.get(b.base.key)+0.5:999));return ia-ib});
   /* ชื่อระดับ + เส้นทางโครงสร้าง (กลุ่มงาน › สายงาน › ฝ่าย › แผนก) ของแต่ละแถว */
   const TYPE_TH={group:'กลุ่มงาน',line:'สายงาน/สำนัก',dept:'ฝ่าย',section:'แผนก'};
   const crumb=x=>{if(x.key==='all')return {lvl:'ทั้งบริษัท',path:''};const chain=[];let u=x.sec?orgOf(x.sec.d):x.unit;const arr=[];while(u){arr.unshift(u);u=u.p?orgOf(u.p):null}
     const names=arr.map(c=>c.n);if(x.sec)names.push(x.sec.n);return {lvl:x.sec?'แผนก':TYPE_TH[x.unit.t],path:names.slice(0,-1).join(' › ')}};
   const keyOf=a=>a.scope_key||apKey(a.scope);
   const chain=x=>{const ks=[];let u=x.sec?orgOf(x.sec.d):x.unit;if(x.sec)ks.push('unit:'+x.sec.d);else if(x.unit)u=orgOf(x.unit.p);
-    while(u){if(!ks.includes('unit:'+u.c))ks.push('unit:'+u.c);u=u.p?orgOf(u.p):null}ks.push('all');return ks.filter(k=>k!==x.key)};
+    while(u){if(!ks.includes('unit:'+u.c))ks.push('unit:'+u.c);u=u.p?orgOf(u.p):null}ks.push('all');return ks.filter(k=>k!==x.key&&!(x.base&&k===x.base.key))};
   const cell=(x,s)=>{const own=apps.filter(a=>a.step_no===s.step_no&&keyOf(a)===x.key);
     const inh=x.key==='all'?[]:chain(x).flatMap(k=>apps.filter(a=>a.step_no===s.step_no&&keyOf(a)===k).map(a=>({a,from:k==='all'?'ทั้งบริษัท':(nodeByKey.get(k)||{}).label||k})));
     return `<td style="vertical-align:top;min-width:190px">${own.map(a=>`<div style="margin:2px 0;display:flex;gap:4px;align-items:center"><span class="tag" style="font-size:12.5px;padding:3px 10px;white-space:normal">${esc(a.name||a.emp_id)}</span>${sup?`<a href="#" data-ad="${s.step_no}|${esc(a.emp_id)}|${esc(keyOf(a))}" style="color:var(--bad);text-decoration:none" title="เอาออก">✕</a>`:''}</div>`).join('')}
@@ -489,35 +495,45 @@ function rFlow(){
   el.innerHTML=`<div class="card"><h2>Flow การอนุมัติการเสนอชื่อปรับตำแหน่ง</h2>
     <p class="hint">แต่ละแถวคือ <b>หน่วยงานตามโครงสร้างองค์กร</b> (กลุ่มงาน › สายงาน › ฝ่าย › แผนก) แต่ละคอลัมน์คือ <b>ขั้นอนุมัติ</b> เรียงจากซ้ายไปขวา — ใส่ <b>ชื่อพนักงานที่มีอำนาจอนุมัติ</b> ในช่องของหน่วยงานนั้น (กด ＋) · ผู้อนุมัติที่กำหนดที่กลุ่มงาน/สายงานครอบคลุมทุกหน่วยย่อย (แสดงเป็น ↑ สีเทา) · แต่ละรายการต้องผ่านครบทุกขั้นจึง "ผ่านการพิจารณา" · อนุมัติรายการของตัวเองไม่ได้ · Super Admin อนุมัติแทนได้ทุกขั้น${sup?'':' · <b>แก้ไขได้เฉพาะ Super Admin</b>'}</p>
     ${sup?`<div class="card noprint" style="box-shadow:none;border:1px solid var(--line);background:#f8f9ff;margin-bottom:12px"><b>＋ เลือกหน่วยงานเพิ่มในตาราง</b> <span class="hint">เลือกลงลึกได้ถึงระดับที่ต้องการ — กลุ่มงาน / สายงาน / ฝ่าย / แผนก (ตัวเลขคือจำนวนพนักงานสังกัด)</span>
-      <div class="row" style="margin-top:8px;align-items:end"><div><label>กลุ่มงาน</label><select data-ar="group"></select></div><div><label>สายงาน / สำนัก</label><select data-ar="line"></select></div><div><label>ฝ่าย</label><select data-ar="dept"></select></div><div><label>แผนก</label><select data-ar="section"></select></div>
+      <div class="row" style="margin-top:8px;align-items:end"><div><label>กลุ่มงาน</label><select data-ar="group"></select></div><div><label>สายงาน / สำนัก</label><select data-ar="line"></select></div><div><label>ฝ่าย</label><select data-ar="dept"></select></div><div><label>แผนก</label><select data-ar="section"></select><label class="chk" style="margin:6px 0 0"><input type="checkbox" id="arEx"><span>ไม่นับรวมแผนกที่เลือก <span class="hint">(เลือกได้หลายแผนก)</span></span></label></div>
         <div style="flex:0"><button class="btn pri" id="arAdd">＋ เพิ่มแถว</button></div></div><div class="hint" id="arHd" style="margin-top:6px"></div></div>`:''}
     <div class="row noprint" style="margin-bottom:8px;align-items:end"><div style="flex:0"><label class="chk" style="margin:0 0 8px"><input type="checkbox" id="fvAll" ${FLOW_VIEW.all?'checked':''}> แสดงทุกหน่วยงานตามโครงสร้าง (ปกติแสดงเฉพาะแถวที่กำหนดผู้อนุมัติแล้ว/เลือกเพิ่ม)</label></div>
       ${FLOW_VIEW.all?`<div><label>เฉพาะกลุ่มงาน</label><select id="fvG"><option value="">ทุกกลุ่มงาน</option>${grpOpts}</select></div><div style="flex:0"><label class="chk" style="margin:0 0 8px"><input type="checkbox" id="fvS" ${FLOW_VIEW.sec?'checked':''}> รวมระดับแผนก</label></div>`:''}</div>
     <div class="scroll" style="max-height:72vh"><table style="min-width:900px"><thead><tr><th style="position:sticky;left:0;z-index:3;background:#eef0ff;min-width:260px">หน่วยงาน (ตามโครงสร้าง)</th>
       ${steps.map((s,i)=>`<th style="text-align:center;min-width:190px;${s.active?'':'opacity:.55'}">${sup?`<div style="display:flex;gap:4px;align-items:center;justify-content:center"><input data-sn="${s.step_no}" value="${esc(s.name)}" style="min-height:0;padding:5px 8px;text-align:center;min-width:110px;border-radius:999px;font-weight:700"></div>
         <div style="margin-top:4px;font-weight:400;font-size:12px">${i>0?`<a href="#" data-mv="${s.step_no}|-1" title="เลื่อนไปซ้าย" style="text-decoration:none">◀</a> `:''}<label style="display:inline-flex;gap:4px;align-items:center;margin:0 6px"><input type="checkbox" data-sa="${s.step_no}" ${s.active?'checked':''} style="width:auto;min-height:0"> ใช้งาน</label>${i<steps.length-1?` <a href="#" data-mv="${s.step_no}|1" title="เลื่อนไปขวา" style="text-decoration:none">▶</a>`:''} <a href="#" data-sd="${s.step_no}" title="ลบขั้นนี้" style="color:var(--bad);text-decoration:none;margin-left:6px">✕</a></div>`:`<span class="tag pri" style="font-size:13px">${esc(s.name)}</span>${s.active?'':'<div class="hint">ไม่ใช้งาน</div>'}`}</th>`).join('')}${sup?'<th><button class="btn sm" id="fAddRole">＋ ขั้นอนุมัติ</button></th>':''}</tr></thead><tbody>
-      ${rows.map(x=>{const c=crumb(x);return `<tr><td style="position:sticky;left:0;background:#fff;z-index:2"><span class="tag" style="font-size:11px">${esc(c.lvl)}</span> <b>${esc(x.label)}</b> <span class="hint">· ${x.n} คน</span>${c.path?`<div class="hint" style="font-size:12px">${esc(c.path)}</div>`:''}${x.unit&&x.unit.h?`<div class="hint" style="font-size:12px">${esc(x.unit.h.replace(/\s+/g,' '))}</div>`:''}${sup&&x.key!=='all'&&!hasKey.has(x.key)?` <a href="#" data-rmrow="${esc(x.key)}" style="color:var(--bad);font-size:12px;text-decoration:none">เอาแถวออก</a>`:''}</td>${steps.map(s=>cell(x,s)).join('')}${sup?'<td></td>':''}</tr>`}).join('')}</tbody></table></div>
+      ${rows.map(x=>{const c=crumb(x);return `<tr><td style="position:sticky;left:0;background:#fff;z-index:2"><span class="tag" style="font-size:11px">${esc(c.lvl)}</span> <b>${esc(x.label)}</b> <span class="hint">· ${x.n} คน</span>${x.excl?` <span class="tag warn" style="font-size:11px">ไม่รวมแผนก</span> <span class="hint">${esc(x.excl.map(q=>q.split('|').slice(1).join('|')).join(', '))}</span>`:''}${c.path?`<div class="hint" style="font-size:12px">${esc(c.path)}</div>`:''}${x.unit&&x.unit.h?`<div class="hint" style="font-size:12px">${esc(x.unit.h.replace(/\s+/g,' '))}</div>`:''}${sup&&x.key!=='all'&&!hasKey.has(x.key)?` <a href="#" data-rmrow="${esc(x.key)}" style="color:var(--bad);font-size:12px;text-decoration:none">เอาแถวออก</a>`:''}</td>${steps.map(s=>cell(x,s)).join('')}${sup?'<td></td>':''}</tr>`}).join('')}</tbody></table></div>
     <div style="margin-top:10px;line-height:1.9">เส้นทางอนุมัติ: ${flowTxt}</div></div>`;
   $('#fvAll').onchange=e=>{FLOW_VIEW.all=e.target.checked;rFlow()};if($('#fvG'))$('#fvG').onchange=e=>{FLOW_VIEW.group=e.target.value;rFlow()};if($('#fvS'))$('#fvS').onchange=e=>{FLOW_VIEW.sec=e.target.checked;rFlow()};
   /* เลือกหน่วยงาน (ซ้ายมือ): กลุ่มงาน › สายงาน › ฝ่าย › แผนก ตามโครงสร้างจริง พร้อมจำนวนพนักงาน */
   if(sup){const AR=k=>document.querySelector(`[data-ar="${k}"]`),arHd=$('#arHd');
     const cnt=c=>db.emps.filter(e=>empInUnit(e,orgUnder(c))).length;
     const opt=(arr,all)=>`<option value="">${all}</option>`+arr.map(u=>`<option value="${esc(u.c)}">${esc(u.n)} · ${cnt(u.c)} คน</option>`).join('');
+    /* สถานะการเลือกปัจจุบัน: ปกติ = หน่วยงาน/แผนกเดียว · โหมด "ไม่นับรวม" = หน่วยงานฐาน ยกเว้นแผนกที่ติ๊ก */
+    const curSel=()=>{const g=AR('group').value,l=AR('line').value,d=AR('dept').value,ex=$('#arEx').checked,sel=[...AR('section').selectedOptions].map(o=>o.value).filter(Boolean);
+      const base=d?'unit:'+d:l?'unit:'+l:g?'unit:'+g:'',bu=orgOf(d)||orgOf(l)||orgOf(g);
+      if(ex){if(!base||!sel.length)return {key:'',label:bu?bu.n:'',n:0,exTxt:''};const bn=cnt(bu.c),exN=sel.reduce((s,q)=>{const [dc,nm]=q.split('|');return s+db.emps.filter(e=>e.deptCode===dc&&e.section===nm&&empInUnit(e,orgUnder(bu.c))).length},0);
+        return {key:base+'!'+sel.slice().sort().join(','),label:bu.n,n:Math.max(0,bn-exN),exTxt:sel.map(q=>q.split('|')[1]).join(', ')}}
+      const sc=sel[0];if(sc){const [dc,nm]=sc.split('|');return {key:'section:'+sc,label:nm,n:db.emps.filter(e=>e.deptCode===dc&&e.section===nm).length,exTxt:''}}
+      return base?{key:base,label:bu.n,n:cnt(bu.c),exTxt:''}:{key:'',label:'',n:0,exTxt:''}};
     const build=who=>{const g=AR('group').value;
       if(!who||who==='group'){const ls=ORG.filter(u=>u.t==='line'&&(!g||u.p===g)),k=AR('line').value;AR('line').innerHTML=opt(ls,'— ทุกสายงาน —');if(ls.some(u=>u.c===k))AR('line').value=k}
       const l=AR('line').value,root=l||g,set=root?orgUnder(root):null;
       if(!who||who==='group'||who==='line'){const ds=ORG.filter(u=>u.t==='dept'&&(!set||set.has(u.c))),k=AR('dept').value;AR('dept').innerHTML=opt(ds,'— ทุกฝ่าย —');if(ds.some(u=>u.c===k))AR('dept').value=k}
-      const d=AR('dept').value,r2=d||l||g,set2=r2?orgUnder(r2):null;
-      const secs=[...new Set(db.emps.filter(e=>empInUnit(e,set2)&&e.section&&(!d||e.deptCode===d)).map(e=>e.deptCode+'|'+e.section))].sort((a,b)=>a.split('|')[1].localeCompare(b.split('|')[1],'th')),ks=AR('section').value;
-      AR('section').innerHTML='<option value="">— ทุกแผนก —</option>'+secs.map(s=>{const [dc,nm]=s.split('|');return `<option value="${esc(s)}">${esc(nm)}${d?'':' ('+esc((orgOf(dc)||{}).n||dc)+')'} · ${db.emps.filter(e=>e.deptCode===dc&&e.section===nm&&empInUnit(e,set2)).length} คน</option>`}).join('');if(secs.includes(ks))AR('section').value=ks;
-      const sec=AR('section').value,key=sec?'section:'+sec:d?'unit:'+d:l?'unit:'+l:g?'unit:'+g:'';
-      const lab=sec?sec.split('|')[1]:(orgOf(d)||orgOf(l)||orgOf(g)||{}).n,n=sec?db.emps.filter(e=>e.deptCode===sec.split('|')[0]&&e.section===sec.split('|')[1]).length:r2?cnt(r2):0;
-      arHd.innerHTML=key?`หน่วยงานที่เลือก: <b>${esc(lab)}</b> — พนักงานสังกัด <b style="color:var(--pri)">${n} คน</b>`:'เลือกอย่างน้อย 1 ระดับ แล้วกด ＋ เพิ่มแถว'};
+      const d=AR('dept').value,r2=d||l||g,set2=r2?orgUnder(r2):null,ex=$('#arEx').checked;
+      const secs=[...new Set(db.emps.filter(e=>empInUnit(e,set2)&&e.section&&(!d||e.deptCode===d)).map(e=>e.deptCode+'|'+e.section))].sort((a,b)=>a.split('|')[1].localeCompare(b.split('|')[1],'th')),ks=[...AR('section').selectedOptions].map(o=>o.value).filter(Boolean);
+      AR('section').multiple=ex;AR('section').size=ex?6:1;
+      AR('section').innerHTML=(ex?'':'<option value="">— ทุกแผนก —</option>')+secs.map(s=>{const [dc,nm]=s.split('|');return `<option value="${esc(s)}">${esc(nm)}${d?'':' ('+esc((orgOf(dc)||{}).n||dc)+')'} · ${db.emps.filter(e=>e.deptCode===dc&&e.section===nm&&empInUnit(e,set2)).length} คน</option>`}).join('');
+      [...AR('section').options].forEach(o=>{o.selected=ks.includes(o.value)});
+      const cur=curSel();
+      arHd.innerHTML=cur.key?`หน่วยงานที่เลือก: <b>${esc(cur.label)}</b>${cur.exTxt?` <span class="tag warn">ไม่รวมแผนก</span> ${esc(cur.exTxt)}`:''} — พนักงานสังกัด <b style="color:var(--pri)">${cur.n} คน</b>`:(ex?'โหมด "ไม่นับรวม": เลือกกลุ่มงาน/สายงาน/ฝ่าย แล้วติ๊กแผนกที่ไม่ต้องการนับรวม':'เลือกอย่างน้อย 1 ระดับ แล้วกด ＋ เพิ่มแถว')};
     AR('group').innerHTML=opt(ORG.filter(u=>u.t==='group'),'— ทุกกลุ่มงาน —');
     AR('group').onchange=()=>build('group');AR('line').onchange=()=>build('line');AR('dept').onchange=()=>build('dept');AR('section').onchange=()=>build('section');build();
-    $('#arAdd').onclick=()=>{const g=AR('group').value,l=AR('line').value,d=AR('dept').value,sec=AR('section').value;const key=sec?'section:'+sec:d?'unit:'+d:l?'unit:'+l:g?'unit:'+g:'';
-      if(!key)return alert('เลือกกลุ่มงาน สายงาน ฝ่าย หรือแผนก อย่างน้อย 1 ระดับ');
-      if(!allNodes.some(x=>x.key===key))return alert('ไม่พบหน่วยงานนี้ในโครงสร้าง');drafts.add(key);rFlow();setTimeout(()=>{const r=[...document.querySelectorAll('#v-flow tbody tr')].find(t=>t.querySelector(`[data-pick$="|${(allNodes.find(x=>x.key===key)||{}).v}"]`));if(r)r.scrollIntoView({behavior:'smooth',block:'center'})},50)};
+    $('#arEx').onchange=()=>build('section');
+    $('#arAdd').onclick=()=>{const cur=curSel(),key=cur.key;
+      if(!key)return alert($('#arEx').checked?'โหมด "ไม่นับรวม": เลือกกลุ่มงาน/สายงาน/ฝ่าย และติ๊กแผนกที่ไม่ต้องการนับรวมอย่างน้อย 1 แผนก':'เลือกกลุ่มงาน สายงาน ฝ่าย หรือแผนก อย่างน้อย 1 ระดับ');
+      const bk=key.includes('!')?key.slice(0,key.indexOf('!')):key;
+      if(!allNodes.some(x=>x.key===bk))return alert('ไม่พบหน่วยงานนี้ในโครงสร้าง');drafts.add(key);rFlow();setTimeout(()=>{const r=[...document.querySelectorAll('#v-flow tbody tr')].find(t=>t.querySelector(`[data-pick$="|${key.includes('!')?'x:'+key:(allNodes.find(x=>x.key===key)||{}).v}"]`));if(r)r.scrollIntoView({behavior:'smooth',block:'center'})},50)};
     $$('#v-flow [data-rmrow]').forEach(a=>a.onclick=ev=>{ev.preventDefault();drafts.delete(a.dataset.rmrow);rFlow()})}
   if(!sup)return;
   const reload=async()=>{await loadFlow();rFlow()},fail=er=>alert('บันทึกไม่สำเร็จ: '+errTxt(er)+(/scope_key/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub54.sql)':/ord/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub55.sql)':''));
@@ -532,7 +548,7 @@ function rFlow(){
   $$('#v-flow [data-ad]').forEach(a=>a.onclick=async ev=>{ev.preventDefault();const [s,e,...kk]=a.dataset.ad.split('|'),k=kk.join('|');const r=await sb.from('promo_flow_approvers').delete().eq('step_no',+s).eq('emp_id',e).eq('scope_key',k);if(r.error)return fail(r.error);reload()});
   /* เลือกคนอนุมัติของช่อง (หน่วยงาน × ขั้น) */
   $$('#v-flow [data-pick]').forEach(b=>b.onclick=()=>{const pk=b.dataset.pick,no=pk.slice(0,pk.indexOf('|')),v=pk.slice(pk.indexOf('|')+1),s=steps.find(x=>x.step_no===+no),x=rows.find(r=>r.v===v);
-    const inNode=e=>x.v==='__all'?false:x.sec?(e.deptCode===x.sec.d&&e.section===x.sec.n):empInUnit(e,orgUnder(x.v));
+    const inNode=e=>x.v==='__all'?false:x.sec?(e.deptCode===x.sec.d&&e.section===x.sec.n):empInUnit(e,orgUnder(x.excl?x.unit.c:x.v))&&!(x.excl&&x.excl.includes(e.deptCode+'|'+e.section));
     modal(`<div style="display:flex;justify-content:space-between;gap:10px"><div><h2 style="margin:0;font-size:19px">เลือกผู้อนุมัติ</h2><div class="hint">ขั้น <b>${esc(s.name)}</b> · หน่วยงาน <b>${esc(x.label)}</b> (${x.n} คน)</div></div><button class="btn sm" onclick="closeModal()">✕</button></div>
       <div class="row" style="margin-top:12px"><div style="flex:2"><label>ค้นหาพนักงาน (รหัส / ชื่อ / ตำแหน่ง)</label><input id="pkQ" type="search" autofocus></div><div><label>กรองระดับ</label><select id="pkLv"><option value="">ทุก Level</option>${[...new Set(db.emps.map(e=>e.level))].sort((a,b)=>b-a).map(l=>`<option value="${l}">Level ${l}</option>`).join('')}</select></div></div>
       <div class="hint" id="pkN" style="margin:8px 0"></div><div class="scroll" style="max-height:50vh"><table><tbody id="pkL"></tbody></table></div>`);
@@ -541,7 +557,7 @@ function rFlow(){
       $('#pkN').textContent=`พบ ${cand.length} คน${cand.length>80?' (แสดง 80 รายการแรก — พิมพ์ค้นหาเพื่อกรอง)':''}${x.v!=='__all'?' · คนสังกัดหน่วยงานนี้แสดงก่อน':''}`;
       $('#pkL').innerHTML=cand.slice(0,80).map(e=>`<tr><td><b>${esc(e.name)}</b>${inNode(e)?' <span class="tag ok">สังกัด</span>':''}<div class="hint">${esc(e.id)} · Level ${e.level} · ${esc(e.pos)} · ${esc(e.dept)}</div></td><td style="text-align:right"><button class="btn sm pri" data-ch="${esc(e.id)}">เลือก</button></td></tr>`).join('')||'<tr><td class="hint">ไม่พบ</td></tr>';
       $$('#pkL [data-ch]').forEach(c=>c.onclick=async()=>{const emp=c.dataset.ch,e=empOf(emp);
-        const scope=x.v==='__all'?{type:'all'}:x.sec?{type:'section',keys:[x.sec.d+'|'+x.sec.n]}:{type:'unit',keys:[...orgUnder(x.v)],labels:[x.label]};
+        const scope=x.v==='__all'?{type:'all'}:x.sec?{type:'section',keys:[x.sec.d+'|'+x.sec.n]}:{type:'unit',keys:[...orgUnder(x.excl?x.unit.c:x.v)],labels:[x.label],...(x.excl?{exclude:x.excl}:{})};
         c.disabled=true;const r=await sb.from('promo_flow_approvers').upsert({step_no:s.step_no,emp_id:emp,name:e?e.name:'',scope,scope_key:x.key});if(r.error){c.disabled=false;return fail(r.error)}
         const m=await sb.from('module_access').select('emp_id').eq('module','promo').eq('emp_id',emp);
         if(!m.error&&!(m.data||[]).length){const r2=await sb.from('module_access').insert({module:'promo',emp_id:emp,perm:'view',scope,granted_by:'Flow อนุมัติ'});if(r2.error)alert('เพิ่มผู้อนุมัติแล้ว แต่เพิ่มสิทธิ์เข้าโมดูลไม่สำเร็จ — กำหนดที่เมนู สมาชิก › สิทธิ์การเข้าถึงโมดูล')}
