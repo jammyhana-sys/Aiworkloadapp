@@ -134,9 +134,13 @@ const reqOf=l=>db.reqs.find(r=>r.level===l);
 const empOf=id=>db.emps.find(e=>e.id===id);
 
 /* ============ ประกาศแต่งตั้ง/เลื่อนตำแหน่ง (.docx) → เพิ่มเข้าประวัติการปรับตำแหน่ง ============ */
-const nname=s=>String(s||'').replace(/\s+/g,'').replace(/^(ว่าที่ร้อยตรี|ว่าที่ร\.ต\.|นางสาว|นาง|นาย|น\.ส\.|นส\.|ดร\.|คุณ)/,'');
-function matchEmp(name){const k=nname(name);if(!k)return null;let c=db.emps.filter(e=>nname(e.name)===k);if(c.length===1)return{e:c[0],how:'ชื่อ-สกุล'};if(c.length>1)return{e:null,how:'ชื่อซ้ำ'};
-  c=db.emps.filter(e=>{const x=nname(e.name);return x.length>=4&&k.startsWith(x)});return c.length===1?{e:c[0],how:'ชื่อต้น'}:{e:null,how:c.length?'ชื่อซ้ำ':'ไม่พบ'}}
+const stripTitle=s=>String(s||'').replace(/^\s*(ว่าที่\s*ร้อยตรี|ว่าที่\s*ร\.?\s*ต\.?|นางสาว|นาง|นาย|น\.\s*ส\.|นส\.|ดร\.|คุณ)\s*/,'');
+const nname=s=>stripTitle(s).replace(/\s+/g,'');
+/* จับคู่ด้วย "ชื่อ + นามสกุล" ต้องตรงกันทั้งคู่ (ตัดคำนำหน้าและช่องว่าง) — ไม่เดาจากชื่อต้นอย่างเดียว */
+const fullKey=(first,last)=>nname(first)+String(last||'').replace(/\s+/g,'');
+function matchEmp(name){const k=nname(name);if(!k)return{e:null,how:'ไม่มีชื่อ'};
+  const c=db.emps.filter(e=>e.last&&fullKey(e.first,e.last)===k);   /* เทียบ ชื่อ+นามสกุล ติดกันไม่สนช่องว่าง/คำนำหน้า (ในประกาศบางชื่อไม่เว้นวรรคระหว่างชื่อกับนามสกุล) */
+  return c.length===1?{e:c[0],how:'ชื่อ+นามสกุล'}:{e:null,how:c.length?'ชื่อ-นามสกุลซ้ำ '+c.length+' คน':'ไม่พบชื่อ+นามสกุลนี้'}}
 function applyOrder(o){(o.entries||[]).forEach(en=>{const e=empOf(en.empId);if(!e)return;e.hist=e.hist||[];if(e.hist.some(h=>h.src==='order'&&h.order===o.no))return;
   e.hist.push({from:en.from,to:en.to,orgFrom:en.orgFrom,orgTo:en.orgTo,order:o.no,date:o.date,src:'order'});e.hist.sort((a,b)=>beToISO(a.date).localeCompare(beToISO(b.date)))})}
 async function parseOrderDocx(buf){
@@ -176,7 +180,7 @@ function parseWorkbook(buf){
   E.forEach(r=>{const id=String(r.B??'').trim();if(!/^\d{3,}$/.test(id))return;
     const g={};GRADE_YEARS.forEach((y,i)=>{const v=String(r['IJKLM'[i]]??'').trim();g[y]=GP[v]!=null?v:''});
     const hist=[['AS','AT','AU','AV','AW','AX'],['AY','AZ','BA','BB','BC','BD'],['BE','BF','BG','BH','BI','BJ']].map(c=>({from:String(r[c[0]]||''),to:String(r[c[1]]||''),orgFrom:String(r[c[2]]||''),orgTo:String(r[c[3]]||''),order:String(r[c[4]]||''),date:effDate(r[c[5]])})).filter(h=>h.from||h.to);
-    emps.push({id,sex:r.C||'',name:(String(r.D||'').trim()+' '+String(r.E||'').trim()).trim(),nick:String(r.F||'').trim(),pos:String(r.G||'').trim(),level:lv(r.H),grades:g,
+    emps.push({id,sex:r.C||'',name:(String(r.D||'').trim()+' '+String(r.E||'').trim()).trim(),first:String(r.D||'').trim(),last:String(r.E||'').trim(),nick:String(r.F||'').trim(),pos:String(r.G||'').trim(),level:lv(r.H),grades:g,
       reqLevel:lv(r.N),group:String(r.W||''),line:String(r.Y||''),dept:String(r.AA||''),deptCode:String(r.Z||''),groupCode:String(r.V||''),lineCode:String(r.X||''),section:String(r.AB||''),
       start:toISO(r.AC),birth:toISO(r.AG),
       edu:{lvl:String(r.AK||''),major:String(r.AL||''),inst:String(r.AM||''),year:String(r.AN||''),lvl0:String(r.AO||''),major0:String(r.AP||''),inst0:String(r.AQ||''),year0:String(r.AR||'')},hist})});
@@ -396,11 +400,11 @@ function rData(){
     try{if(lg.emps.length)await pushImport({emps:lg.emps,reqs:lg.reqs||[]},'ข้อมูลเดิมในเครื่อง');
       for(const n of lg.noms){const r=await sb.from('promo_nominations').upsert({id:n.id,emp_id:n.empId,status:n.status,data:n,created_by:n.by||'',updated_at:n.at||new Date().toISOString()});if(r.error)throw r.error}
       localStorage.removeItem(KEY);await loadAll();alert('ย้ายขึ้นระบบกลางแล้ว และลบข้อมูลเดิมในเครื่องนี้แล้ว');render()}catch(er){alert('ย้ายไม่สำเร็จ: '+errTxt(er))}};
-  if($('#odx'))$('#odx').onchange=async e=>{const f=e.target.files[0];if(!f)return;const pv=$('#oprev');pv.textContent='กำลังอ่านประกาศ…';ORD=null;
+  if($('#odx'))$('#odx').onchange=async e=>{const f=e.target.files[0];if(!f)return;const pv=$('#oprev');pv.textContent='กำลังอ่านประกาศ…';ORD=null;if(!db.emps.some(e=>e.last)){pv.innerHTML='<span style="color:var(--bad)">ข้อมูลพนักงานในระบบยังไม่มีนามสกุล — นำเข้าไฟล์ Excel ใหม่ (การ์ดด้านบน) หนึ่งครั้งก่อน แล้วค่อยนำเข้าประกาศ เพื่อเทียบด้วยชื่อและนามสกุล</span>';return}
     try{const r=await parseOrderDocx(await f.arrayBuffer());if(r.no&&!$('#ono').value)$('#ono').value=r.no;
       const ok=[],bad=[];r.people.forEach(x=>{const m=matchEmp(x.name);if(m.e)ok.push({...x,empId:m.e.id,how:m.how});else bad.push({...x,why:m.how})});ORD={people:r.people,ok,bad};
-      pv.innerHTML=`พบในประกาศ <b>${r.people.length}</b> คน · จับคู่ได้ <b style="color:var(--ok)">${ok.length}</b> · จับคู่ไม่ได้ <b style="color:${bad.length?'var(--bad)':'inherit'}">${bad.length}</b>${ok.some(x=>x.how==='ชื่อต้น')?' <span class="hint">(บางคนจับคู่ด้วยชื่อต้นเพราะข้อมูลพนักงานยังไม่มีนามสกุล — นำเข้า Excel ใหม่หนึ่งครั้งจะแม่นขึ้น)</span>':''}
-        ${bad.length?`<div style="margin-top:8px"><b>จับคู่ไม่ได้ — เลือกพนักงานให้เอง หรือปล่อยว่างเพื่อไม่บันทึก:</b><div class="scroll" style="max-height:240px;margin-top:6px"><table><tbody>${bad.map((x,i)=>{const used=new Set(ok.map(y=>y.empId)),k=nname(x.name),free=db.emps.filter(e=>!used.has(e.id)),guess=free.find(e=>nname(e.name).slice(0,4)===k.slice(0,4));
+      pv.innerHTML=`พบในประกาศ <b>${r.people.length}</b> คน · จับคู่ได้ <b style="color:var(--ok)">${ok.length}</b> · จับคู่ไม่ได้ <b style="color:${bad.length?'var(--bad)':'inherit'}">${bad.length}</b>
+        ${bad.length?`<div style="margin-top:8px"><b>จับคู่ไม่ได้ — เลือกพนักงานให้เอง หรือปล่อยว่างเพื่อไม่บันทึก:</b><div class="scroll" style="max-height:240px;margin-top:6px"><table><tbody>${bad.map((x,i)=>{const used=new Set(ok.map(y=>y.empId)),k=nname(x.name),free=db.emps.filter(e=>!used.has(e.id)),guess=null;
           return `<tr><td>${esc(x.name)}<div class="hint">${esc(x.why)}</div></td><td><select data-bm="${i}" style="min-width:260px"><option value="">— ไม่บันทึก —</option>${free.map(e=>`<option value="${esc(e.id)}" ${guess&&guess.id===e.id?'selected':''}>${esc(e.id)} ${esc(e.name)}</option>`).join('')}</select></td></tr>`}).join('')}</tbody></table></div></div>`:''}
         <div style="margin-top:10px"><button class="btn pri" id="oapply" ${ok.length?'':'disabled'}>บันทึกประวัติ</button></div>`;
       $('#oapply').onclick=async()=>{const no=$('#ono').value.trim(),dt=$('#odt').value;if(!no||!dt)return alert('ระบุเลขที่ประกาศและวันที่มีผล');
