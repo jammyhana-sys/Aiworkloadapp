@@ -3477,7 +3477,7 @@ const rpcMsg=e=>{const m=String((e&&e.message)||e||'');const i=m.indexOf(':');re
 let appMode='home',clockTimer=null;
 const WL_TABS=['log','hist','appr','astat','setup','mem','adm','acct'];
 function setMode(m){
-  if(m==='promo'&&canModule('promo')){location.href='promotion/index.html';return}   // Promotion = แอปแยก (Super Admin หรือผู้ที่ได้รับสิทธิ์ในตาราง module_access)
+  if(m==='promo'&&canModule('promo')){location.href='promotion.html';return}   // Promotion = แอปแยก (Super Admin หรือผู้ที่ได้รับสิทธิ์ในตาราง module_access)
   appMode=m;document.body.dataset.mode=m;clearInterval(clockTimer);
   WL_TABS.forEach(t=>{const s=$('#tab-'+t);if(s)s.classList.add('hide')});
   ['home','mod-att','mod-leave',...Object.keys(SOON).map(k=>'mod-'+k)].forEach(id=>$('#'+id).classList.toggle('hide',id!==(m==='home'?'home':'mod-'+m)));
@@ -4495,7 +4495,7 @@ if(CLOUD)cloudInit();
 (()=>{const ps=document.getElementById('pinScreen');if(!ps)return;
   ['gesturestart','gesturechange','gestureend'].forEach(t=>ps.addEventListener(t,e=>e.preventDefault()));
   ps.addEventListener('dblclick',e=>e.preventDefault());})();/* ตรวจเวอร์ชันใหม่อัตโนมัติ: เมื่อกลับมาเปิดแอป / ทุก 5 นาที — ถ้ามีเวอร์ชันใหม่ รีโหลดเองเมื่ออยู่หน้าหลัก ไม่งั้นแสดงแถบให้แตะอัปเดต */
-const APP_BUILD=207;
+const APP_BUILD=208;
 async function chkUpdate(){try{const t=await (await fetch('sw.js?'+Date.now(),{cache:'no-store'})).text();const m=t.match(/timesheet-v(\d+)/);if(!m||Number(m[1])<=APP_BUILD)return;
   try{const rg=await navigator.serviceWorker?.getRegistration();if(rg)await rg.update()}catch(_){}
   const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||'');

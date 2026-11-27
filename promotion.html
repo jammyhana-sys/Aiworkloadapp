@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Promotion · เสนอชื่อปรับตำแหน่ง</title>
+<style>
+:root{--bg:#f3f4fb;--card:#fff;--ink:#1f2340;--mut:#6b7090;--line:#e3e5f2;--pri:#4f6df5;--pri2:#7c5cf0;--ok:#10a37f;--warn:#e8890c;--bad:#d9455f;--r:16px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Noto Sans Thai","Sarabun",system-ui,-apple-system,"Segoe UI",sans-serif}
+header{background:linear-gradient(135deg,#e6416b,#c2339a 55%,#7c5cf0);color:#fff;padding:18px 20px 0}
+header h1{margin:0;font-size:20px;display:flex;gap:10px;align-items:center}
+header .sub{opacity:.85;font-size:13px;margin:2px 0 12px}
+nav{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+nav button{background:transparent;border:0;color:#ffffffcc;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer;border-radius:12px 12px 0 0;white-space:nowrap}
+nav button.on{background:var(--bg);color:var(--ink)}
+main{max-width:1280px;margin:0 auto;padding:18px 16px 60px}
+.card{background:var(--card);border-radius:var(--r);padding:18px;box-shadow:0 1px 3px #1f23400d;margin-bottom:16px}
+.card h2{margin:0 0 12px;font-size:16px;display:flex;gap:8px;align-items:center}
+.card h2:before{content:"";width:4px;height:16px;border-radius:2px;background:linear-gradient(var(--pri),var(--pri2))}
+.grid{display:grid;gap:14px}.g4{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}.g2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.kpi{border-radius:var(--r);padding:16px;background:#fff;box-shadow:0 1px 3px #1f23400d}
+.kpi b{display:block;font-size:30px;line-height:1.1}.kpi span{color:var(--mut);font-size:13px}
+.btn{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer;color:var(--ink)}
+.btn:hover{border-color:var(--pri)}
+.btn.pri{background:linear-gradient(135deg,var(--pri),var(--pri2));color:#fff;border:0}
+.btn.ok{background:var(--ok);color:#fff;border:0}.btn.bad{color:var(--bad)}.btn.sm{padding:4px 10px;font-size:13px}
+input,select,textarea{font:inherit;color:inherit;border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:#fff;width:100%;min-height:40px}
+textarea{resize:vertical}
+label{display:block;font-size:13px;color:var(--mut);margin:0 0 4px;font-weight:600}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}.row>div{flex:1;min-width:150px}
+.scroll{overflow:auto;border:1px solid var(--line);border-radius:12px;max-height:68vh}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{position:sticky;top:0;background:#eef0ff;text-align:left;padding:9px 10px;white-space:nowrap;z-index:1;cursor:pointer;user-select:none}
+td{padding:8px 10px;border-top:1px solid var(--line);vertical-align:top}
+tr:hover td{background:#fafbff}
+.tag{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;background:#eceefb;color:#454b7a;white-space:nowrap}
+.tag.ok{background:#d9f3ea;color:#087a5e}.tag.warn{background:#fdebd0;color:#a8620a}.tag.bad{background:#fadde3;color:#a8283f}.tag.pri{background:#e1e7ff;color:#3347c0}
+.gr{display:inline-block;min-width:30px;text-align:center;border-radius:8px;padding:1px 5px;margin-right:3px;font-size:12px;font-weight:700;background:#eceefb}
+.gA{background:#d9f3ea;color:#087a5e}.gB{background:#e1e7ff;color:#3347c0}.gC{background:#fdebd0;color:#a8620a}.gD{background:#fadde3;color:#a8283f}
+.hint{color:var(--mut);font-size:12.5px}.hide{display:none!important}
+.bar{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px}.bar i{display:block;height:14px;border-radius:7px;background:linear-gradient(90deg,var(--pri),var(--pri2));min-width:2px}
+.bar .n{min-width:78px;color:var(--mut)}.bar i.b2{background:linear-gradient(90deg,#e6416b,#c2339a)}
+.modal{position:fixed;inset:0;background:#1f234088;display:flex;align-items:flex-start;justify-content:center;padding:4vh 12px;overflow:auto;z-index:50}
+.modal>div{background:#fff;border-radius:20px;max-width:920px;width:100%;padding:22px;box-shadow:0 20px 60px #0004}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:4px 12px;font-size:14px}.kv dt{color:var(--mut)}.kv dd{margin:0}
+.chk{display:flex;gap:8px;align-items:flex-start;margin:6px 0;font-size:14px}.chk input{width:auto;min-height:0;margin-top:4px}
+.pre{white-space:pre-wrap}
+.drop{border:2px dashed var(--line);border-radius:16px;padding:24px;text-align:center;color:var(--mut)}
+@media(max-width:640px){.kv{grid-template-columns:1fr}.card{padding:14px}}
+@media print{header,nav,.noprint{display:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <a href="./" style="color:#fff;opacity:.85;font-size:13px;text-decoration:none;display:inline-block;margin-bottom:6px">‹ กลับหน้าหลัก Dynamic Work Sync</a>
+  <h1>🚀 Promotion <span style="font-weight:400;opacity:.9">· เสนอชื่อปรับตำแหน่ง</span></h1>
+  <div class="sub">พิจารณาคุณสมบัติเบื้องต้นจากเกรด การศึกษา อายุงาน เทียบกับข้อกำหนดของตำแหน่งที่จะปรับ · ข้อมูลอยู่ในระบบกลาง คุมสิทธิ์ด้วย Supabase · <span id="who"></span></div>
+  <nav id="nav">
+    <button data-v="dash" class="on">📊 ภาพรวม</button>
+    <button data-v="emps">👥 รายชื่อพนักงาน</button>
+    <button data-v="noms">📝 รายการเสนอชื่อ</button>
+    <button data-v="reqs">📘 ข้อกำหนดตำแหน่ง</button>
+    <button data-v="data">⚙ นำเข้า / ตั้งค่า</button>
+  </nav>
+</header>
+<main>
+  <section id="v-dash"></section>
+  <section id="v-emps" class="hide"></section>
+  <section id="v-noms" class="hide"></section>
+  <section id="v-reqs" class="hide"></section>
+  <section id="v-data" class="hide"></section>
+</main>
+<div id="modal" class="modal hide"><div id="modalBody"></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+/* ============ ข้อมูลและค่าตั้งต้น ============ */
+const KEY='promo_v1';
+const GP={'A+':4.3,'A':4.0,'A-':3.7,'B+':3.3,'B':3.0,'B-':2.7,'C+':2.3,'C':2.0,'C-':1.7,'D':1.0};
+const STATUS=['ร่าง','เสนอแล้ว','ผ่านการพิจารณา','ไม่ผ่านการพิจารณา','ยกเลิก'];
+const STCLS={'ร่าง':'','เสนอแล้ว':'pri','ผ่านการพิจารณา':'ok','ไม่ผ่านการพิจารณา':'bad','ยกเลิก':'warn'};
+const GRADE_YEARS=['2564','2565','2566','2567','2568'];
+const DEF={minAvg:3.0,minGrade:2.7,gradeYears:3,minTenure:1,yearBE:2569};
+let db={emps:[],reqs:[],noms:[],cfg:{...DEF},imported:null};
+/* ============ ระบบกลาง (Supabase) — ใช้ session เดียวกับแอปหลัก ============ */
+const SB_URL='https://vhhekmpkcqlgesojvlws.supabase.co',SB_KEY='sb_publishable_I5aGYPaJKemi6HP8Liijeg_Hb_M7-SQ';
+let sb=null,CAN={view:false,manage:false},READY=false;
+try{sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}})}catch(_){}
+const errTxt=e=>{const m=(e&&e.message)||String(e);return /promo_|can_promo|module_access/.test(m)&&/does not exist|schema cache|Could not find/.test(m)?m+' (ยังไม่ได้รัน supabase_update_hub49.sql)':/promo_nom_one_active|duplicate key/.test(m)?'พนักงานคนนี้มีรายการเสนอชื่อที่ยังดำเนินอยู่แล้ว':m};
+function gate(h){$('#nav').classList.add('hide');$$('main>section').forEach(s=>s.classList.add('hide'));let g=$('#gate');if(!g){g=document.createElement('section');g.id='gate';$('main').appendChild(g)}g.innerHTML=`<div class="card" style="text-align:center;padding:34px 18px">${h}</div>`}
+async function loadAll(){
+  const all=async t=>{const r=await sb.from(t).select('*').range(0,9999);if(r.error)throw r.error;return r.data||[]};
+  const [E,R,N,C]=await Promise.all([all('promo_employees'),all('promo_reqs'),all('promo_nominations'),all('promo_config')]);
+  db.emps=E.map(r=>r.data);db.reqs=R.map(r=>r.data);db.noms=N.map(r=>({...r.data,id:r.id,empId:r.emp_id,status:r.status}));
+  const cf=C.find(x=>x.k==='cfg'),im=C.find(x=>x.k==='imported');db.cfg={...DEF,...(cf?cf.data:{})};db.imported=im?im.data:null;
+}
+async function boot(){
+  if(!sb)return gate('<h2 style="margin:0 0 8px">โหลดตัวเชื่อมต่อระบบกลางไม่สำเร็จ</h2><div class="hint">ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่</div>');
+  gate('<div class="hint">กำลังเชื่อมต่อระบบกลาง…</div>');
+  try{
+    const {data:s}=await Promise.race([sb.auth.getSession(),new Promise((_,rj)=>setTimeout(()=>rj(new Error('หมดเวลาเชื่อมต่อระบบกลาง — ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่')),15000))]);
+    if(!s||!s.session)return gate('<h2 style="margin:0 0 8px">กรุณาเข้าสู่ระบบก่อน</h2><div class="hint" style="margin-bottom:14px">เข้าสู่ระบบที่แอป Dynamic Work Sync แล้วกดไอคอน Promotion อีกครั้ง</div><a class="btn pri" href="./" style="text-decoration:none;display:inline-block">ไปหน้าเข้าสู่ระบบ</a>');
+    const [v,m]=await Promise.all([sb.rpc('can_promo',{p_need:'view'}),sb.rpc('can_promo',{p_need:'manage'})]);
+    if(v.error)throw v.error;
+    CAN={view:!!v.data,manage:!!m.data};
+    if(!CAN.view)return gate('<h2 style="margin:0 0 8px">🔒 ไม่มีสิทธิ์เข้าถึงโมดูลนี้</h2><div class="hint" style="margin-bottom:14px">ติดต่อ Super Admin ให้กำหนดสิทธิ์ Promotion ที่เมนู สมาชิก › สิทธิ์การเข้าถึงโมดูล</div><a class="btn" href="./" style="text-decoration:none;display:inline-block">‹ กลับหน้าหลัก</a>');
+    await loadAll();READY=true;
+    const g=$('#gate');if(g)g.remove();$('#nav').classList.remove('hide');
+    $('#who').textContent=CAN.manage?'สิทธิ์: จัดการ (นำเข้า/เสนอชื่อ/แก้ไข)':'สิทธิ์: ดูอย่างเดียว';
+    show(V.cur);
+  }catch(er){gate(`<h2 style="margin:0 0 8px">เชื่อมต่อไม่สำเร็จ</h2><div class="hint">${esc(errTxt(er))}</div><div style="margin-top:14px"><button class="btn pri" onclick="boot()">ลองใหม่</button></div>`)}
+}
+const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const lv=s=>{const m=String(s||'').match(/\d+/);return m?+m[0]:0};
+const nl=s=>String(s||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+const fmt1=n=>n==null||isNaN(n)?'-':(Math.round(n*100)/100).toFixed(2);
+const toISO=v=>{if(v==null||v==='')return '';if(typeof v==='number'&&v>20000&&v<80000){const d=new Date(Math.round((v-25569)*864e5));return d.toISOString().slice(0,10)}
+  if(v instanceof Date)return v.toISOString().slice(0,10);return ''};
+const yearsBetween=(iso,to=new Date())=>{if(!iso)return null;const d=new Date(iso+'T00:00:00Z');return (to-d)/(365.25*864e5)};
+const thDate=iso=>{if(!iso)return '-';const [y,m,d]=iso.split('-');return `${+d}/${+m}/${+y+543}`};
+const reqOf=l=>db.reqs.find(r=>r.level===l);
+const empOf=id=>db.emps.find(e=>e.id===id);
+
+/* ============ นำเข้าไฟล์ Excel ============ */
+function parseWorkbook(buf){
+  const wb=XLSX.read(buf,{type:'array',cellDates:false});
+  const sEmp=wb.Sheets['พนักงานปัจจุบัน']||wb.Sheets[wb.SheetNames[wb.SheetNames.length-1]];
+  const sReq=wb.Sheets['ข้อกำหนด']||wb.Sheets[wb.SheetNames[0]];
+  if(!sEmp)throw new Error('ไม่พบชีต "พนักงานปัจจุบัน"');
+  const E=XLSX.utils.sheet_to_json(sEmp,{header:'A',defval:'',raw:true,blankrows:false});
+  const emps=[];
+  E.forEach(r=>{const id=String(r.B??'').trim();if(!/^\d{3,}$/.test(id))return;
+    const g={};GRADE_YEARS.forEach((y,i)=>{const v=String(r['IJKLM'[i]]??'').trim();g[y]=GP[v]!=null?v:''});
+    const hist=[['AS','AT','AU','AV','AW','AX'],['AY','AZ','BA','BB','BC','BD'],['BE','BF','BG','BH','BI','BJ']].map(c=>({from:String(r[c[0]]||''),to:String(r[c[1]]||''),orgFrom:String(r[c[2]]||''),orgTo:String(r[c[3]]||''),order:String(r[c[4]]||''),date:String(r[c[5]]||'')})).filter(h=>h.from||h.to);
+    emps.push({id,sex:r.C||'',name:String(r.D||'').trim(),nick:String(r.F||'').trim(),pos:String(r.G||'').trim(),level:lv(r.H),grades:g,
+      reqLevel:lv(r.N),group:String(r.W||''),line:String(r.Y||''),dept:String(r.AA||''),deptCode:String(r.Z||''),section:String(r.AB||''),
+      start:toISO(r.AC),birth:toISO(r.AG),
+      edu:{lvl:String(r.AK||''),major:String(r.AL||''),inst:String(r.AM||''),year:String(r.AN||''),lvl0:String(r.AO||''),major0:String(r.AP||''),inst0:String(r.AQ||''),year0:String(r.AR||'')},hist})});
+  const reqs=[];
+  if(sReq){XLSX.utils.sheet_to_json(sReq,{header:'A',defval:'',raw:true,blankrows:false}).forEach(r=>{const l=lv(r.B);if(!/^Level\s*\d+/i.test(String(r.B||'')))return;
+    reqs.push({level:l,posEn:nl(r.C),posTh:nl(r.D),qual:String(r.E||''),mission:String(r.F||''),auth:String(r.G||'')})})}
+  if(!emps.length)throw new Error('ไม่พบข้อมูลพนักงาน (คอลัมน์ B ต้องเป็นรหัสพนักงาน เริ่มแถวที่ 4)');
+  return{emps,reqs};
+}
+async function pushImport(r,name){
+  if(!CAN.manage)throw new Error('ไม่มีสิทธิ์จัดการโมดูลนี้');
+  const {error}=await sb.rpc('promo_import',{p_emps:r.emps,p_reqs:r.reqs});if(error)throw error;
+  const imp={at:new Date().toISOString(),file:name,n:r.emps.length};
+  const c=await sb.from('promo_config').upsert({k:'imported',data:imp,updated_at:imp.at});if(c.error)throw c.error;
+  const old=new Set(db.emps.map(e=>e.id));db.emps=r.emps;if(r.reqs.length)db.reqs=r.reqs;db.imported=imp;
+  return{emps:r.emps.length,reqs:r.reqs.length,added:r.emps.filter(e=>!old.has(e.id)).length};
+}
+const doImport=(buf,name)=>pushImport(parseWorkbook(buf),name);
+
+/* ============ เกณฑ์เบื้องต้น ============ */
+function evalEmp(e){
+  const c=db.cfg,gs=GRADE_YEARS.map(y=>({y,g:e.grades[y],p:GP[e.grades[y]]})).filter(x=>x.p!=null);
+  const last=gs.slice(-c.gradeYears),avg=last.length?last.reduce((a,x)=>a+x.p,0)/last.length:null,min=last.length?Math.min(...last.map(x=>x.p)):null;
+  const ten=yearsBetween(e.start),why=[];
+  if(last.length<c.gradeYears)why.push(`มีเกรดไม่ครบ ${c.gradeYears} ปีล่าสุด (มี ${last.length} ปี)`);
+  if(avg!=null&&avg<c.minAvg)why.push(`เกรดเฉลี่ย ${fmt1(avg)} < ${c.minAvg}`);
+  if(min!=null&&min<c.minGrade)why.push(`มีเกรดต่ำกว่าเกณฑ์ขั้นต่ำ`);
+  if(ten!=null&&ten<c.minTenure)why.push(`อายุงาน ${fmt1(ten)} ปี < ${c.minTenure} ปี`);
+  if(e.level>=14)why.push('Level สูงสุดแล้ว');
+  return{avg,min,ten,last,pass:!why.length,why};
+}
+const gcls=g=>g?('g'+g[0]):'';
+const gradeChips=e=>GRADE_YEARS.map(y=>`<span class="gr ${gcls(e.grades[y])}" title="ปี ${y}">${esc(e.grades[y]||'–')}</span>`).join('');
+const activeNom=id=>db.noms.find(n=>n.empId===id&&n.status!=='ยกเลิก'&&n.status!=='ไม่ผ่านการพิจารณา');
+
+/* ============ แสดงผล ============ */
+const V={cur:'dash',emp:{q:'',lv:'',dept:'',only:'',sort:'id',dir:1,lim:100},nom:{q:'',st:''}};
+function show(v){V.cur=v;$$('main>section').forEach(s=>s.classList.toggle('hide',s.id!=='v-'+v));$$('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));render()}
+$('#nav').onclick=e=>{const b=e.target.closest('button');if(b)show(b.dataset.v)};
+function render(){({dash:rDash,emps:rEmps,noms:rNoms,reqs:rReqs,data:rData})[V.cur]()}
+const needData=()=>db.emps.length?'':`<div class="card"><div class="drop">ยังไม่มีข้อมูลพนักงาน<br><br><button class="btn pri" onclick="show('data')">⚙ ไปนำเข้าไฟล์ Excel</button></div></div>`;
+
+function rDash(){
+  const el=$('#v-dash');if(!db.emps.length){el.innerHTML=needData();return}
+  const ev=new Map(db.emps.map(e=>[e.id,evalEmp(e)])),pass=db.emps.filter(e=>ev.get(e.id).pass);
+  const act=db.noms.filter(n=>n.status!=='ยกเลิก');
+  const byLv={};db.emps.forEach(e=>{(byLv[e.level]=byLv[e.level]||{n:0,p:0,m:0}).n++;if(ev.get(e.id).pass)byLv[e.level].p++});
+  act.forEach(n=>{const e=empOf(n.empId);if(e)(byLv[e.level]=byLv[e.level]||{n:0,p:0,m:0}).m++});
+  const mx=Math.max(...Object.values(byLv).map(x=>x.n),1);
+  const byDept={};act.forEach(n=>{const e=empOf(n.empId);if(e)byDept[e.dept||'-']=(byDept[e.dept||'-']||0)+1});
+  const stc={};STATUS.forEach(s=>stc[s]=db.noms.filter(n=>n.status===s).length);
+  el.innerHTML=`<div class="grid g4" style="margin-bottom:16px">
+    <div class="kpi"><span>พนักงานทั้งหมด</span><b>${db.emps.length}</b></div>
+    <div class="kpi"><span>ผ่านเกณฑ์เบื้องต้น</span><b style="color:var(--ok)">${pass.length}</b><span>${Math.round(pass.length/db.emps.length*100)}% ของทั้งหมด</span></div>
+    <div class="kpi"><span>ถูกเสนอชื่อ (ไม่รวมยกเลิก)</span><b style="color:var(--pri)">${act.length}</b></div>
+    <div class="kpi"><span>ผ่านการพิจารณาแล้ว</span><b style="color:var(--ok)">${stc['ผ่านการพิจารณา']}</b></div></div>
+  <div class="grid g2"><div class="card"><h2>จำนวนพนักงานแต่ละ Level</h2>
+    ${Object.keys(byLv).map(Number).sort((a,b)=>b-a).map(l=>{const x=byLv[l];return `<div class="bar"><span class="n">Level ${l}</span><i style="width:${x.n/mx*60}%"></i><span>${x.n}</span><span class="hint">ผ่านเกณฑ์ ${x.p}${x.m?` · <b style="color:#c2339a">เสนอ ${x.m}</b>`:''}</span></div>`}).join('')}</div>
+    <div class="card"><h2>สถานะการเสนอชื่อ</h2>${STATUS.map(s=>`<div class="bar"><span class="n"><span class="tag ${STCLS[s]}">${s}</span></span><i class="b2" style="width:${stc[s]/Math.max(1,...Object.values(stc))*55}%"></i><span>${stc[s]}</span></div>`).join('')}
+    <h2 style="margin-top:20px">เสนอชื่อแยกตามฝ่าย</h2>${Object.entries(byDept).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([d,n])=>`<div class="bar"><span class="n" style="min-width:200px">${esc(d)}</span><i style="width:${n*14}px"></i><span>${n}</span></div>`).join('')||'<div class="hint">ยังไม่มีการเสนอชื่อ</div>'}</div></div>
+  <div class="hint">เกณฑ์เบื้องต้นตอนนี้: เกรดเฉลี่ย ${db.cfg.gradeYears} ปีล่าสุด ≥ ${db.cfg.minAvg} · ไม่มีเกรดต่ำกว่า ${db.cfg.minGrade} (B- = 2.7) · อายุงาน ≥ ${db.cfg.minTenure} ปี — ปรับได้ที่เมนู นำเข้า / ตั้งค่า</div>`;
+}
+
+function filteredEmps(){
+  const f=V.emp,ev=new Map(db.emps.map(e=>[e.id,evalEmp(e)]));
+  let a=db.emps.filter(e=>(!f.lv||e.level===+f.lv)&&(!f.dept||e.dept===f.dept)&&(!f.q||[e.id,e.name,e.nick,e.pos,e.dept].join(' ').toLowerCase().includes(f.q.toLowerCase()))
+    &&(f.only===''||(f.only==='pass'?ev.get(e.id).pass:f.only==='fail'?!ev.get(e.id).pass:f.only==='nom'?!!activeNom(e.id):!activeNom(e.id))));
+  const key={id:e=>e.id,name:e=>e.name,level:e=>e.level,avg:e=>ev.get(e.id).avg??-1,ten:e=>ev.get(e.id).ten??-1,dept:e=>e.dept}[f.sort]||(e=>e.id);
+  a.sort((x,y)=>{const p=key(x),q=key(y);return (typeof p==='number'?p-q:String(p).localeCompare(String(q),'th'))*f.dir});
+  return{a,ev};
+}
+function rEmps(){
+  const el=$('#v-emps');if(!db.emps.length){el.innerHTML=needData();return}
+  const f=V.emp,levels=[...new Set(db.emps.map(e=>e.level))].sort((a,b)=>b-a),depts=[...new Set(db.emps.map(e=>e.dept).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'th'));
+  if(!$('#fq')){el.innerHTML=`<div class="card"><div class="row noprint">
+    <div style="flex:2"><label>ค้นหา</label><input id="fq" type="search" placeholder="รหัส / ชื่อ / ตำแหน่ง / ฝ่าย" value="${esc(f.q)}"></div>
+    <div><label>Level</label><select id="flv"><option value="">ทั้งหมด</option>${levels.map(l=>`<option value="${l}">Level ${l}</option>`).join('')}</select></div>
+    <div style="flex:2"><label>ฝ่าย</label><select id="fdept"><option value="">ทั้งหมด</option>${depts.map(d=>`<option>${esc(d)}</option>`).join('')}</select></div>
+    <div><label>แสดง</label><select id="fonly"><option value="">ทั้งหมด</option><option value="pass">ผ่านเกณฑ์เบื้องต้น</option><option value="fail">ไม่ผ่านเกณฑ์</option><option value="nom">ถูกเสนอชื่อแล้ว</option><option value="free">ยังไม่ถูกเสนอ</option></select></div>
+    </div><div class="hint" id="fcount" style="margin:10px 0"></div><div class="scroll"><table><thead><tr id="fhead"></tr></thead><tbody id="fbody"></tbody></table></div><div style="margin-top:10px" id="fmore"></div></div>`;
+    $('#fq').oninput=e=>{f.q=e.target.value;f.lim=100;rEmps()};$('#flv').onchange=e=>{f.lv=e.target.value;f.lim=100;rEmps()};$('#fdept').onchange=e=>{f.dept=e.target.value;f.lim=100;rEmps()};$('#fonly').onchange=e=>{f.only=e.target.value;f.lim=100;rEmps()}}
+  $('#flv').value=f.lv;$('#fdept').value=f.dept;$('#fonly').value=f.only;
+  const th=(k,t)=>`<th data-s="${k}">${t}${f.sort===k?(f.dir>0?' ▲':' ▼'):''}</th>`;
+  $('#fhead').innerHTML=th('id','รหัส')+th('name','ชื่อ-สกุล')+'<th>ตำแหน่ง</th>'+th('level','Level')+'<th>เกรด ปี '+GRADE_YEARS.map(y=>y.slice(2)).join('·')+'</th>'+th('avg',`เฉลี่ย ${db.cfg.gradeYears} ปี`)+th('ten','อายุงาน')+'<th>วุฒิ</th>'+th('dept','ฝ่าย')+'<th>เกณฑ์เบื้องต้น</th><th></th>';
+  $$('#fhead th[data-s]').forEach(t=>t.onclick=()=>{if(f.sort===t.dataset.s)f.dir*=-1;else{f.sort=t.dataset.s;f.dir=1}rEmps()});
+  const{a,ev}=filteredEmps();
+  $('#fcount').textContent=`พบ ${a.length} จาก ${db.emps.length} คน`;
+  $('#fbody').innerHTML=a.slice(0,f.lim).map(e=>{const x=ev.get(e.id),n=activeNom(e.id);
+    return `<tr><td>${esc(e.id)}</td><td><a href="#" data-d="${esc(e.id)}" style="color:var(--pri);font-weight:600;text-decoration:none">${esc(e.name)}</a>${e.nick?`<div class="hint">${esc(e.nick)}</div>`:''}</td><td>${esc(e.pos)}</td><td><span class="tag">L${e.level}</span></td>
+    <td style="white-space:nowrap">${gradeChips(e)}</td><td><b>${fmt1(x.avg)}</b></td><td>${x.ten==null?'-':fmt1(x.ten)+' ปี'}</td><td>${esc(e.edu.lvl||'-')}</td><td>${esc(e.dept)}</td>
+    <td>${x.pass?'<span class="tag ok">ผ่าน</span>':`<span class="tag bad" title="${esc(x.why.join(' · '))}">ไม่ผ่าน</span>`}${n?` <span class="tag ${STCLS[n.status]||'pri'}">${esc(n.status)}</span>`:''}</td>
+    <td style="white-space:nowrap">${n?`<button class="btn sm" data-n="${esc(n.id)}">ดูรายการ</button>`:(CAN.manage?`<button class="btn sm pri" data-nom="${esc(e.id)}">＋ เสนอชื่อ</button>`:'')}</td></tr>`}).join('')||'<tr><td colspan="11" class="hint">ไม่พบข้อมูล</td></tr>';
+  $('#fmore').innerHTML=a.length>f.lim?`<button class="btn" id="fm">แสดงเพิ่ม (${a.length-f.lim} คน)</button>`:'';
+  if($('#fm'))$('#fm').onclick=()=>{f.lim+=200;rEmps()};
+  $$('#fbody [data-d]').forEach(x=>x.onclick=ev=>{ev.preventDefault();openEmp(x.dataset.d)});
+  $$('#fbody [data-nom]').forEach(x=>x.onclick=()=>openNom(x.dataset.nom));
+  $$('#fbody [data-n]').forEach(x=>x.onclick=()=>{V.nom.q=db.noms.find(n=>n.id===x.dataset.n).empId;show('noms')});
+}
+
+const modal=h=>{$('#modalBody').innerHTML=h;$('#modal').classList.remove('hide');$('#modal').scrollTop=0};
+const closeModal=()=>$('#modal').classList.add('hide');
+$('#modal').onclick=e=>{if(e.target.id==='modal')closeModal()};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+
+function openEmp(id){
+  const e=empOf(id);if(!e)return;const x=evalEmp(e),n=activeNom(id),nx=reqOf(e.level+1);
+  const bars=GRADE_YEARS.map(y=>{const g=e.grades[y],p=GP[g]||0;return `<div class="bar"><span class="n">ปี ${y}</span><i style="width:${p/4.3*55}%"></i><span class="gr ${gcls(g)}">${esc(g||'–')}</span></div>`}).join('');
+  modal(`<div style="display:flex;justify-content:space-between;gap:10px;align-items:start"><div><h2 style="margin:0;font-size:20px">${esc(e.name)} ${e.nick?`<span class="hint">(${esc(e.nick)})</span>`:''}</h2><div class="hint">รหัส ${esc(e.id)} · ${esc(e.pos)} · Level ${e.level}</div></div><button class="btn sm" onclick="closeModal()">✕ ปิด</button></div>
+  <div class="grid g2" style="margin-top:14px"><div><h3 style="margin:0 0 6px;font-size:15px">ข้อมูลทั่วไป</h3><dl class="kv"><dt>สังกัด</dt><dd>${esc([e.group,e.line,e.dept,e.section].filter(Boolean).join(' › '))}</dd>
+    <dt>เพศ</dt><dd>${esc(e.sex)}</dd><dt>วันเริ่มงาน</dt><dd>${thDate(e.start)} ${x.ten==null?'':`(${fmt1(x.ten)} ปี)`}</dd><dt>วันเกิด</dt><dd>${thDate(e.birth)}${e.birth?` (อายุ ${fmt1(yearsBetween(e.birth))} ปี)`:''}</dd>
+    <dt>การศึกษาปัจจุบัน</dt><dd>${esc([e.edu.lvl,e.edu.major,e.edu.inst,e.edu.year].filter(Boolean).join(' · ')||'-')}</dd>
+    <dt>วุฒิเดิม</dt><dd>${esc([e.edu.lvl0,e.edu.major0,e.edu.inst0,e.edu.year0].filter(Boolean).join(' · ')||'-')}</dd></dl></div>
+    <div><h3 style="margin:0 0 6px;font-size:15px">เกรดประเมิน</h3>${bars}<div style="margin-top:8px">เฉลี่ย ${db.cfg.gradeYears} ปีล่าสุด <b>${fmt1(x.avg)}</b> · ${x.pass?'<span class="tag ok">ผ่านเกณฑ์เบื้องต้น</span>':'<span class="tag bad">ไม่ผ่านเกณฑ์</span>'}</div>${x.why.length?`<ul class="hint" style="margin:6px 0 0 18px;padding:0">${x.why.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>`:''}</div></div>
+  <h3 style="margin:16px 0 6px;font-size:15px">ประวัติการปรับตำแหน่ง</h3>${e.hist.length?`<div class="scroll"><table><thead><tr><th>ครั้งที่</th><th>ตำแหน่งเดิม</th><th>ตำแหน่งใหม่</th><th>เลขคำสั่ง</th><th>วันที่มีผล</th></tr></thead><tbody>${e.hist.map((h,i)=>`<tr><td>${i+1}</td><td>${esc(h.from)}</td><td>${esc(h.to)}</td><td>${esc(h.order)}</td><td>${esc(h.date)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="hint">ไม่มีประวัติในไฟล์</div>'}
+  <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">${n?`<span class="tag ${STCLS[n.status]||'pri'}">ถูกเสนอชื่อ: ${esc(n.status)}</span>`:(nx&&CAN.manage?`<button class="btn pri" onclick="openNom('${esc(e.id)}')">＋ เสนอชื่อปรับเป็น Level ${e.level+1}</button>`:'')}</div>`);
+}
+
+/* ---- ฟอร์มเสนอชื่อ ---- */
+function openNom(id,editId){
+  const e=empOf(id),ed=editId?db.noms.find(n=>n.id===editId):null;if(!e)return;
+  const x=evalEmp(e),to=ed?ed.toLevel:Math.min(14,e.level+1),r=reqOf(to);
+  const items=r?r.qual.split(/\r?\n/).map(s=>s.trim()).filter(Boolean):[];
+  const posList=r?r.posTh.map((p,i)=>[p,(r.posEn[i]||'')]):[];
+  const lvOpts=[...new Set([...db.reqs.map(q=>q.level)])].filter(l=>l>e.level||ed&&l===ed.toLevel).sort((a,b)=>a-b);
+  modal(`<div style="display:flex;justify-content:space-between;gap:10px"><div><h2 style="margin:0;font-size:19px">${ed?'แก้ไขการเสนอชื่อ':'เสนอชื่อปรับตำแหน่ง'}</h2><div class="hint">${esc(e.id)} ${esc(e.name)} · ${esc(e.pos)} · Level ${e.level} · ${esc(e.dept)}</div></div><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="card" style="margin:14px 0;background:#f8f9ff;box-shadow:none"><b>ตรวจเกณฑ์เบื้องต้น:</b> เกรด ${gradeChips(e)} เฉลี่ย <b>${fmt1(x.avg)}</b> · อายุงาน ${x.ten==null?'-':fmt1(x.ten)+' ปี'} · วุฒิ ${esc(e.edu.lvl||'-')} ${esc(e.edu.major||'')}
+    <div style="margin-top:6px">${x.pass?'<span class="tag ok">ผ่านเกณฑ์เบื้องต้น</span>':`<span class="tag bad">ยังไม่ผ่านเกณฑ์เบื้องต้น</span> <span class="hint">${esc(x.why.join(' · '))}</span>`}</div></div>
+  <div class="row"><div><label>ปรับเป็น Level</label><select id="nmLv">${lvOpts.map(l=>`<option value="${l}" ${l===to?'selected':''}>Level ${l}</option>`).join('')}</select></div>
+    <div style="flex:2"><label>ตำแหน่งที่เสนอ</label><select id="nmPos"></select></div></div>
+  <div style="margin-top:12px"><label>ตรวจคุณสมบัติตามข้อกำหนดของตำแหน่งที่เสนอ (ติ๊กข้อที่ผ่าน)</label><div id="nmQual"></div></div>
+  <div class="row" style="margin-top:12px"><div style="flex:2"><label>เหตุผล / ผลงานเด่นประกอบการเสนอ</label><textarea id="nmWhy" rows="3"></textarea></div>
+    <div><label>ผู้เสนอชื่อ</label><input id="nmBy"></div><div><label>วันที่เสนอ</label><input id="nmDate" type="date"></div></div>
+  <div class="row" style="margin-top:12px"><div><label>สถานะ</label><select id="nmSt">${STATUS.map(s=>`<option>${s}</option>`).join('')}</select></div><div style="flex:2"><label>ความเห็นคณะกรรมการ / หมายเหตุ</label><input id="nmNote"></div></div>
+  <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal()">ยกเลิก</button><button class="btn pri" id="nmSave">บันทึก</button></div>`);
+  const fill=l=>{const q=reqOf(l),its=q?q.qual.split(/\r?\n/).map(s=>s.trim()).filter(Boolean):[],pl=q?q.posTh.map((p,i)=>[p,q.posEn[i]||'']):[];
+    $('#nmPos').innerHTML=pl.map(([t,en])=>`<option value="${esc(t)}">${esc(t)}${en?' / '+esc(en):''}</option>`).join('')||'<option value="">(ไม่มีข้อมูลตำแหน่ง)</option>';
+    $('#nmQual').innerHTML=its.map((s,i)=>`<label class="chk"><input type="checkbox" data-q="${i}"><span class="pre">${esc(s)}</span></label>`).join('')+(q&&q.auth?`<div class="hint pre" style="margin-top:8px">ผู้มีอำนาจอนุมัติ: ${esc(q.auth)}</div>`:'')||'<div class="hint">ไม่มีข้อกำหนด</div>';
+    if(ed&&+ed.toLevel===l){$('#nmPos').value=ed.toPos;$$('#nmQual [data-q]').forEach(c=>c.checked=!!(ed.checks||[])[+c.dataset.q])}};
+  $('#nmLv').onchange=ev=>fill(+ev.target.value);fill(to);
+  $('#nmBy').value=ed?ed.by:'';$('#nmDate').value=ed?ed.date:new Date().toISOString().slice(0,10);$('#nmWhy').value=ed?ed.why:'';$('#nmSt').value=ed?ed.status:'ร่าง';$('#nmNote').value=ed?ed.note:'';
+  $('#nmSave').onclick=()=>{const toL=+$('#nmLv').value;
+    if(!ed&&activeNom(e.id))return alert('พนักงานคนนี้มีรายการเสนอชื่อที่ยังดำเนินอยู่แล้ว');
+    const rec={id:ed?ed.id:'N'+Date.now().toString(36),empId:e.id,fromLevel:e.level,fromPos:e.pos,toLevel:toL,toPos:$('#nmPos').value,checks:$$('#nmQual [data-q]').map(c=>c.checked),
+      why:$('#nmWhy').value.trim(),by:$('#nmBy').value.trim(),date:$('#nmDate').value,status:$('#nmSt').value,note:$('#nmNote').value.trim(),snap:{avg:x.avg,ten:x.ten,pass:x.pass,grades:{...e.grades}},at:ed?ed.at:new Date().toISOString()};
+    if(!CAN.manage)return alert('ไม่มีสิทธิ์จัดการ');
+    const btn=$('#nmSave');btn.disabled=true;btn.textContent='กำลังบันทึก…';
+    sb.from('promo_nominations').upsert({id:rec.id,emp_id:rec.empId,status:rec.status,data:rec,created_by:rec.by||'',updated_at:new Date().toISOString()}).then(r=>{
+      if(r.error){btn.disabled=false;btn.textContent='บันทึก';return alert('บันทึกไม่สำเร็จ: '+errTxt(r.error))}
+      if(ed)Object.assign(ed,rec);else db.noms.push(rec);closeModal();render()})};
+}
+
+function rNoms(){
+  const el=$('#v-noms'),f=V.nom;
+  if(!db.emps.length){el.innerHTML=needData();return}
+  let a=db.noms.filter(n=>(!f.st||n.status===f.st)&&(!f.q||(n.empId+' '+(empOf(n.empId)?.name||'')).toLowerCase().includes(f.q.toLowerCase())));
+  a=a.slice().sort((x,y)=>y.at.localeCompare(x.at));
+  el.innerHTML=`<div class="card"><div class="row noprint"><div style="flex:2"><label>ค้นหา (รหัส / ชื่อ)</label><input id="nq" type="search" value="${esc(f.q)}"></div>
+    <div><label>สถานะ</label><select id="nst"><option value="">ทั้งหมด</option>${STATUS.map(s=>`<option ${s===f.st?'selected':''}>${s}</option>`).join('')}</select></div>
+    <div style="flex:0"><button class="btn pri" id="nx">⬇ ส่งออก Excel</button></div><div style="flex:0"><button class="btn" onclick="window.print()">🖨 พิมพ์</button></div></div>
+    <div class="hint" style="margin:10px 0">${a.length} รายการ · เริ่มเสนอชื่อได้ที่เมนู "รายชื่อพนักงาน" ปุ่ม ＋ เสนอชื่อ</div>
+    <div class="scroll"><table><thead><tr><th>วันที่</th><th>รหัส</th><th>ชื่อ-สกุล</th><th>ตำแหน่งปัจจุบัน</th><th>ตำแหน่งที่เสนอ</th><th>เกรดเฉลี่ย</th><th>คุณสมบัติ</th><th>ผู้เสนอ</th><th>สถานะ</th><th class="noprint"></th></tr></thead><tbody>
+    ${a.map(n=>{const e=empOf(n.empId)||{name:'(ไม่พบ)'},ck=(n.checks||[]),ok=ck.filter(Boolean).length;return `<tr><td>${esc(n.date||'')}</td><td>${esc(n.empId)}</td><td>${esc(e.name)}</td><td>${esc(n.fromPos)} <span class="tag">L${n.fromLevel}</span></td>
+      <td>${esc(n.toPos)} <span class="tag pri">L${n.toLevel}</span></td><td>${fmt1(n.snap?.avg)}</td><td>${ck.length?`${ok}/${ck.length} ข้อ`:'-'}</td><td>${esc(n.by||'')}</td><td><span class="tag ${STCLS[n.status]}">${esc(n.status)}</span>${n.note?`<div class="hint">${esc(n.note)}</div>`:''}</td>
+      <td class="noprint" style="white-space:nowrap">${CAN.manage?`<button class="btn sm" data-e="${esc(n.id)}">แก้ไข</button> <button class="btn sm bad" data-x="${esc(n.id)}">ลบ</button>`:''}</td></tr>`}).join('')||'<tr><td colspan="10" class="hint">ยังไม่มีรายการ</td></tr>'}</tbody></table></div></div>`;
+  $('#nq').oninput=e=>{f.q=e.target.value;rNoms();$('#nq').focus();$('#nq').setSelectionRange(f.q.length,f.q.length)};$('#nst').onchange=e=>{f.st=e.target.value;rNoms()};
+  $('#nx').onclick=exportNoms;
+  $$('#v-noms [data-e]').forEach(b=>b.onclick=()=>{const n=db.noms.find(x=>x.id===b.dataset.e);openNom(n.empId,n.id)});
+  $$('#v-noms [data-x]').forEach(b=>b.onclick=async()=>{if(!confirm('ลบรายการเสนอชื่อนี้? (ลบแล้วกู้คืนไม่ได้)'))return;
+    const r=await sb.from('promo_nominations').delete().eq('id',b.dataset.x);if(r.error)return alert('ลบไม่สำเร็จ: '+errTxt(r.error));db.noms=db.noms.filter(x=>x.id!==b.dataset.x);rNoms()});
+}
+function exportNoms(){
+  const rows=db.noms.map(n=>{const e=empOf(n.empId)||{};return{วันที่เสนอ:n.date,รหัส:n.empId,'ชื่อ-สกุล':e.name,ฝ่าย:e.dept,ตำแหน่งเดิม:n.fromPos,'Level เดิม':n.fromLevel,ตำแหน่งที่เสนอ:n.toPos,'Level ที่เสนอ':n.toLevel,เกรดเฉลี่ย:n.snap?.avg!=null?Math.round(n.snap.avg*100)/100:'',
+    'คุณสมบัติที่ผ่าน':(n.checks||[]).length?`${(n.checks||[]).filter(Boolean).length}/${n.checks.length}`:'',เหตุผล:n.why,ผู้เสนอ:n.by,สถานะ:n.status,หมายเหตุ:n.note}});
+  if(!rows.length)return alert('ยังไม่มีรายการเสนอชื่อ');
+  const ws=XLSX.utils.json_to_sheet(rows),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'เสนอชื่อ');XLSX.writeFile(wb,'Promotion_Nominations_'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
+
+function rReqs(){
+  const el=$('#v-reqs');if(!db.reqs.length){el.innerHTML=needData()||'<div class="card hint">ไม่มีข้อกำหนด</div>';return}
+  el.innerHTML=db.reqs.slice().sort((a,b)=>b.level-a.level).map(r=>`<div class="card"><h2>Level ${r.level} — ${esc(r.posTh.join(' / '))}</h2><div class="hint">${esc(r.posEn.join(' / '))}</div>
+    <div class="grid g2" style="margin-top:10px"><div><b>คุณสมบัติ</b><div class="pre">${esc(r.qual)}</div></div><div><b>ภารกิจ</b><div class="pre">${esc(r.mission)}</div></div></div>${r.auth?`<div class="hint pre" style="margin-top:8px">อำนาจอนุมัติ: ${esc(r.auth)}</div>`:''}</div>`).join('');
+}
+
+function rData(){
+  const el=$('#v-data'),c=db.cfg,lgc=legacyLocal();
+  const legacyCard=lgc?`<div class="card" style="border:1px solid #f1c27a"><h2>พบข้อมูลเดิมค้างในเบราว์เซอร์นี้</h2><div class="hint" style="margin-bottom:10px">ข้อมูลจากเวอร์ชันเก็บในเครื่อง: พนักงาน ${lgc.emps.length} คน · รายการเสนอชื่อ ${lgc.noms.length} รายการ — ควรย้ายขึ้นระบบกลางแล้วลบออกจากเครื่อง เพราะมีข้อมูลเกรดรายบุคคล</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${CAN.manage?'<button class="btn pri" id="lgGo">ย้ายขึ้นระบบกลาง (แล้วลบในเครื่อง)</button>':''}<button class="btn bad" id="lgDel">ลบข้อมูลเดิมในเครื่องนี้</button></div></div>`:'';
+  el.innerHTML=`<div class="card"><h2>นำเข้าข้อมูลจาก Excel</h2>
+    <div class="hint" style="margin-bottom:10px">ใช้ไฟล์ "ไฟล์พิจารณาคุณสมบัติ" (ชีต <b>ข้อกำหนด</b> + <b>พนักงานปัจจุบัน</b>) — ระบบอ่านเกรดปี 2564–2568 การศึกษาปัจจุบัน/เดิม วันเริ่มงาน สังกัด และประวัติปรับตำแหน่ง · นำเข้าซ้ำได้ (รายการเสนอชื่อเดิมไม่หาย)</div>
+    <input type="file" id="fx" accept=".xlsx,.xls" style="max-width:420px"> <div id="fmsg" class="hint" style="margin-top:10px">${db.imported?`ข้อมูลล่าสุด: ${esc(db.imported.file)} · ${db.imported.n} คน · นำเข้า ${new Date(db.imported.at).toLocaleString('th-TH')}`:'ยังไม่เคยนำเข้า'}</div></div>
+  <div class="card"><h2>เกณฑ์พิจารณาเบื้องต้น (ปรับตามนโยบายบริษัท)</h2><div class="row">
+    <div><label>เกรดเฉลี่ยขั้นต่ำ (4.0 = A)</label><input id="cAvg" type="number" step="0.1" value="${c.minAvg}"></div>
+    <div><label>เกรดต่ำสุดที่ยอมรับ</label><select id="cMin">${Object.entries(GP).map(([g,p])=>`<option value="${p}" ${p===c.minGrade?'selected':''}>${g} (${p})</option>`).join('')}</select></div>
+    <div><label>จำนวนปีล่าสุดที่นับเกรด</label><select id="cYrs">${[1,2,3,4,5].map(n=>`<option ${n===c.gradeYears?'selected':''}>${n}</option>`).join('')}</select></div>
+    <div><label>อายุงานขั้นต่ำ (ปี)</label><input id="cTen" type="number" step="0.5" value="${c.minTenure}"></div>
+    <div style="flex:0"><button class="btn pri" id="cSave">บันทึกเกณฑ์</button></div></div>
+    <div class="hint" style="margin-top:8px">แปลงเกรด: A+ 4.3 · A 4.0 · A- 3.7 · B+ 3.3 · B 3.0 · B- 2.7 · C+ 2.3 · C 2.0 · D 1.0 — เกณฑ์เหล่านี้เป็นค่าเริ่มต้นสำหรับคัดกรอง ไม่ใช่ข้อสรุปของคณะกรรมการ</div></div>
+  <div class="card"><h2>สำรองข้อมูล</h2><div class="row"><div style="flex:0"><button class="btn" id="bk">⬇ สำรองทั้งหมด (JSON)</button></div></div>
+    <div class="hint" style="margin-top:8px">ข้อมูลอยู่ในระบบกลาง (Supabase) และคุมสิทธิ์ตามตาราง module_access — ไฟล์สำรองมีข้อมูลเกรดรายบุคคล เก็บรักษาและลบทิ้งเมื่อไม่ใช้</div></div>
+  ${legacyCard}`;
+  $('#fx').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('#fmsg').textContent='กำลังอ่านไฟล์และบันทึกขึ้นระบบกลาง…';
+    try{if(!window.XLSX)throw new Error('โหลดไลบรารี Excel ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');const r=await doImport(await f.arrayBuffer(),f.name);
+      $('#fmsg').innerHTML=`<span style="color:var(--ok)">✓ นำเข้าสำเร็จ: พนักงาน ${r.emps} คน (ใหม่ ${r.added}) · ข้อกำหนดตำแหน่ง ${r.reqs} ระดับ</span>`}catch(er){$('#fmsg').innerHTML=`<span style="color:var(--bad)">นำเข้าไม่สำเร็จ: ${esc(errTxt(er))}</span>`}};
+  $('#cSave').onclick=async()=>{const cfg={minAvg:+$('#cAvg').value||0,minGrade:+$('#cMin').value,gradeYears:+$('#cYrs').value,minTenure:+$('#cTen').value||0,yearBE:c.yearBE};
+    const r=await sb.from('promo_config').upsert({k:'cfg',data:cfg,updated_at:new Date().toISOString()});if(r.error)return alert('บันทึกไม่สำเร็จ: '+errTxt(r.error));db.cfg=cfg;alert('บันทึกเกณฑ์แล้ว')};
+  $('#bk').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({emps:db.emps,reqs:db.reqs,noms:db.noms,cfg:db.cfg})],{type:'application/json'}));a.download='promotion_backup_'+new Date().toISOString().slice(0,10)+'.json';a.click()};
+  if($('#lgGo'))$('#lgGo').onclick=async()=>{const lg=legacyLocal();if(!lg||!confirm(`ย้ายข้อมูลในเครื่องนี้ (พนักงาน ${lg.emps.length} คน, รายการเสนอชื่อ ${lg.noms.length}) ขึ้นระบบกลาง?`))return;
+    try{if(lg.emps.length)await pushImport({emps:lg.emps,reqs:lg.reqs||[]},'ข้อมูลเดิมในเครื่อง');
+      for(const n of lg.noms){const r=await sb.from('promo_nominations').upsert({id:n.id,emp_id:n.empId,status:n.status,data:n,created_by:n.by||'',updated_at:n.at||new Date().toISOString()});if(r.error)throw r.error}
+      localStorage.removeItem(KEY);await loadAll();alert('ย้ายขึ้นระบบกลางแล้ว และลบข้อมูลเดิมในเครื่องนี้แล้ว');render()}catch(er){alert('ย้ายไม่สำเร็จ: '+errTxt(er))}};
+  if(!CAN.manage){['#fx','#cAvg','#cMin','#cYrs','#cTen','#cSave'].forEach(s=>$(s).disabled=true);$('#fmsg').insertAdjacentHTML('beforeend',' · <b>สิทธิ์ดูอย่างเดียว — นำเข้า/แก้เกณฑ์ไม่ได้</b>')}
+  if($('#lgDel'))$('#lgDel').onclick=()=>{if(confirm('ลบข้อมูลเดิมที่ค้างในเบราว์เซอร์เครื่องนี้? (ไม่กระทบข้อมูลในระบบกลาง)')){localStorage.removeItem(KEY);render()}};
+}
+const legacyLocal=()=>{try{const s=localStorage.getItem(KEY);if(!s)return null;const o=JSON.parse(s);return(o.emps&&o.emps.length)||(o.noms&&o.noms.length)?{emps:o.emps||[],reqs:o.reqs||[],noms:o.noms||[]}:null}catch(_){return null}};
+boot();
+</script>
+</body>
+</html>
