@@ -675,9 +675,11 @@ body[data-mode=home] #tabbar{display:flex;justify-content:center;gap:2px}
   <div class="card hide" id="maBox"><h2>สิทธิ์การเข้าถึงโมดูล</h2>
     <div class="hint" style="margin-bottom:10px">กำหนดว่าใครเข้าโมดูลไหนได้ (เช่น Promotion ที่มีข้อมูลเกรดรายบุคคล) · Super Admin เข้าได้ทุกโมดูลเสมอ · พนักงานที่ไม่ได้รับสิทธิ์จะเห็นไอคอนเป็น "เร็ว ๆ นี้"</div>
     <div class="row" style="align-items:end"><div><label>โมดูล</label><select id="maMod"></select></div><div style="flex:2"><label>พนักงาน</label><select id="maEmp"></select></div>
-      <div><label>สิทธิ์</label><select id="maPerm"><option value="view">ดูอย่างเดียว</option><option value="manage">จัดการ (เสนอชื่อ/แก้ไข)</option></select></div><div style="flex:0"><button class="btn pri" type="button" id="maAdd">＋ กำหนดสิทธิ์</button></div></div>
+      <div><label>สิทธิ์</label><select id="maPerm"><option value="view">ดูอย่างเดียว</option><option value="manage">จัดการ (เสนอชื่อ/แก้ไข)</option></select></div>
+      <div id="maScopeW" class="hide"><label>ขอบเขตข้อมูลพนักงาน</label><select id="maScope"><option value="all">ทั้งหมด</option><option value="group">เฉพาะกลุ่มงาน (รหัส)</option><option value="line">เฉพาะสายงาน (รหัส)</option><option value="dept">เฉพาะฝ่าย (รหัส)</option></select></div>
+      <div id="maKeysW" class="hide" style="flex:2"><label>รหัส (คั่นด้วย , — ดูรหัสในหน้า Promotion)</label><input id="maKeys" placeholder="เช่น 32002, 43001"></div><div style="flex:0"><button class="btn pri" type="button" id="maAdd">＋ กำหนดสิทธิ์</button></div></div>
     <div class="hint" id="maMsg" style="margin:8px 0"></div>
-    <div class="scroll"><table><thead><tr><th>โมดูล</th><th>พนักงาน</th><th>สิทธิ์</th><th>กำหนดโดย</th><th></th></tr></thead><tbody id="maList"></tbody></table></div></div>
+    <div class="scroll"><table><thead><tr><th>โมดูล</th><th>พนักงาน</th><th>สิทธิ์</th><th>ขอบเขตข้อมูล</th><th>กำหนดโดย</th><th></th></tr></thead><tbody id="maList"></tbody></table></div></div>
   <div class="card"><h2>คำขอสมัครที่รออนุมัติ <span id="regCount" class="tag sga" style="margin-left:4px"></span></h2>
     <div class="scroll"><table><thead><tr><th>Emp.No</th><th>ชื่อ</th><th>อีเมลที่สมัคร</th><th>ชื่อผู้ใช้</th><th>เมื่อ</th><th></th></tr></thead><tbody id="regList"></tbody></table></div>
   </div>
@@ -4358,18 +4360,23 @@ let modAcc=[],modAccLoaded=false,modAccBusy=false;
 const MOD_TH={promo:'Promotion',kpi:'KPI',okr:'OKR',learn:'Learning',talent:'Talent Management',idp:'IDP',succ:'Successor',career:'Career Path',reward:'Reward'};
 const canModule=k=>isSuperAdmin||((typeof sb!=='undefined'&&sb&&CLOUD)?!!(me&&modAcc.some(a=>a.module===k&&a.emp_id===me.id)):isAdmin);
 async function loadModAcc(){modAccBusy=true;try{const r=await sb.from('module_access').select('*');if(!r.error){modAcc=r.data||[];modAccLoaded=true}}catch(e){}modAccBusy=false}
+const MA_SC={group:'กลุ่มงาน',line:'สายงาน',dept:'ฝ่าย'};
+const maScopeTxt=s=>!s||!s.type||s.type==='all'?'<span class="tag cost">ทั้งหมด</span>':`<span class="tag sga">${MA_SC[s.type]||esc(s.type)}</span> ${esc((s.keys||[]).join(', '))}`;
 async function maRender(){
   const host=$('#maBox');if(!host)return;
   if(!isSuperAdmin||typeof sb==='undefined'||!sb||!CLOUD){host.classList.add('hide');return}
   host.classList.remove('hide');await loadModAcc();
   const emps=db.employees.slice().sort(byId);
   $('#maList').innerHTML=modAcc.slice().sort((a,b)=>a.module.localeCompare(b.module)||String(a.emp_id).localeCompare(String(b.emp_id))).map(a=>{const e=find(db.employees,a.emp_id);
-    return `<tr><td>${esc(MOD_TH[a.module]||a.module)}</td><td>${esc(a.emp_id)} ${esc(e?e.name:'(ไม่พบ)')}<div class="hint">${esc(e?e.dept:'')}</div></td><td><span class="tag ${a.perm==='manage'?'cost':'st'}">${a.perm==='manage'?'จัดการ':'ดูอย่างเดียว'}</span></td><td class="hint">${esc(a.granted_by||'')} ${a.granted_at?new Date(a.granted_at).toLocaleDateString('th-TH'):''}</td><td><button class="x" data-madel="${esc(a.module)}|${esc(a.emp_id)}" title="ถอนสิทธิ์">✕</button></td></tr>`}).join('')||'<tr><td colspan="5" class="hint">ยังไม่ได้กำหนดสิทธิ์ (Super Admin เข้าได้เสมอ)</td></tr>';
+    return `<tr><td>${esc(MOD_TH[a.module]||a.module)}</td><td>${esc(a.emp_id)} ${esc(e?e.name:'(ไม่พบ)')}<div class="hint">${esc(e?e.dept:'')}</div></td><td><span class="tag ${a.perm==='manage'?'cost':'st'}">${a.perm==='manage'?'จัดการ':'ดูอย่างเดียว'}</span></td><td style="font-size:12.5px">${a.module==='promo'?maScopeTxt(a.scope):'<span class="hint">-</span>'}</td><td class="hint">${esc(a.granted_by||'')} ${a.granted_at?new Date(a.granted_at).toLocaleDateString('th-TH'):''}</td><td><button class="x" data-madel="${esc(a.module)}|${esc(a.emp_id)}" title="ถอนสิทธิ์">✕</button></td></tr>`}).join('')||'<tr><td colspan="6" class="hint">ยังไม่ได้กำหนดสิทธิ์ (Super Admin เข้าได้เสมอ)</td></tr>';
   $('#maEmp').innerHTML='<option value="">— เลือกพนักงาน —</option>'+emps.map(e=>`<option value="${esc(e.id)}">${esc(e.id)} — ${esc(e.name)}</option>`).join('');
   $('#maMod').innerHTML=Object.keys(MOD_TH).map(k=>`<option value="${k}">${esc(MOD_TH[k])}</option>`).join('');
   try{makeSearch('#maEmp')}catch(_){}
+  {const sw=()=>{const pr=$('#maMod').value==='promo';$('#maScopeW').classList.toggle('hide',!pr);$('#maKeysW').classList.toggle('hide',!pr||$('#maScope').value==='all')};$('#maMod').onchange=sw;$('#maScope').onchange=sw;sw()}
   $('#maAdd').onclick=async()=>{const emp=$('#maEmp').value,mod=$('#maMod').value;if(!emp)return $('#maMsg').textContent='เลือกพนักงานก่อน';
-    const {error}=await sb.from('module_access').upsert({module:mod,emp_id:emp,perm:$('#maPerm').value,granted_by:meName(),granted_at:new Date().toISOString()});
+    const sty=mod==='promo'?$('#maScope').value:'all',keys=$('#maKeys').value.split(/[\s,;]+/).filter(Boolean);
+    if(sty!=='all'&&!keys.length)return $('#maMsg').textContent='ระบุรหัสขอบเขตอย่างน้อย 1 รหัส (หรือเลือก ทั้งหมด)';
+    const {error}=await sb.from('module_access').upsert({module:mod,emp_id:emp,perm:$('#maPerm').value,scope:sty==='all'?{type:'all'}:{type:sty,keys},granted_by:meName(),granted_at:new Date().toISOString()});
     $('#maMsg').textContent=error?'บันทึกไม่สำเร็จ: '+error.message+(/module_access/.test(error.message)?' (ยังไม่ได้รัน supabase_update_hub48.sql)':''):'✓ กำหนดสิทธิ์แล้ว';if(!error)maRender()};
   $$('#maList [data-madel]').forEach(b=>b.onclick=async()=>{if(!confirm('ถอนสิทธิ์นี้?'))return;const [m,e]=b.dataset.madel.split('|');const {error}=await sb.from('module_access').delete().eq('module',m).eq('emp_id',e);if(error)return alert(error.message);maRender()})}
 let hubAp=[],hubApLoaded=false;
@@ -4495,7 +4502,7 @@ if(CLOUD)cloudInit();
 (()=>{const ps=document.getElementById('pinScreen');if(!ps)return;
   ['gesturestart','gesturechange','gestureend'].forEach(t=>ps.addEventListener(t,e=>e.preventDefault()));
   ps.addEventListener('dblclick',e=>e.preventDefault());})();/* ตรวจเวอร์ชันใหม่อัตโนมัติ: เมื่อกลับมาเปิดแอป / ทุก 5 นาที — ถ้ามีเวอร์ชันใหม่ รีโหลดเองเมื่ออยู่หน้าหลัก ไม่งั้นแสดงแถบให้แตะอัปเดต */
-const APP_BUILD=215;
+const APP_BUILD=217;
 async function chkUpdate(){try{const t=await (await fetch('sw.js?'+Date.now(),{cache:'no-store'})).text();const m=t.match(/timesheet-v(\d+)/);if(!m||Number(m[1])<=APP_BUILD)return;
   try{const rg=await navigator.serviceWorker?.getRegistration();if(rg)await rg.update()}catch(_){}
   const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||'');
