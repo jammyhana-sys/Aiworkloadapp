@@ -391,7 +391,7 @@ async function boot(){
     const g=$('#gate');if(g)g.remove();$('#nav').classList.remove('hide');
     $('#who').textContent=(CAN.manage?'สิทธิ์: จัดการ':CAN.nom?'สิทธิ์: ผู้อนุมัติ (เสนอชื่อพนักงานในขอบเขตของตนได้)':'สิทธิ์: ดูอย่างเดียว')+' · ขอบเขตข้อมูล: '+(CAN.all?'ทั้งหมด':'จำกัดตามที่ Super Admin กำหนด');
      {const se=s&&s.session;$('#meTxt').textContent=(se&&se.user&&se.user.email)||'';if(FLOW.sup){$('#navMem').classList.remove('hide');$('#navFlow').classList.remove('hide')}}
-    show(V.cur);initInbox();
+    await autoSkipStuck();show(V.cur);initInbox();
   }catch(er){gate(`<h2 style="margin:0 0 8px">เชื่อมต่อไม่สำเร็จ</h2><div class="hint">${esc(errTxt(er))}</div><div style="margin-top:14px"><button class="btn pri" onclick="boot()">ลองใหม่</button></div>`)}
 }
 const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -752,7 +752,7 @@ async function nomRpc(id,action,note){
   const r=action==='submit'?await sb.rpc('promo_nom_submit',{p_id:id}):await sb.rpc('promo_nom_decide',{p_id:id,p_action:action,p_note:note||''});
   if(r.error)throw r.error;const n=db.noms.find(x=>x.id===id);if(n&&r.data){n.status=r.data.status;n.step=r.data.step}await loadLogs();updateInbox(false);
 }
-const ACT_TH={reopen:'เปิดรายการอีกครั้ง',submit:'ส่งขออนุมัติ',approve:'อนุมัติ',reject:'ไม่อนุมัติ',return:'ส่งกลับแก้ไข'};
+const ACT_TH={skip:'ข้ามขั้น (ไม่มีผู้อนุมัติ)',reopen:'เปิดรายการอีกครั้ง',submit:'ส่งขออนุมัติ',approve:'อนุมัติ',reject:'ไม่อนุมัติ',return:'ส่งกลับแก้ไข'};
 async function openNomLog(id){
   const n=db.noms.find(x=>x.id===id),e=empOf(n.empId)||{};
   const r=await sb.from('promo_nom_log').select('*').eq('nom_id',id).order('id');
@@ -791,8 +791,9 @@ function nomFlowHtml(n,e){
   const last=cyc.length?cyc[cyc.length-1]:null,cur=n.status==='เสนอแล้ว'?n.step:0;
   const rows=steps.map((s,i)=>{const d=doneAt[s.step_no],names=(db.approvers||[]).filter(x=>x.step_no===s.step_no&&scopeMatchE(x.scope,e)).map(x=>x.name||x.emp_id);
     if(d)return `<div style="color:var(--ok)">✓ ${i+1}. ${esc(s.name)} <span class="hint">· ${esc(d.by_name||d.by_emp)} · ${fmtAt(d.at)}${(()=>{const q=T&&T.steps.find(z=>z.step_no===s.step_no);return q?` · <b>ใช้เวลา ${durFmt(q.dur)}</b>`:''})()}</span></div>`;
+    if(cyc.some(x=>x.action==='skip'&&x.step_no===s.step_no))return `<div class="hint">↷ ${i+1}. ${esc(s.name)} — ข้ามขั้น (ไม่มีผู้อนุมัติในขอบเขต)</div>`;
     if(s.step_no===cur)return `<div style="color:var(--warn);font-weight:600">● ${i+1}. ${esc(s.name)} — รออนุมัติ${last?` <span style="font-weight:400;color:inherit"><span class="hg" title="กำลังรอ — นับเวลาจริง">⏳</span> รอมาแล้ว <b class="wait-live" data-since="${esc(last.at)}">${durLive(Date.now()-new Date(last.at).getTime())}</b> <span class="hint">(ตั้งแต่ ${fmtAt(last.at)})</span></span>`:''}${names.length?`<div class="hint" style="font-weight:400">ผู้อนุมัติ: ${esc(names.join(', '))}</div>`:'<div class="hint" style="color:var(--bad);font-weight:400">ยังไม่มีผู้อนุมัติขั้นนี้ในขอบเขต</div>'}</div>`;
-    return `<div class="hint">○ ${i+1}. ${esc(s.name)}${names.length?' · '+esc(cTrunc(names.join(', '),40)):''}</div>`});
+    return `<div class="hint">○ ${i+1}. ${esc(s.name)}${names.length?' · '+esc(cTrunc(names.join(', '),40)):' · ไม่มีผู้อนุมัติในขอบเขต — จะข้ามอัตโนมัติ'}</div>`});
   return `<div style="font-size:12.5px;margin-top:6px;line-height:1.5;min-width:230px">${si>=0?`<div class="hint">ส่งขออนุมัติ ${fmtAt(lg[si].at)}</div>`:''}${T?`<div style="margin-top:2px">⏱ ระยะเวลารวมในการพิจารณา: ${T.ongoing?`<b class="wait-live" data-since="${esc(T.submitAt)}">${durLive(T.total)}</b> <span class="hint">(นับถึงตอนนี้)</span>`:`<b>${durFmt(T.total)}</b>`}</div>`:''}${rows.join('')}</div>`}
 /* ============ Inbox แจ้งเตือนผู้อนุมัติ: กระดิ่ง + แถบแจ้งเตือน + ป๊อปอัป + แจ้งเตือนบนเบราว์เซอร์ (รีเฟรชทุก 45 วินาที) ============ */
 const nomSince=n=>{const lg=(db.log||[]).filter(x=>x.nom_id===n.id);return lg.length?lg[lg.length-1].at:(n.at||'')};
@@ -800,7 +801,7 @@ async function refreshInbox(){
   if(!READY||!sb)return;
   try{const r=await sb.from('promo_nominations').select('*').range(0,9999);if(r.error)return;
     const before=new Set(myPending().map(n=>n.id)),oldKey=JSON.stringify(db.noms.map(n=>[n.id,n.status,n.step]));
-    db.noms=(r.data||[]).map(x=>({...x.data,id:x.id,empId:x.emp_id,status:x.status,step:x.step||0}));await loadLogs();
+    db.noms=(r.data||[]).map(x=>({...x.data,id:x.id,empId:x.emp_id,status:x.status,step:x.step||0}));await loadLogs();await autoSkipStuck();
     const changed=oldKey!==JSON.stringify(db.noms.map(n=>[n.id,n.status,n.step]));
     updateInbox(true);
     if(changed&&!document.querySelector('#modal:not(.hide)')&&!(document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))&&(V.cur==='noms'||V.cur==='dash'))render()
@@ -1101,7 +1102,17 @@ function pfSet(o,path,v){const ks=path.split('.');let a=o;ks.slice(0,-1).forEach
 const pfDocDone=d=>(d&&d.docs?PF_DOCS.map((_,i)=>d.docs[i]||{}):PF_DOCS.map(()=>({}))).filter(x=>x.status==='ครบถ้วน'||x.status==='ไม่เกี่ยวข้อง').length;
 function openPf(nomId,tab){PF.nomId=nomId;PF.trSel=null;PF.step=({form:'1',comp:'3',docs:'6'})[tab]||(/^[1-6]$/.test(String(tab))?String(tab):'1');PF.data=JSON.parse(JSON.stringify(db.pf[nomId]||{}));PF.state='';show('pf')}
 function pfSchedule(){PF.state='กำลังบันทึก…';const el=$('#pfState');if(el)el.textContent=PF.state;clearTimeout(PF.timer);PF.timer=setTimeout(pfSave,900)}
-const mgrMode=n=>!!n&&n.status==='เสนอแล้ว'&&canAct(n)&&(activeSteps()[0]||{}).step_no===n.step;
+/* ขั้นแรก/ขั้นถัดไปที่ "มีผู้อนุมัติในขอบเขตของพนักงานคนนั้นจริง" — ขั้นที่ไม่มีผู้อนุมัติถูกข้ามอัตโนมัติ */
+const hasApr=(s,e)=>!!e&&(db.approvers||[]).some(a=>a.step_no===s.step_no&&scopeMatchE(a.scope,e));
+const firstEffStep=n=>{const e=empOf(n.empId);return activeSteps().find(s=>hasApr(s,e))};
+const nextEffStep=n=>{const e=empOf(n.empId),as=activeSteps(),i=as.findIndex(s=>s.step_no===n.step);return as.slice(i+1).find(s=>hasApr(s,e))};
+const mgrMode=n=>!!n&&n.status==='เสนอแล้ว'&&canAct(n)&&(firstEffStep(n)||{}).step_no===n.step;
+async function autoSkipStuck(){
+  if(!READY||!sb)return false;let any=false;
+  for(const n of db.noms){if(n.status!=='เสนอแล้ว'||!n.step)continue;const e=empOf(n.empId);if(!e)continue;
+    if((db.approvers||[]).some(a=>a.step_no===n.step&&scopeMatchE(a.scope,e)))continue;
+    try{const r=await sb.rpc('promo_nom_autoskip',{p_id:n.id});if(!r.error&&r.data){n.status=r.data.status;n.step=r.data.step||0;any=true}}catch(_){}}
+  if(any)await loadLogs();return any}
 const appMode=n=>!!n&&n.status==='เสนอแล้ว'&&canAct(n)&&!mgrMode(n);
 const pfCanSave=()=>{const n=db.noms.find(x=>x.id===PF.nomId);return CAN.nom||mgrMode(n)||appMode(n)};
 /* ชุดคะแนน Competency & Potential ของผู้อนุมัติ: แยกเก็บตามผู้อนุมัติแต่ละคน ไม่ทับชุดของผู้เสนอ (comp.s) */
@@ -1360,7 +1371,7 @@ function rPf(){
       <div style="display:flex;gap:12px;align-items:center;margin-top:10px"><div class="pf-bar" style="flex:1"><i id="pfBarI" style="width:${P.pct}%"></i></div><b id="pfPct" style="min-width:44px;text-align:right">${P.pct}%</b></div>
       <div class="hint" id="pfTodo" style="margin-top:6px">${MG?'ความครบถ้วนของแฟ้มโดยผู้เสนอชื่อ (ผู้อนุมัติขั้นที่ 1 กรอกเฉพาะส่วนที่ 7)':P.todo.length?'ยังขาด: '+P.todo.map(([s,t])=>`<a href="#" data-goto="${s}" style="color:var(--pri)">${esc(t)}</a>`).join(' · '):'<span style="color:var(--ok)">✓ ข้อมูลครบแล้ว — กด Gen Portfolio (PDF) ได้เลย</span>'}</div></div>
     <div class="pf-wrap" ${MG?'style="display:block"':''}>${MG?'':`<nav class="pf-nav" id="pfNav">${tlHtml(P,step,d)}</nav>`}
-    <div id="pfBody">${body}${MG?`<div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn" id="pfPdf2">🖨 Gen Portfolio (PDF)</button><button class="btn pri" id="pfSend">✅ ${activeSteps().length>1&&(activeSteps().slice(-1)[0]||{}).step_no!==n.step?'ส่งอนุมัติขั้นถัดไป':'อนุมัติ'}</button></div>`:`<div style="display:flex;justify-content:space-between;gap:8px;margin-top:6px">${prev?`<button class="btn" data-step="${prev}">‹ ก่อนหน้า</button>`:'<span></span>'}${next?`<button class="btn pri" data-step="${next}">ถัดไป ›</button>`:`<button class="btn pri" id="pfPdf2">🖨 Gen Portfolio (PDF)</button>`}</div>`}</div></div>`;
+    <div id="pfBody">${body}${MG?`<div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn" id="pfPdf2">🖨 Gen Portfolio (PDF)</button><button class="btn pri" id="pfSend">✅ ${nextEffStep(n)?'ส่งอนุมัติขั้นถัดไป':'อนุมัติ'}</button></div>`:`<div style="display:flex;justify-content:space-between;gap:8px;margin-top:6px">${prev?`<button class="btn" data-step="${prev}">‹ ก่อนหน้า</button>`:'<span></span>'}${next?`<button class="btn pri" data-step="${next}">ถัดไป ›</button>`:`<button class="btn pri" id="pfPdf2">🖨 Gen Portfolio (PDF)</button>`}</div>`}</div></div>`;
   const flush=async()=>{clearTimeout(PF.timer);if(pfCanSave()&&PF.state==='กำลังบันทึก…')await pfSave()};
   const go=async s=>{await flush();PF.step=s;rPf();window.scrollTo({top:0,behavior:'smooth'})};
   $('#pfBack').onclick=async()=>{await flush();show('noms')};
