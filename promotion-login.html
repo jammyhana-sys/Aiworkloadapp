@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>เข้าสู่ระบบ Promotion</title>
+<style>
+:root{--bg:#f3f4fb;--ink:#1f2340;--mut:#6b7090;--line:#e3e5f2;--pri:#4f6df5;--pri2:#7c5cf0;--ok:#10a37f;--bad:#d9455f}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg,#e6416b,#c2339a 55%,#7c5cf0);color:var(--ink);font:15px/1.5 "Noto Sans Thai","Sarabun",system-ui,-apple-system,"Segoe UI",sans-serif}
+.card{background:#fff;border-radius:22px;padding:28px 24px;width:100%;max-width:430px;box-shadow:0 20px 60px #0004}
+.logo{width:68px;height:68px;border-radius:20px;background:linear-gradient(135deg,#e5484d,#d6409f);display:flex;align-items:center;justify-content:center;font-size:34px;margin:0 auto 12px;color:#fff}
+h1{margin:0;text-align:center;font-size:20px}.sub{text-align:center;color:var(--mut);font-size:13px;margin:4px 0 18px}
+label{display:block;font-size:13px;color:var(--mut);font-weight:600;margin:12px 0 4px}
+input{width:100%;font:inherit;border:1px solid var(--line);border-radius:12px;padding:11px 14px;min-height:44px}
+input:focus{outline:2px solid #4f6df533;border-color:var(--pri)}
+.btn{width:100%;margin-top:16px;border:0;border-radius:14px;padding:12px;font:inherit;font-weight:700;cursor:pointer;color:#fff;background:linear-gradient(135deg,var(--pri),var(--pri2))}
+.btn:disabled{opacity:.6;cursor:wait}
+.btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line);margin-top:10px}
+.link{background:none;border:0;color:var(--pri);font:inherit;font-weight:600;cursor:pointer;padding:6px 0;text-decoration:none}
+.msg{margin-top:14px;padding:10px 12px;border-radius:12px;font-size:13.5px;display:none}.msg.err{display:block;background:#fadde3;color:#a8283f}.msg.ok{display:block;background:#d9f3ea;color:#087a5e}.msg.info{display:block;background:#e8ecff;color:#3347c0}
+.hint{color:var(--mut);font-size:12.5px;margin-top:8px}
+.hide{display:none!important}
+.foot{margin-top:18px;color:#ffffffcc;font-size:12.5px;text-align:center}
+.foot a{color:#fff}
+.who{background:#f3f4fb;border-radius:12px;padding:10px 12px;font-size:14px;margin-bottom:6px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🚀</div>
+  <h1>Promotion</h1>
+  <div class="sub">เสนอชื่อปรับตำแหน่ง · เข้าสู่ระบบด้วยอีเมลบริษัท</div>
+
+  <!-- 1) กรอกอีเมล -->
+  <form id="fEmail">
+    <label>อีเมลบริษัท</label>
+    <input id="email" type="email" autocomplete="username" placeholder="ชื่อ_นามสกุล@demco.co.th" required>
+    <button class="btn" id="bNext">ถัดไป</button>
+    <div class="hint">ระบบจะตรวจว่าอีเมลนี้อยู่ในรายชื่อสมาชิกหรือไม่ — ถ้าเข้าครั้งแรก จะส่งลิงก์ยืนยันไปที่อีเมลเพื่อให้ตั้งรหัสผ่าน</div>
+  </form>
+
+  <!-- 2a) มีบัญชีแล้ว: รหัสผ่าน -->
+  <form id="fPass" class="hide">
+    <div class="who" id="whoP"></div>
+    <label>รหัสผ่าน</label>
+    <input id="pass" type="password" autocomplete="current-password" required>
+    <button class="btn" id="bLogin">เข้าสู่ระบบ</button>
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;margin-top:8px">
+      <button type="button" class="link" id="lForgot">ลืมรหัสผ่าน / ส่งลิงก์เข้าสู่ระบบทางอีเมล</button>
+      <button type="button" class="link" data-back>‹ เปลี่ยนอีเมล</button></div>
+  </form>
+
+  <!-- 2b) เข้าครั้งแรก: ส่งลิงก์ยืนยัน -->
+  <div id="fFirst" class="hide">
+    <div class="who" id="whoF"></div>
+    <div style="margin-top:8px">พบอีเมลนี้ในรายชื่อสมาชิกแล้ว ✓<br>ยืนยันความเป็นเจ้าของอีเมลก่อน แล้วจึงตั้งรหัสผ่านและเข้าใช้งานตามสิทธิ์ที่กำหนดไว้</div>
+    <button class="btn" id="bSend">ส่งลิงก์ยืนยันไปที่อีเมล</button>
+    <button type="button" class="link" data-back>‹ เปลี่ยนอีเมล</button>
+  </div>
+
+  <!-- 3) รอคลิกลิงก์ -->
+  <div id="fWait" class="hide">
+    <div class="who" id="whoW"></div>
+    <div style="margin-top:8px">ส่งลิงก์ไปที่อีเมลแล้ว — เปิดอีเมล (ตรวจโฟลเดอร์ขยะด้วย) แล้วกดลิงก์ในอีเมลบนเครื่องนี้ ระบบจะพากลับมาตั้งรหัสผ่านที่หน้านี้</div>
+    <button class="btn ghost" id="bResend">ส่งลิงก์อีกครั้ง</button>
+    <button type="button" class="link" data-back>‹ เปลี่ยนอีเมล</button>
+  </div>
+
+  <!-- 4) ตั้งรหัสผ่าน (หลังกดลิงก์) -->
+  <form id="fSet" class="hide">
+    <div class="who" id="whoS"></div>
+    <label>ตั้งรหัสผ่านใหม่</label>
+    <input id="p1" type="password" autocomplete="new-password" required>
+    <label>ยืนยันรหัสผ่าน</label>
+    <input id="p2" type="password" autocomplete="new-password" required>
+    <div class="hint">อย่างน้อย 8 ตัว และมีทั้งตัวอักษรและตัวเลข</div>
+    <button class="btn" id="bSet">บันทึกรหัสผ่านและเข้าใช้งาน</button>
+  </form>
+
+  <div class="msg" id="msg"></div>
+</div>
+<div class="foot">Dynamic Work Sync · <a href="./">กลับหน้าหลัก</a></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const SB_URL='https://vhhekmpkcqlgesojvlws.supabase.co',SB_KEY='sb_publishable_I5aGYPaJKemi6HP8Liijeg_Hb_M7-SQ';
+const NEXT='promotion.html';
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+const pwOk=p=>p.length>=8&&/[A-Za-z]/.test(p)&&/\d/.test(p);
+const msg=(t,k)=>{const m=$('#msg');m.className='msg'+(t?' '+(k||'err'):'');m.textContent=t||''};
+const show=id=>{['fEmail','fPass','fFirst','fWait','fSet'].forEach(x=>$('#'+x).classList.toggle('hide',x!==id))};
+const redirectTo=()=>location.origin+location.pathname;
+const clean=s=>String(s||'').trim().toLowerCase();
+let EMAIL='';
+const busy=(b,on,t)=>{if(on){b.dataset.t=b.textContent;b.disabled=true;if(t)b.textContent=t}else{b.disabled=false;if(b.dataset.t)b.textContent=b.dataset.t}};
+const err=e=>String((e&&e.message)||e||'').replace(/^[A-Z_]{3,}:/,'');
+
+/* 1) ตรวจอีเมล */
+$('#fEmail').onsubmit=async ev=>{ev.preventDefault();msg('');EMAIL=clean($('#email').value);if(!EMAIL)return;
+  const b=$('#bNext');busy(b,true,'กำลังตรวจสอบ…');
+  try{const {data,error}=await sb.rpc('promo_login_check',{p_email:EMAIL});if(error)throw error;
+    $('#whoP').textContent=$('#whoF').textContent=$('#whoW').textContent=EMAIL;
+    if(data==='NOT_FOUND')msg('ไม่พบอีเมลนี้ในรายชื่อสมาชิก — ตรวจสอบอีเมลบริษัท หรือติดต่อ Super Admin เพื่อเพิ่มสมาชิก','err');
+    else if(data==='HAS_ACCOUNT'){show('fPass');setTimeout(()=>$('#pass').focus(),50)}
+    else show('fFirst')}
+  catch(e){msg('ตรวจสอบอีเมลไม่สำเร็จ: '+err(e)+(/promo_login_check/.test(String(e&&e.message))?' (ยังไม่ได้รัน supabase_update_hub58.sql)':''))}
+  busy(b,false)};
+$$('[data-back]').forEach(b=>b.onclick=()=>{msg('');show('fEmail')});
+
+/* 2a) เข้าสู่ระบบด้วยรหัสผ่าน */
+$('#fPass').onsubmit=async ev=>{ev.preventDefault();msg('');const b=$('#bLogin');busy(b,true,'กำลังเข้าสู่ระบบ…');
+  try{const {error}=await sb.auth.signInWithPassword({email:EMAIL,password:$('#pass').value});
+    if(error){msg('อีเมลหรือรหัสผ่านไม่ถูกต้อง (ถ้ายังไม่เคยตั้งรหัสผ่าน ให้กด "ลืมรหัสผ่าน / ส่งลิงก์เข้าสู่ระบบ")');busy(b,false);return}
+    await afterLogin()}catch(e){msg('เข้าสู่ระบบไม่สำเร็จ: '+err(e));busy(b,false)}};
+/* หลังเข้าสู่ระบบ: ตรวจว่าบัญชีใช้ Promotion ได้ (อนุมัติแล้ว/ยืนยันอีเมลแล้ว) */
+async function afterLogin(){
+  const {data,error}=await sb.rpc('promo_emp_id');
+  if(error&&/promo_emp_id/.test(error.message)){msg('ยังไม่ได้รัน supabase_update_hub58.sql ในฐานข้อมูล');return}
+  if(!data){show('fFirst');$('#whoF').textContent=EMAIL;try{await sb.auth.signOut()}catch(_){}
+    msg('บัญชีนี้ยังไม่ได้ยืนยันอีเมลสำหรับ Promotion — กดส่งลิงก์ยืนยัน แล้วตั้งรหัสผ่านใหม่','info');return}
+  location.replace(NEXT)}
+
+/* 2b/3) ส่งลิงก์ยืนยัน */
+async function sendLink(){msg('');
+  const {error}=await sb.auth.signInWithOtp({email:EMAIL,options:{shouldCreateUser:true,emailRedirectTo:redirectTo()}});
+  if(error){msg('ส่งลิงก์ไม่สำเร็จ: '+err(error)+(/rate|limit/i.test(error.message)?' (ส่งถี่เกินไป รอสักครู่แล้วลองใหม่)':''));return false}
+  show('fWait');msg('ส่งลิงก์ไปที่ '+EMAIL+' แล้ว','ok');return true}
+$('#bSend').onclick=async()=>{const b=$('#bSend');busy(b,true,'กำลังส่ง…');await sendLink();busy(b,false)};
+$('#bResend').onclick=async()=>{const b=$('#bResend');busy(b,true,'กำลังส่ง…');await sendLink();busy(b,false)};
+$('#lForgot').onclick=async()=>{await sendLink()};
+
+/* 4) กลับมาจากลิงก์ในอีเมล: ผูกบัญชีแล้วให้ตั้งรหัสผ่าน */
+async function handleReturn(){
+  const {data:{session}}=await sb.auth.getSession();if(!session)return false;
+  EMAIL=clean(session.user.email);$('#whoS').textContent=EMAIL;
+  const amr=((session.user&&session.user.amr)||[]);const via=location.hash.includes('access_token')||location.search.includes('code=')||sessionStorage.getItem('pl_mail')==='1';
+  const {data,error}=await sb.rpc('promo_claim_account');
+  if(error){
+    if(/NOT_VERIFIED/.test(error.message)){   // เข้าด้วยรหัสผ่านอยู่แล้ว (ไม่ใช่ลิงก์) → ลองใช้งานได้เลยถ้าบัญชีพร้อม
+      const {data:id}=await sb.rpc('promo_emp_id');if(id){location.replace(NEXT);return true}
+      show('fFirst');$('#whoF').textContent=EMAIL;msg('ต้องยืนยันอีเมลผ่านลิงก์ก่อน — กดส่งลิงก์ยืนยัน','info');return true}
+    show('fEmail');msg('ผูกบัญชีไม่สำเร็จ: '+err(error));return true}
+  history.replaceState(null,'',location.pathname);
+  show('fSet');msg('ยืนยันอีเมลสำเร็จ ✓ — ตั้งรหัสผ่านเพื่อเข้าใช้งาน','ok');return true}
+$('#fSet').onsubmit=async ev=>{ev.preventDefault();msg('');const p1=$('#p1').value,p2=$('#p2').value;
+  if(!pwOk(p1))return msg('รหัสผ่านต้องยาวอย่างน้อย 8 ตัว และมีทั้งตัวอักษรและตัวเลข');if(p1!==p2)return msg('รหัสผ่านทั้งสองช่องไม่ตรงกัน');
+  const b=$('#bSet');busy(b,true,'กำลังบันทึก…');
+  const {error}=await sb.auth.updateUser({password:p1});if(error){msg('ตั้งรหัสผ่านไม่สำเร็จ: '+err(error));busy(b,false);return}
+  location.replace(NEXT)};
+
+/* เริ่มต้น: มี session อยู่แล้ว? */
+(async()=>{
+  try{
+    const params=new URLSearchParams(location.search);
+    if(params.get('error_description')){msg('ลิงก์ไม่ถูกต้องหรือหมดอายุ — กรอกอีเมลแล้วขอลิงก์ใหม่')}
+    const handled=await handleReturn();
+    if(!handled&&!params.get('error_description'))show('fEmail');
+    if(!handled)show('fEmail');
+  }catch(e){show('fEmail');msg('เชื่อมต่อระบบไม่สำเร็จ: '+err(e))}
+})();
+</script>
+</body>
+</html>

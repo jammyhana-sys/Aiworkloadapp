@@ -53,7 +53,7 @@ tr:hover td{background:#fafbff}
 </head>
 <body>
 <header>
-  <a href="./" style="color:#fff;opacity:.85;font-size:13px;text-decoration:none;display:inline-block;margin-bottom:6px">‹ กลับหน้าหลัก Dynamic Work Sync</a>
+  <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px"><a href="./" style="color:#fff;opacity:.85;font-size:13px;text-decoration:none">‹ กลับหน้าหลัก Dynamic Work Sync</a><span style="font-size:13px"><span id="meTxt" style="opacity:.9"></span> <a href="#" id="lgOut" style="color:#fff;font-weight:700;margin-left:10px;text-decoration:underline">ออกจากระบบ</a></span></div>
   <h1>🚀 Promotion <span style="font-weight:400;opacity:.9">· เสนอชื่อปรับตำแหน่ง</span></h1>
   <div class="sub">พิจารณาคุณสมบัติเบื้องต้นจากเกรด การศึกษา อายุงาน เทียบกับข้อกำหนดของตำแหน่งที่จะปรับ · ข้อมูลอยู่ในระบบกลาง คุมสิทธิ์ด้วย Supabase · <span id="who"></span></div>
   <nav id="nav">
@@ -62,6 +62,7 @@ tr:hover td{background:#fafbff}
     <button data-v="noms">📝 รายการเสนอชื่อ</button>
     <button data-v="flow">🔁 Flow อนุมัติ</button>
     <button data-v="reqs">📘 ข้อกำหนดตำแหน่ง</button>
+    <button data-v="mem" id="navMem" class="hide">👤 สมาชิก & สิทธิ์</button>
     <button data-v="data">⚙ นำเข้า / ตั้งค่า</button>
   </nav>
 </header>
@@ -70,6 +71,7 @@ tr:hover td{background:#fafbff}
   <section id="v-emps" class="hide"></section>
   <section id="v-noms" class="hide"></section>
   <section id="v-flow" class="hide"></section>
+  <section id="v-mem" class="hide"></section>
   <section id="v-reqs" class="hide"></section>
   <section id="v-data" class="hide"></section>
 </main>
@@ -104,14 +106,15 @@ async function boot(){
   gate('<div class="hint">กำลังเชื่อมต่อระบบกลาง…</div>');
   try{
     const {data:s}=await Promise.race([sb.auth.getSession(),new Promise((_,rj)=>setTimeout(()=>rj(new Error('หมดเวลาเชื่อมต่อระบบกลาง — ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่')),15000))]);
-    if(!s||!s.session)return gate('<h2 style="margin:0 0 8px">กรุณาเข้าสู่ระบบก่อน</h2><div class="hint" style="margin-bottom:14px">เข้าสู่ระบบที่แอป Dynamic Work Sync แล้วกดไอคอน Promotion อีกครั้ง</div><a class="btn pri" href="./" style="text-decoration:none;display:inline-block">ไปหน้าเข้าสู่ระบบ</a>');
+    if(!s||!s.session){location.replace('promotion-login.html');return gate('<div class="hint">กำลังไปหน้าเข้าสู่ระบบ…</div><div style="margin-top:12px"><a class="btn pri" href="promotion-login.html" style="text-decoration:none;display:inline-block">ไปหน้าเข้าสู่ระบบ</a></div>')}
     const [v,m,sc]=await Promise.all([sb.rpc('can_promo',{p_need:'view'}),sb.rpc('can_promo',{p_need:'manage'}),sb.rpc('promo_scope_all')]);
     if(v.error)throw v.error;
     CAN={view:!!v.data,manage:!!m.data,all:sc.error?true:!!sc.data};   /* ยังไม่ได้รัน hub50 → ถือว่าขอบเขตทั้งหมดเหมือนเดิม */
-    if(!CAN.view)return gate('<h2 style="margin:0 0 8px">🔒 ไม่มีสิทธิ์เข้าถึงโมดูลนี้</h2><div class="hint" style="margin-bottom:14px">ติดต่อ Super Admin ให้กำหนดสิทธิ์ Promotion ที่เมนู สมาชิก › สิทธิ์การเข้าถึงโมดูล</div><a class="btn" href="./" style="text-decoration:none;display:inline-block">‹ กลับหน้าหลัก</a>');
+    if(!CAN.view)return gate('<h2 style="margin:0 0 8px">🔒 ไม่มีสิทธิ์เข้าถึงโมดูลนี้</h2><div class="hint" style="margin-bottom:14px">ติดต่อ Super Admin ให้กำหนดสิทธิ์ Promotion ที่เมนู สมาชิก › สิทธิ์การเข้าถึงโมดูล</div><a class="btn" href="./" style="text-decoration:none;display:inline-block">‹ กลับหน้าหลัก</a> <button class="btn" onclick="doLogout()">ออกจากระบบ</button>');
     await loadAll();READY=true;
     const g=$('#gate');if(g)g.remove();$('#nav').classList.remove('hide');
     $('#who').textContent=(CAN.manage?'สิทธิ์: จัดการ':'สิทธิ์: ดูอย่างเดียว')+' · ขอบเขตข้อมูล: '+(CAN.all?'ทั้งหมด':'จำกัดตามที่ Super Admin กำหนด');
+     {const se=s&&s.session;$('#meTxt').textContent=(se&&se.user&&se.user.email)||'';if(FLOW.sup)$('#navMem').classList.remove('hide')}
     show(V.cur);
   }catch(er){gate(`<h2 style="margin:0 0 8px">เชื่อมต่อไม่สำเร็จ</h2><div class="hint">${esc(errTxt(er))}</div><div style="margin-top:14px"><button class="btn pri" onclick="boot()">ลองใหม่</button></div>`)}
 }
@@ -222,7 +225,7 @@ const activeNom=id=>db.noms.find(n=>n.empId===id&&n.status!=='ยกเลิก
 const V={cur:'dash',emp:{q:'',lv:'',dept:'',only:'',sort:'id',dir:1,lim:100},nom:{q:'',st:''}};
 function show(v){V.cur=v;$$('main>section').forEach(s=>s.classList.toggle('hide',s.id!=='v-'+v));$$('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));render()}
 $('#nav').onclick=e=>{const b=e.target.closest('button');if(b)show(b.dataset.v)};
-function render(){({dash:rDash,emps:rEmps,noms:rNoms,flow:rFlow,reqs:rReqs,data:rData})[V.cur]()}
+function render(){({dash:rDash,emps:rEmps,noms:rNoms,flow:rFlow,mem:rMem,reqs:rReqs,data:rData})[V.cur]()}
 const needData=()=>db.emps.length?'':`<div class="card"><div class="drop">ยังไม่มีข้อมูลพนักงาน<br><br><button class="btn pri" onclick="show('data')">⚙ ไปนำเข้าไฟล์ Excel</button></div></div>`;
 
 function rDash(){
@@ -344,7 +347,7 @@ const FLOW={me:'',sup:false,mine:[],ready:false};db.steps=[];db.approvers=[];
 async function loadFlow(){
   try{const [s,a]=await Promise.all([sb.from('promo_flow_steps').select('*').order('step_no'),sb.from('promo_flow_approvers').select('*')]);
     FLOW.ready=!s.error;db.steps=s.error?[]:(s.data||[]).slice().sort(stepSort);db.approvers=a.error?[]:(a.data||[])}catch(_){FLOW.ready=false}
-  try{const me=await sb.rpc('my_emp_id');FLOW.me=(me&&me.data)||'';const su=await sb.rpc('is_super_admin');FLOW.sup=!!(su&&su.data);const mr=await sb.rpc('promo_my_approver_rows');FLOW.mine=mr.error?[]:(mr.data||[])}catch(_){}
+  try{let me=await sb.rpc('promo_emp_id');if(me&&me.error)me=await sb.rpc('my_emp_id');FLOW.me=(me&&me.data)||'';const su=await sb.rpc('is_super_admin');FLOW.sup=!!(su&&su.data);const mr=await sb.rpc('promo_my_approver_rows');FLOW.mine=mr.error?[]:(mr.data||[])}catch(_){}
 }
 /* โครงสร้างองค์กร (จากหน้า SharePoint HR "โครงสร้างอัตรากำลัง" — อัปเดต 4 พ.ย. 2569, ผลบังคับล่าสุด 1 ก.ย. 2569) กลุ่มงาน › สายงาน/สำนัก › ฝ่าย */
 const ORG=[{c:'10000',n:'สำนักงานกลาง',t:'group',p:'',h:'นายณัฐพงศ์ กอร่ม ประธานเจ้าหน้าที่บริหาร ( CEO)'},
@@ -564,6 +567,74 @@ function rFlow(){
         closeModal();reload()})};
     $('#pkQ').oninput=draw;$('#pkLv').onchange=draw;draw()});
 }
+function doLogout(){Promise.resolve(sb.auth.signOut()).catch(()=>{}).finally(()=>location.replace('promotion-login.html'))}
+document.addEventListener('click',e=>{const a=e.target.closest&&e.target.closest('#lgOut');if(a){e.preventDefault();doLogout()}});
+/* ============ สมาชิก & สิทธิ์ (Super Admin) ============ */
+const MEM={q:'',acc:'',perm:'',rows:null,access:new Map(),busy:false};
+async function loadMem(){
+  const [E,M]=await Promise.all([sb.from('employees').select('id,name,email,dept,active,user_id,approved,promo_verified,role').order('id').range(0,4999),sb.from('module_access').select('*').eq('module','promo')]);
+  if(E.error)throw E.error;MEM.rows=E.data||[];MEM.access=new Map((M.data||[]).map(a=>[a.emp_id,a]));
+}
+const accOf=r=>!r.user_id?['ยังไม่ได้ตั้งรหัสผ่าน','warn']:(r.approved||r.promo_verified)?['ใช้งานได้','ok']:['รอยืนยันอีเมล','pri'];
+const PERM_TH={none:'ไม่มีสิทธิ์',view:'ดูอย่างเดียว',manage:'จัดการ'};
+async function rMem(){
+  const el=$('#v-mem');if(!FLOW.sup){el.innerHTML='<div class="card"><div class="hint">เฉพาะ Super Admin</div></div>';return}
+  if(!MEM.rows){el.innerHTML='<div class="card"><div class="hint">กำลังโหลดสมาชิก…</div></div>';try{await loadMem()}catch(er){el.innerHTML=`<div class="card"><div class="hint" style="color:var(--bad)">โหลดสมาชิกไม่สำเร็จ: ${esc(errTxt(er))}</div></div>`;return}}
+  const q=MEM.q.toLowerCase();
+  const list=MEM.rows.filter(r=>(!q||(r.id+' '+r.name+' '+(r.email||'')+' '+(r.dept||'')).toLowerCase().includes(q))&&(!MEM.acc||accOf(r)[0]===MEM.acc)&&(!MEM.perm||((MEM.access.get(r.id)||{}).perm||'none')===MEM.perm));
+  const cnt=(k)=>MEM.rows.filter(r=>accOf(r)[0]===k).length,withPerm=[...MEM.access.keys()].length;
+  el.innerHTML=`<div class="card"><h2>สมาชิก & สิทธิ์การใช้งาน Promotion</h2>
+    <div class="hint" style="margin-bottom:12px">สมาชิกเข้าสู่ระบบที่หน้า <b>promotion-login.html</b> ด้วยอีเมลบริษัท — ถ้าอีเมลอยู่ในรายชื่อนี้ ระบบส่งลิงก์ยืนยันไปที่อีเมล แล้วให้ตั้งรหัสผ่าน จากนั้นใช้งานได้ตามสิทธิ์ที่กำหนดในตารางนี้ (ไม่มีสิทธิ์ = เข้าไม่ได้) · ขอบเขตข้อมูลจำกัดได้ตามโครงสร้างองค์กร</div>
+    <div class="grid g4" style="margin-bottom:12px"><div class="kpi"><span>สมาชิกทั้งหมด</span><b>${MEM.rows.length}</b></div><div class="kpi"><span>ใช้งานได้ (ตั้งรหัสผ่านแล้ว)</span><b style="color:var(--ok)">${cnt('ใช้งานได้')}</b></div><div class="kpi"><span>ยังไม่ได้ตั้งรหัสผ่าน</span><b style="color:var(--warn)">${cnt('ยังไม่ได้ตั้งรหัสผ่าน')}</b></div><div class="kpi"><span>ได้รับสิทธิ์ Promotion</span><b style="color:var(--pri)">${withPerm}</b></div></div>
+    <div class="row noprint"><div style="flex:2"><label>ค้นหา (รหัส / ชื่อ / อีเมล / ฝ่าย)</label><input id="mq" type="search" value="${esc(MEM.q)}"></div>
+      <div><label>บัญชี</label><select id="macc"><option value="">ทั้งหมด</option>${['ใช้งานได้','รอยืนยันอีเมล','ยังไม่ได้ตั้งรหัสผ่าน'].map(s=>`<option ${MEM.acc===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div><label>สิทธิ์ Promotion</label><select id="mperm"><option value="">ทั้งหมด</option>${Object.entries(PERM_TH).map(([k,v])=>`<option value="${k}" ${MEM.perm===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div style="flex:0"><button class="btn pri" id="mAdd">＋ เพิ่มสมาชิก</button></div></div>
+    <div class="hint" style="margin:10px 0">แสดง ${Math.min(list.length,150)} จาก ${list.length} คน${list.length>150?' (พิมพ์ค้นหาเพื่อกรอง)':''}</div>
+    <div class="scroll"><table><thead><tr><th>รหัส</th><th>ชื่อ-สกุล</th><th>อีเมล</th><th>ฝ่าย</th><th>บัญชี</th><th>สิทธิ์ Promotion</th><th>ขอบเขตข้อมูล</th><th></th></tr></thead><tbody>
+    ${list.slice(0,150).map(r=>{const a=accOf(r),ac=MEM.access.get(r.id),pm=ac?ac.perm:'none';
+      return `<tr><td>${esc(r.id)}</td><td>${esc(r.name)}${r.role==='super_admin'?' <span class="tag pri">Super Admin</span>':''}${r.active===false?' <span class="tag bad">ปิดใช้งาน</span>':''}</td>
+      <td style="font-size:13px">${esc(r.email||'')} <a href="#" data-me="${esc(r.id)}" title="แก้ไขอีเมล" style="text-decoration:none">✎</a></td><td class="hint">${esc(r.dept||'')}</td>
+      <td><span class="tag ${a[1]}">${a[0]}</span></td>
+      <td><select data-mp="${esc(r.id)}" style="min-height:0;padding:5px 8px">${Object.entries(PERM_TH).map(([k,v])=>`<option value="${k}" ${pm===k?'selected':''}>${v}</option>`).join('')}</select></td>
+      <td style="font-size:12.5px">${ac?`${esc(scopeTxt(ac.scope))} <a href="#" data-ms="${esc(r.id)}" style="color:var(--pri);text-decoration:none">กำหนด</a>`:'<span class="hint">—</span>'}</td>
+      <td style="white-space:nowrap">${r.email?`<button class="btn sm" data-ml="${esc(r.id)}" title="ส่งลิงก์เข้าสู่ระบบ/ตั้งรหัสผ่านไปที่อีเมลของสมาชิก">✉ ส่งลิงก์</button>`:''}</td></tr>`}).join('')||'<tr><td colspan="8" class="hint">ไม่พบสมาชิก</td></tr>'}</tbody></table></div></div>`;
+  const rerender=()=>rMem();
+  $('#mq').oninput=e=>{MEM.q=e.target.value;rerender();const i=$('#mq');i.focus();i.setSelectionRange(MEM.q.length,MEM.q.length)};$('#macc').onchange=e=>{MEM.acc=e.target.value;rerender()};$('#mperm').onchange=e=>{MEM.perm=e.target.value;rerender()};
+  $$('#v-mem [data-mp]').forEach(s=>s.onchange=async()=>{const id=s.dataset.mp,v=s.value,r=MEM.rows.find(x=>x.id===id);
+    try{if(v==='none'){const d=await sb.from('module_access').delete().eq('module','promo').eq('emp_id',id);if(d.error)throw d.error;MEM.access.delete(id)}
+      else{const cur=MEM.access.get(id),row={module:'promo',emp_id:id,perm:v,scope:cur?cur.scope:{type:'all'},granted_by:'Super Admin',granted_at:new Date().toISOString()};const u=await sb.from('module_access').upsert(row);if(u.error)throw u.error;MEM.access.set(id,row)}
+      rerender()}catch(er){alert('บันทึกสิทธิ์ไม่สำเร็จ: '+errTxt(er));rerender()}});
+  $$('#v-mem [data-ms]').forEach(a=>a.onclick=ev=>{ev.preventDefault();memScope(a.dataset.ms)});
+  $$('#v-mem [data-me]').forEach(a=>a.onclick=async ev=>{ev.preventDefault();const id=a.dataset.me,r=MEM.rows.find(x=>x.id===id),v=prompt(`อีเมลบริษัทของ ${r.name}`,r.email||'');if(v===null)return;const em=v.trim();
+    if(!/^\S+@\S+\.\S+$/.test(em))return alert('รูปแบบอีเมลไม่ถูกต้อง');if(r.user_id&&!confirm('สมาชิกคนนี้มีบัญชีแล้ว — เปลี่ยนอีเมลในรายชื่อไม่เปลี่ยนอีเมลที่ใช้ล็อกอินของบัญชีเดิม ต้องการเปลี่ยนต่อหรือไม่?'))return;
+    const u=await sb.from('employees').update({email:em}).eq('id',id);if(u.error)return alert('บันทึกไม่สำเร็จ: '+errTxt(u.error));r.email=em;rerender()});
+  $$('#v-mem [data-ml]').forEach(b=>b.onclick=async()=>{const r=MEM.rows.find(x=>x.id===b.dataset.ml);if(!confirm(`ส่งลิงก์เข้าสู่ระบบ/ตั้งรหัสผ่านไปที่ ${r.email} ?`))return;b.disabled=true;
+    const base=location.origin+location.pathname.replace(/[^/]*$/,'')+'promotion-login.html';
+    const x=await sb.auth.signInWithOtp({email:r.email,options:{shouldCreateUser:true,emailRedirectTo:base}});b.disabled=false;
+    alert(x.error?'ส่งลิงก์ไม่สำเร็จ: '+errTxt(x.error):'ส่งลิงก์ไปที่ '+r.email+' แล้ว')});
+  $('#mAdd').onclick=()=>{modal(`<div style="display:flex;justify-content:space-between;gap:10px"><h2 style="margin:0;font-size:19px">เพิ่มสมาชิก</h2><button class="btn sm" onclick="closeModal()">✕</button></div>
+    <div class="row" style="margin-top:12px"><div><label>รหัสพนักงาน</label><input id="nId"></div><div style="flex:2"><label>ชื่อ-สกุล</label><input id="nName"></div></div>
+    <div class="row" style="margin-top:8px"><div style="flex:2"><label>อีเมลบริษัท</label><input id="nEmail" type="email"></div><div><label>รหัสฝ่าย (ไม่บังคับ)</label><input id="nDept"></div></div>
+    <div class="row" style="margin-top:8px"><div><label>สิทธิ์ Promotion</label><select id="nPerm">${Object.entries(PERM_TH).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div></div>
+    <div class="hint" style="margin-top:8px">สมาชิกใหม่จะอยู่ในรายชื่อสมาชิกของระบบหลักด้วย (ยังไม่ได้รับอนุมัติใช้งานระบบบันทึกงาน) — เข้า Promotion ได้เมื่อมีสิทธิ์ และยืนยันอีเมลที่หน้า login</div>
+    <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal()">ยกเลิก</button><button class="btn pri" id="nSave">บันทึก</button></div>`);
+    $('#nSave').onclick=async()=>{const id=$('#nId').value.trim(),name=$('#nName').value.trim(),em=$('#nEmail').value.trim(),dept=$('#nDept').value.trim(),pm=$('#nPerm').value;
+      if(!id||!name||!/^\S+@\S+\.\S+$/.test(em))return alert('กรอกรหัสพนักงาน ชื่อ-สกุล และอีเมลบริษัทให้ครบและถูกต้อง');
+      const ins=await sb.from('employees').insert({id,name,email:em,dept,role:'user',active:true});if(ins.error)return alert('เพิ่มสมาชิกไม่สำเร็จ: '+errTxt(ins.error));
+      if(pm!=='none'){const row={module:'promo',emp_id:id,perm:pm,scope:{type:'all'},granted_by:'Super Admin',granted_at:new Date().toISOString()};const u=await sb.from('module_access').upsert(row);if(!u.error)MEM.access.set(id,row)}
+      MEM.rows=null;closeModal();rMem()}};
+}
+function memScope(id){
+  const r=MEM.rows.find(x=>x.id===id),ac=MEM.access.get(id)||{scope:{type:'all'}},nodes=unitNodes(),NB='\u00A0\u00A0\u00A0';
+  const curKey=ac.scope&&ac.scope.type==='unit'?'unit:'+(ac.scope.keys||[])[0]:ac.scope&&ac.scope.type==='section'?'section:'+(ac.scope.keys||[])[0]:'all';
+  modal(`<div style="display:flex;justify-content:space-between;gap:10px"><div><h2 style="margin:0;font-size:19px">ขอบเขตข้อมูลพนักงาน</h2><div class="hint">${esc(r.id)} ${esc(r.name)} — เห็น/จัดการได้เฉพาะพนักงานในหน่วยงานที่เลือก</div></div><button class="btn sm" onclick="closeModal()">✕</button></div>
+    <div style="margin-top:12px"><label>หน่วยงาน (ตัวเลขคือจำนวนพนักงานสังกัด)</label><select id="msU"><option value="__all">ทั้งบริษัท (${db.emps.length} คน)</option>${nodes.map(x=>`<option value="${esc(x.v)}" ${x.key===curKey?'selected':''}>${NB.repeat(x.indent)}${x.icon} ${esc(x.label)} — ${x.n} คน</option>`).join('')}</select></div>
+    <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal()">ยกเลิก</button><button class="btn pri" id="msSave">บันทึก</button></div>`);
+  $('#msSave').onclick=async()=>{const v=$('#msU').value,x=nodes.find(n=>n.v===v);let scope={type:'all'};
+    if(v!=='__all'&&x)scope=x.sec?{type:'section',keys:[x.sec.d+'|'+x.sec.n]}:{type:'unit',keys:[...orgUnder(x.v)],labels:[x.label]};
+    const row={module:'promo',emp_id:id,perm:ac.perm||'view',scope,granted_by:'Super Admin',granted_at:new Date().toISOString()};
+    const u=await sb.from('module_access').upsert(row);if(u.error)return alert('บันทึกไม่สำเร็จ: '+errTxt(u.error));MEM.access.set(id,row);closeModal();rMem()}}
 function exportNoms(){
   const rows=db.noms.map(n=>{const e=empOf(n.empId)||{};return{วันที่เสนอ:n.date,รหัส:n.empId,'ชื่อ-สกุล':e.name,ฝ่าย:e.dept,ตำแหน่งเดิม:n.fromPos,'Level เดิม':n.fromLevel,ตำแหน่งที่เสนอ:n.toPos,'Level ที่เสนอ':n.toLevel,เกรดเฉลี่ย:n.snap?.avg!=null?Math.round(n.snap.avg*100)/100:'',
     'คุณสมบัติที่ผ่าน':(n.checks||[]).length?`${(n.checks||[]).filter(Boolean).length}/${n.checks.length}`:'',เหตุผล:n.why,ผู้เสนอ:n.by,สถานะ:n.status,หมายเหตุ:n.note}});
