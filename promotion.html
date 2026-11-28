@@ -251,7 +251,7 @@ async function trainImport(files,onProg){
 async function loadAll(){
   const all=async t=>{const r=await sb.from(t).select('*').range(0,9999);if(r.error)throw r.error;return r.data||[]};
   const [E,R,N,C]=await Promise.all([all('promo_employees'),all('promo_reqs'),all('promo_nominations'),all('promo_config')]);
-  db.emps=E.map(r=>r.data);db.reqs=R.map(r=>r.data);db.noms=N.map(r=>({...r.data,id:r.id,empId:r.emp_id,status:r.status,step:r.step||0}));await loadFlow();await loadComp();await loadTrain();await loadPf();
+  db.emps=E.map(r=>r.data);db.reqs=R.map(r=>r.data);db.noms=N.map(r=>({...r.data,id:r.id,empId:r.emp_id,status:r.status,step:r.step||0}));await loadFlow();await loadLogs();await loadComp();await loadTrain();await loadPf();
   {const od=await sb.rpc('promo_orders_for_me');db.orders=od.error?C.filter(x=>/^order:/.test(x.k)).map(x=>x.data):(od.data||[]);db.orders.forEach(applyOrder)}const cf=C.find(x=>x.k==='cfg'),im=C.find(x=>x.k==='imported');db.cfg={...DEF,...(cf?cf.data:{})};db.imported=im?im.data:null;
 }
 async function boot(){
@@ -628,7 +628,7 @@ function canAct(n){if(n.status!=='เสนอแล้ว'||!n.step)return fals
 const myPending=()=>db.noms.filter(canAct);
 async function nomRpc(id,action,note){
   const r=action==='submit'?await sb.rpc('promo_nom_submit',{p_id:id}):await sb.rpc('promo_nom_decide',{p_id:id,p_action:action,p_note:note||''});
-  if(r.error)throw r.error;const n=db.noms.find(x=>x.id===id);if(n&&r.data){n.status=r.data.status;n.step=r.data.step}
+  if(r.error)throw r.error;const n=db.noms.find(x=>x.id===id);if(n&&r.data){n.status=r.data.status;n.step=r.data.step}await loadLogs();
 }
 const ACT_TH={reopen:'เปิดรายการอีกครั้ง',submit:'ส่งขออนุมัติ',approve:'อนุมัติ',reject:'ไม่อนุมัติ',return:'ส่งกลับแก้ไข'};
 async function openNomLog(id){
@@ -638,6 +638,21 @@ async function openNomLog(id){
   modal(`<div style="display:flex;justify-content:space-between;gap:10px"><div><h2 style="margin:0;font-size:19px">ประวัติการอนุมัติ</h2><div class="hint">${esc(n.empId)} ${esc(e.name||'')} → ${esc(n.toPos)}${n.toLevel===''?'':' (L'+n.toLevel+')'} · สถานะ ${esc(n.status)}${n.status==='เสนอแล้ว'?` · รอขั้นที่ ${stepPos(n)} ${esc(stepName(n))}`:''}</div></div><button class="btn sm" onclick="closeModal()">✕</button></div>
     <div class="scroll" style="margin-top:12px"><table><thead><tr><th>เวลา</th><th>ขั้น</th><th>การดำเนินการ</th><th>โดย</th><th>เหตุผล</th></tr></thead><tbody>${rows.map(x=>`<tr><td style="white-space:nowrap">${new Date(x.at).toLocaleString('th-TH')}</td><td>${x.step_no?x.step_no+' '+esc(x.step_name):'-'}</td><td><span class="tag ${x.action==='approve'?'ok':x.action==='reject'?'bad':x.action==='return'?'warn':'pri'}">${ACT_TH[x.action]||esc(x.action)}</span></td><td>${esc(x.by_emp)} ${esc(x.by_name)}</td><td>${esc(x.note)}</td></tr>`).join('')||'<tr><td colspan="5" class="hint">ยังไม่มีประวัติ</td></tr>'}</tbody></table></div>`);
 }
+/* ประเภทการเสนอ + ลำดับการอนุมัติและเวลาที่รออนุมัติ */
+db.log=[];
+async function loadLogs(){try{const r=await sb.from('promo_nom_log').select('*').order('id').range(0,9999);db.log=r.error?[]:(r.data||[])}catch(_){db.log=[]}}
+const nomTypeTag=n=>n.portfolioOnly?'<span class="tag pri" title="เสนอผลงานเข้าแฟ้ม Portfolio ไม่ระบุตำแหน่งที่ขอปรับ">📁 เสนอผลงาน (Portfolio)</span>':n.special?`<span class="tag warn" title="${esc(n.exc||'')}">เสนอปรับ (กรณีพิเศษ)</span>`:'<span class="tag pri">เสนอปรับตำแหน่ง</span>';
+const durTxt=ms=>{const m=Math.max(0,Math.floor(ms/60000)),d=Math.floor(m/1440),h=Math.floor(m%1440/60),mi=m%60;return d?`${d} วัน ${h} ชม.`:h?`${h} ชม. ${mi} นาที`:`${mi} นาที`};
+function nomFlowHtml(n,e){
+  const steps=activeSteps();if(!steps.length)return '';
+  const lg=(db.log||[]).filter(x=>x.nom_id===n.id);let si=-1;lg.forEach((x,i)=>{if(x.action==='submit')si=i});
+  const cyc=si>=0?lg.slice(si):lg,doneAt={};cyc.filter(x=>x.action==='approve').forEach(x=>{doneAt[x.step_no]=x});
+  const last=cyc.length?cyc[cyc.length-1]:null,cur=n.status==='เสนอแล้ว'?n.step:0;
+  const rows=steps.map((s,i)=>{const d=doneAt[s.step_no],names=(db.approvers||[]).filter(x=>x.step_no===s.step_no&&scopeMatchE(x.scope,e)).map(x=>x.name||x.emp_id);
+    if(d)return `<div style="color:var(--ok)">✓ ${i+1}. ${esc(s.name)} <span class="hint">· ${esc(d.by_name||d.by_emp)} · ${fmtAt(d.at)}</span></div>`;
+    if(s.step_no===cur)return `<div style="color:var(--warn);font-weight:600">● ${i+1}. ${esc(s.name)} — รออนุมัติ${last?` <span style="font-weight:400;color:inherit">มาแล้ว <b>${durTxt(Date.now()-new Date(last.at).getTime())}</b> (ตั้งแต่ ${fmtAt(last.at)})</span>`:''}${names.length?`<div class="hint" style="font-weight:400">ผู้อนุมัติ: ${esc(names.join(', '))}</div>`:'<div class="hint" style="color:var(--bad);font-weight:400">ยังไม่มีผู้อนุมัติขั้นนี้ในขอบเขต</div>'}</div>`;
+    return `<div class="hint">○ ${i+1}. ${esc(s.name)}${names.length?' · '+esc(cTrunc(names.join(', '),40)):''}</div>`});
+  return `<div style="font-size:12.5px;margin-top:6px;line-height:1.5;min-width:230px">${si>=0?`<div class="hint">ส่งขออนุมัติ ${fmtAt(lg[si].at)}</div>`:''}${rows.join('')}</div>`}
 function rNoms(){
   const el=$('#v-noms'),f=V.nom;
   if(!db.emps.length){el.innerHTML=needData();return}
@@ -654,9 +669,9 @@ function rNoms(){
       const apprs=n.status==='เสนอแล้ว'?(db.approvers||[]).filter(x=>x.step_no===n.step&&scopeMatchE(x.scope,e)).map(x=>x.name||x.emp_id).join(', '):'';
       return `<tr><td>${esc(n.date||'')}</td><td>${esc(n.empId)}</td><td>${esc(e.name)}</td><td>${esc(n.fromPos)} <span class="tag">L${n.fromLevel}</span></td>
       <td>${esc(n.toPos)} ${n.toLevel===''?'':`<span class="tag pri">L${n.toLevel}</span>`}</td><td>${fmt1(n.snap?.avg)}</td><td>${ck.length?`${ok}/${ck.length} ข้อ`:'-'}</td><td>${esc(n.by||'')}</td><td>${pfCell(n)}</td>
-      <td>${n.special?`<span class="tag warn" title="${esc(n.exc||'')}" style="margin-right:4px">กรณีพิเศษ</span>`:''}<span class="tag ${STCLS[n.status]}">${esc(n.status)}</span>${n.status==='เสนอแล้ว'?`<div style="font-size:12.5px;margin-top:4px">รอขั้นที่ <b>${stepPos(n)}${total?'/'+total:''}</b> ${esc(stepName(n))}</div>${apprs?`<div class="hint">ผู้อนุมัติ: ${esc(apprs)}</div>`:'<div class="hint" style="color:var(--bad)">ยังไม่มีผู้อนุมัติขั้นนี้ในขอบเขต</div>'}`:''}${n.note?`<div class="hint">${esc(n.note)}</div>`:''}</td>
+      <td>${nomTypeTag(n)}<div style="margin-top:3px"><span class="tag ${STCLS[n.status]}">${esc(n.status)}</span></div>${n.status==='เสนอแล้ว'||n.status==='ผ่านการพิจารณา'?nomFlowHtml(n,e):''}${n.special&&n.exc?`<div class="hint" title="${esc(n.exc)}">เหตุผลกรณีพิเศษ: ${esc(cTrunc(n.exc,50))}</div>`:''}${n.note?`<div class="hint">${esc(n.note)}</div>`:''}</td>
       <td class="noprint" style="white-space:nowrap">
-        ${n.status==='ร่าง'&&CAN.nom?`<button class="btn sm pri" data-sub="${esc(n.id)}">ส่งขออนุมัติ</button> ${n.portfolioOnly?'':`<button class="btn sm" data-e="${esc(n.id)}">แก้ไข</button>`} <button class="btn sm bad" data-x="${esc(n.id)}">ลบ</button> `:''}
+        ${n.status==='ร่าง'&&CAN.nom?`${(()=>{const Q=pfProgress(db.pf[n.id]||{},n,pfEmp(n));return `<button class="btn sm pri" data-sub="${esc(n.id)}" ${Q.pct<100?`style="opacity:.5" title="แฟ้มยังไม่ครบ 100% (${Q.pct}%) — ส่งขออนุมัติไม่ได้"`:''}>ส่งขออนุมัติ${Q.pct<100?` (${Q.pct}%)`:''}</button>`})()} ${n.portfolioOnly?'':`<button class="btn sm" data-e="${esc(n.id)}">แก้ไข</button>`} <button class="btn sm bad" data-x="${esc(n.id)}">ลบ</button> `:''}
         ${act?`<button class="btn sm ok" data-ap="${esc(n.id)}">✓ อนุมัติ</button> <button class="btn sm" data-rt="${esc(n.id)}">↩ ส่งกลับ</button> <button class="btn sm bad" data-rj="${esc(n.id)}">✕ ไม่อนุมัติ</button> `:''}
         ${nomClosed(n)&&CAN.nom?`<button class="btn sm pri" data-reopen="${esc(n.id)}">↻ เปิดใหม่</button> <button class="btn sm bad" data-x="${esc(n.id)}" title="ลบรายการนี้ถาวร">ลบ</button> `:''}${(n.status==='เสนอแล้ว'||n.status==='ร่าง')&&CAN.nom?`<button class="btn sm" data-cx="${esc(n.id)}">ยกเลิก</button> `:''}
         <button class="btn sm" data-pfo="${esc(n.id)}" title="แฟ้ม Promotion Portfolio: แบบฟอร์ม · Competency · Checklist หลักฐาน">📁 แฟ้ม</button> <button class="btn sm" data-lg="${esc(n.id)}">ประวัติ</button></td></tr>`}).join('')||'<tr><td colspan="11" class="hint">ยังไม่มีรายการ</td></tr>'}</tbody></table></div></div>`;
@@ -664,7 +679,9 @@ function rNoms(){
   $('#nx').onclick=exportNoms;
   const run=async(id,action,note,msg)=>{try{await nomRpc(id,action,note);if(msg)alert(msg);rNoms()}catch(er){alert('ทำรายการไม่สำเร็จ: '+errTxt(er))}};
   $$('#v-noms [data-e]').forEach(b=>b.onclick=()=>{const n=db.noms.find(x=>x.id===b.dataset.e);openNom(n.empId,n.id)});
-  $$('#v-noms [data-sub]').forEach(b=>b.onclick=()=>{if(confirm('ส่งขออนุมัติรายการนี้? (หลังส่งแล้วแก้ไขไม่ได้จนกว่าจะถูกส่งกลับ)'))run(b.dataset.sub,'submit','','ส่งขออนุมัติแล้ว')});
+  $$('#v-noms [data-sub]').forEach(b=>b.onclick=()=>{const nn=db.noms.find(x=>x.id===b.dataset.sub),Q=nn?pfProgress(db.pf[nn.id]||{},nn,pfEmp(nn)):null;
+    if(Q&&Q.pct<100)return alert(`ยังส่งขออนุมัติไม่ได้ — แฟ้ม Portfolio ต้องครบ 100% ก่อน (ตอนนี้ ${Q.pct}%)\n\nยังขาด:\n- ${Q.todo.map(x=>x[1]).join('\n- ')}\n\nกดปุ่ม 📁 แฟ้ม เพื่อกรอกให้ครบ`);
+    if(confirm('ส่งขออนุมัติรายการนี้? (หลังส่งแล้วแก้ไขไม่ได้จนกว่าจะถูกส่งกลับ)'))run(b.dataset.sub,'submit','','ส่งขออนุมัติแล้ว')});
   $$('#v-noms [data-ap]').forEach(b=>b.onclick=()=>{if(confirm('อนุมัติรายการนี้ในขั้นปัจจุบัน?'))run(b.dataset.ap,'approve','')});
   $$('#v-noms [data-rt]').forEach(b=>b.onclick=()=>{const r=prompt('เหตุผลที่ส่งกลับให้ผู้เสนอแก้ไข (จำเป็น)');if(r&&r.trim())run(b.dataset.rt,'return',r.trim())});
   $$('#v-noms [data-rj]').forEach(b=>b.onclick=()=>{const r=prompt('เหตุผลที่ไม่อนุมัติ (จำเป็น) — รายการจะเป็น "ไม่ผ่านการพิจารณา"');if(r&&r.trim())run(b.dataset.rj,'reject',r.trim())});
@@ -754,7 +771,7 @@ function rFlow(){
       if(!allNodes.some(x=>x.key===bk))return alert('ไม่พบหน่วยงานนี้ในโครงสร้าง');drafts.add(key);rFlow();setTimeout(()=>{const r=[...document.querySelectorAll('#v-flow tbody tr')].find(t=>t.querySelector(`[data-pick$="|${key.includes('!')?'x:'+key:(allNodes.find(x=>x.key===key)||{}).v}"]`));if(r)r.scrollIntoView({behavior:'smooth',block:'center'})},50)};
     $$('#v-flow [data-rmrow]').forEach(a=>a.onclick=ev=>{ev.preventDefault();drafts.delete(a.dataset.rmrow);rFlow()})}
   if(!sup)return;
-  const reload=async()=>{await loadFlow();await loadComp();await loadTrain();await loadPf();rFlow()},fail=er=>alert('บันทึกไม่สำเร็จ: '+errTxt(er)+(/scope_key/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub54.sql)':/ord/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub55.sql)':''));
+  const reload=async()=>{await loadFlow();await loadLogs();await loadComp();await loadTrain();await loadPf();rFlow()},fail=er=>alert('บันทึกไม่สำเร็จ: '+errTxt(er)+(/scope_key/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub54.sql)':/ord/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub55.sql)':''));
   $('#fAddRole').onclick=async()=>{const nm=prompt('ชื่อขั้นอนุมัติใหม่ (เช่น Committee)');if(!nm||!nm.trim())return;const nx=(steps.length?Math.max(...steps.map(s=>s.step_no)):0)+1,mo=(steps.length?Math.max(...steps.map(s=>s.ord||s.step_no)):0)+1;const r=await sb.from('promo_flow_steps').insert({step_no:nx,name:nm.trim(),active:true,ord:mo});if(r.error)return fail(r.error);reload()};
   $$('#v-flow [data-sn]').forEach(i=>i.onchange=async()=>{const v=i.value.trim();if(!v)return;const r=await sb.from('promo_flow_steps').update({name:v}).eq('step_no',+i.dataset.sn);if(r.error)return fail(r.error);reload()});
   $$('#v-flow [data-sa]').forEach(i=>i.onchange=async()=>{const r=await sb.from('promo_flow_steps').update({active:i.checked}).eq('step_no',+i.dataset.sa);if(r.error)return fail(r.error);reload()});
