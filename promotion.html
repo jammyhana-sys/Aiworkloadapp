@@ -48,6 +48,14 @@ tr:hover td{background:#fafbff}
 .pre{white-space:pre-wrap}
 .drop{border:2px dashed var(--line);border-radius:16px;padding:24px;text-align:center;color:var(--mut)}
 @media(max-width:640px){.kv{grid-template-columns:1fr}.card{padding:14px}}
+.pf-wrap{display:grid;grid-template-columns:240px 1fr;gap:16px;align-items:start}@media(max-width:860px){.pf-wrap{grid-template-columns:1fr}.pf-nav{flex-direction:row!important;overflow-x:auto;position:static!important}.pf-nb{flex:0 0 auto}}
+.pf-nav{position:sticky;top:150px;display:flex;flex-direction:column;gap:6px}.pf-nb{display:flex;gap:10px;align-items:center;text-align:left;border:1px solid var(--line);background:#fff;border-radius:14px;padding:10px 12px;cursor:pointer;font:inherit;color:var(--ink)}.pf-nb.on{border-color:var(--pri);background:#eef0ff}.pf-nb .ic{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#eceefb;font-size:14px;flex:0 0 28px}.pf-nb.ok .ic{background:#d9f3ea;color:#087a5e;font-weight:700}
+.tl-item{position:relative;display:flex;gap:12px;text-align:left;border:0;background:transparent;padding:0 0 14px;cursor:pointer;font:inherit;color:var(--ink);width:100%}.tl-item:not(:last-child):before{content:"";position:absolute;left:15px;top:32px;bottom:0;width:2px;background:var(--line)}.tl-item.done:not(:last-child):before{background:var(--ok)}
+.tl-dot{flex:0 0 32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#eceefb;font-size:15px;z-index:1;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}.tl-item.done .tl-dot{background:var(--ok);color:#fff;font-weight:700}.tl-item.part .tl-dot{background:#e1e7ff;box-shadow:0 0 0 2px var(--pri)}.tl-item.on .tl-dot{box-shadow:0 0 0 3px var(--pri)}
+.tl-main{flex:1;min-width:0}.tl-bar{display:block;height:6px;border-radius:4px;background:#e8eaf8;margin:4px 0;overflow:hidden}.tl-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--pri),var(--ok))}.tl-item.on .tl-main b{color:var(--pri)}
+.pf-bar{height:10px;border-radius:6px;background:#e8eaf8;overflow:hidden}.pf-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--pri),var(--ok));transition:width .3s}
+.seg{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.seg-b{border:1px solid var(--line);background:#fff;border-radius:12px;padding:8px 14px;font:inherit;cursor:pointer;color:var(--ink)}.seg-b:hover{border-color:var(--pri)}.seg-b.on{background:var(--pri);color:#fff;border-color:var(--pri)}.seg-b:disabled{opacity:.6;cursor:default}.seg-n .seg-b{min-width:46px;text-align:center}.seg-c .seg-b{flex:1;min-width:150px;padding:12px 14px;text-align:center}
+.pf-card{border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px;background:#fff}.g4{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 @media print{header,nav,.noprint{display:none!important}}
 </style>
 </head>
@@ -287,6 +295,7 @@ function rDash(){
     ${Object.keys(byLv).map(Number).sort((a,b)=>b-a).map(l=>{const x=byLv[l];return `<div class="bar"><span class="n">Level ${l}</span><i style="width:${x.n/mx*60}%"></i><span>${x.n}</span><span class="hint">ผ่านเกณฑ์ ${x.p}${x.m?` · <b style="color:#c2339a">เสนอ ${x.m}</b>`:''}</span></div>`}).join('')}</div>
     <div class="card"><h2>สถานะการเสนอชื่อ</h2>${STATUS.map(s=>`<div class="bar"><span class="n"><span class="tag ${STCLS[s]}">${s}</span></span><i class="b2" style="width:${stc[s]/Math.max(1,...Object.values(stc))*55}%"></i><span>${stc[s]}</span></div>`).join('')}
     <h2 style="margin-top:20px">เสนอชื่อแยกตามฝ่าย</h2>${Object.entries(byDept).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([d,n])=>`<div class="bar"><span class="n" style="min-width:200px">${esc(d)}</span><i style="width:${n*14}px"></i><span>${n}</span></div>`).join('')||'<div class="hint">ยังไม่มีการเสนอชื่อ</div>'}</div></div>
+  ${pfDash()}
   <div class="hint">เกณฑ์เบื้องต้นตอนนี้: เกรดเฉลี่ย ${db.cfg.gradeYears} ปีล่าสุด ≥ ${db.cfg.minAvg} · ไม่มีเกรดต่ำกว่า ${db.cfg.minGrade} (B- = 2.7) · อายุงาน ≥ ${db.cfg.minTenure} ปี — ปรับได้ที่เมนู นำเข้า / ตั้งค่า</div>`;
 }
 
@@ -385,6 +394,7 @@ function openNom(id,editId){
   <div class="row"><div><label>ปรับเป็น Level</label><select id="nmLv">${lvOpts.map(l=>`<option value="${l}" ${l===to?'selected':''}>Level ${l}</option>`).join('')}</select></div>
     <div style="flex:2"><label>ตำแหน่งที่เสนอ</label><select id="nmPos"></select></div></div>
   <div style="margin-top:12px"><label>ตรวจคุณสมบัติตามข้อกำหนดของตำแหน่งที่เสนอ (ติ๊กข้อที่ผ่าน)</label><div id="nmQual"></div></div>
+  <div id="nmPfBox" style="margin-top:14px"></div>
   ${x.pass?'':`<div class="card" style="box-shadow:none;border:1px solid #f1c27a;background:#fff8ec;margin:12px 0 0"><b style="color:var(--warn)">⚠ ไม่ผ่านเกณฑ์เบื้องต้น — เสนอเป็นกรณีพิเศษ</b><div class="hint" style="margin:4px 0 8px">${esc(x.why.join(' · '))}</div><label>เหตุผลขอพิจารณาเป็นกรณีพิเศษ (จำเป็น)</label><textarea id="nmExc" rows="3" placeholder="เช่น ได้รับมอบหมายงานสำคัญ / เพิ่งโอนย้ายจึงมีเกรดไม่ครบ / ผลงานโดดเด่นเป็นพิเศษ">${esc(ed&&ed.exc||'')}</textarea></div>`}
   <div class="row" style="margin-top:12px"><div style="flex:2"><label>เหตุผล / ผลงานเด่นประกอบการเสนอ</label><textarea id="nmWhy" rows="3"></textarea></div>
     <div><label>ผู้เสนอชื่อ</label><input id="nmBy"></div><div><label>วันที่เสนอ</label><input id="nmDate" type="date"></div></div>
@@ -397,6 +407,25 @@ function openNom(id,editId){
     if(!(ed&&+ed.toLevel===l))$$('#nmQual [data-q]').forEach(c=>{if(auto[+c.dataset.q].state==='pass')c.checked=true});
     if(ed&&+ed.toLevel===l){$('#nmPos').value=ed.toPos;$$('#nmQual [data-q]').forEach(c=>c.checked=!!(ed.checks||[])[+c.dataset.q])}};
   $('#nmLv').onchange=ev=>fill(+ev.target.value);fill(to);
+  const PFL=JSON.parse(JSON.stringify((ed&&db.pf[ed.id])||{}));
+  const nStub=()=>({id:ed?ed.id:'',empId:e.id,fromLevel:e.level,fromPos:e.pos,toLevel:+$('#nmLv').value,toPos:$('#nmPos').value,why:$('#nmWhy').value.trim(),by:$('#nmBy').value.trim(),date:$('#nmDate').value,status:ed?ed.status:'ร่าง',special:!x.pass,exc:$('#nmExc')?$('#nmExc').value.trim():((ed&&ed.exc)||'')});
+  const updNmPf=()=>{const c=pfCompleteness(PFL,nStub(),e);$('#nmPfReady').innerHTML=pfReadyHtml(c);$('#nmPfProg').textContent=`${c.docs}/${PF_DOCS.length} ครบ`;$('#nmPfGen').disabled=!c.done;$('#nmPfGen').style.opacity=c.done?1:.5};
+  const renderNmPf=()=>{
+    $('#nmPfBox').innerHTML=`<div class="card" style="box-shadow:none;border:1px solid var(--line);margin:0"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><b>📋 Checklist เอกสารหลักฐานประกอบ Promotion Portfolio</b><span class="tag pri" id="nmPfProg"></span></div>
+      <div class="hint" style="margin:4px 0 8px">ตามไฟล์ DEMCO Promotion Portfolio Template — เลือกสถานะเอกสารแต่ละรายการ (แนบไฟล์และกรอกแบบฟอร์ม/Competency ได้ในแฟ้มเต็ม)</div>
+      <div class="scroll" style="max-height:none"><table><thead><tr><th style="cursor:default;width:44px">ลำดับ</th><th style="cursor:default">รายการเอกสาร</th><th style="cursor:default;width:150px">สถานะ</th><th style="cursor:default">หมายเหตุ / ชื่อไฟล์</th></tr></thead><tbody>
+      ${PF_DOCS.map((t,i)=>{const dd=(PFL.docs||[])[i]||{};return `<tr><td>${i+1}</td><td>${esc(t)}</td><td><select data-nd="${i}" style="min-height:0;padding:4px 8px">${PF_DOC_ST.map(s=>`<option ${(dd.status||'รอตรวจสอบ')===s?'selected':''}>${s}</option>`).join('')}</select></td><td><input data-nn="${i}" value="${esc(dd.note||'')}" style="min-height:0;padding:5px 8px">${(dd.files||[]).length?`<div class="hint">📎 ${esc(dd.files.map(f=>f.name).join(', '))}</div>`:''}</td></tr>`}).join('')}</tbody></table></div>
+      <div id="nmPfReady" style="margin-top:10px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" class="btn" id="nmPfOpen">📁 เปิดแฟ้มเต็ม (แบบฟอร์ม · Competency · แนบไฟล์)</button><button type="button" class="btn pri" id="nmPfGen">🖨 Gen Portfolio (PDF)</button><button type="button" class="btn sm" id="nmPfDraft" title="สร้าง PDF ทั้งที่ข้อมูลยังไม่ครบ (มีตราฉบับร่าง)">สร้างฉบับร่าง</button></div></div>`;
+    $$('#nmPfBox [data-nd]').forEach(s=>s.onchange=()=>{const i=+s.dataset.nd;PFL.docs=PFL.docs||[];PFL.docs[i]=Object.assign({},PFL.docs[i],{status:s.value});updNmPf()});
+    $$('#nmPfBox [data-nn]').forEach(s=>s.oninput=()=>{const i=+s.dataset.nn;PFL.docs=PFL.docs||[];PFL.docs[i]=Object.assign({},PFL.docs[i],{note:s.value})});
+    const gen=async(btn)=>{const t=btn.textContent;btn.disabled=true;btn.textContent='กำลังสร้าง PDF…';try{await pfGenPdf(nStub(),e,PFL)}catch(er){alert('สร้าง PDF ไม่สำเร็จ: '+errTxt(er))}btn.textContent=t;updNmPf();btn.disabled=btn.id==='nmPfGen'?!pfCompleteness(PFL,nStub(),e).done:false};
+    $('#nmPfGen').onclick=()=>gen($('#nmPfGen'));$('#nmPfDraft').onclick=()=>gen($('#nmPfDraft'));
+    $('#nmPfOpen').onclick=async()=>{if(!ed)return alert('บันทึกการเสนอชื่อก่อน แล้วระบบจะเปิดแฟ้มเต็มให้ (หรือกด บันทึก แล้วระบบเปิดแฟ้มให้อัตโนมัติ)');
+      if(CAN.nom){const r=await sb.from('promo_portfolio').upsert({nom_id:ed.id,data:PFL,updated_at:new Date().toISOString(),updated_by:FLOW.me||''});if(r.error)return alert('บันทึกแฟ้มไม่สำเร็จ: '+errTxt(r.error))}
+      db.pf[ed.id]=PFL;closeModal();openPf(ed.id)};
+    updNmPf()};
+  renderNmPf();
   $('#nmBy').value=ed?ed.by:'';$('#nmDate').value=ed?ed.date:new Date().toISOString().slice(0,10);$('#nmWhy').value=ed?ed.why:'';$('#nmNote').value=ed?ed.note:'';
   $('#nmSave').onclick=()=>{const toL=+$('#nmLv').value;
     if(!ed&&activeNom(e.id))return alert('พนักงานคนนี้มีรายการเสนอชื่อที่ยังดำเนินอยู่แล้ว');
@@ -407,7 +436,8 @@ function openNom(id,editId){
     const btn=$('#nmSave');btn.disabled=true;btn.textContent='กำลังบันทึก…';
     (ed?sb.from('promo_nominations').update({data:rec,updated_at:new Date().toISOString()}).eq('id',rec.id):sb.from('promo_nominations').insert({id:rec.id,emp_id:rec.empId,status:'ร่าง',step:0,data:rec,created_by:rec.by||'',updated_at:new Date().toISOString()})).then(r=>{
       if(r.error){btn.disabled=false;btn.textContent='บันทึก';return alert('บันทึกไม่สำเร็จ: '+errTxt(r.error))}
-      if(ed)Object.assign(ed,rec);else db.noms.push(rec);closeModal();if(!ed){db.pf[rec.id]=db.pf[rec.id]||{};openPf(rec.id)}else render()})};
+      (Object.keys(PFL).length?sb.from('promo_portfolio').upsert({nom_id:rec.id,data:PFL,updated_at:new Date().toISOString(),updated_by:FLOW.me||''}):Promise.resolve({})).then(r2=>{if(r2&&r2.error)alert('บันทึกเนื้อหา Checklist ไม่สำเร็จ: '+errTxt(r2.error)+' (ยังไม่ได้รัน supabase_update_hub63.sql)');else if(Object.keys(PFL).length)db.pf[rec.id]=PFL;
+      if(ed)Object.assign(ed,rec);else db.noms.push(rec);closeModal();if(!ed){db.pf[rec.id]=db.pf[rec.id]||{};openPf(rec.id)}else render()})})};
 }
 
 /* ============ Flow อนุมัติ ============ */
@@ -496,25 +526,25 @@ async function openNomLog(id){
 function rNoms(){
   const el=$('#v-noms'),f=V.nom;
   if(!db.emps.length){el.innerHTML=needData();return}
-  let a=db.noms.filter(n=>(!f.st||(f.st==='__mine'?canAct(n):n.status===f.st))&&(!f.q||(n.empId+' '+(empOf(n.empId)?.name||'')).toLowerCase().includes(f.q.toLowerCase())));
+  let a=db.noms.filter(n=>(!f.st||(f.st==='__mine'?canAct(n):f.st==='__pf'?(pfProgress(db.pf[n.id]||{},n,pfEmp(n)).pct<100&&!['ยกเลิก','ไม่ผ่านการพิจารณา'].includes(n.status)):n.status===f.st))&&(!f.q||(n.empId+' '+(empOf(n.empId)?.name||'')).toLowerCase().includes(f.q.toLowerCase())));
   a=a.slice().sort((x,y)=>y.at.localeCompare(x.at));
   const total=activeSteps().length,mineN=myPending().length;
   el.innerHTML=`<div class="card"><div class="row noprint"><div style="flex:2"><label>ค้นหา (รหัส / ชื่อ)</label><input id="nq" type="search" value="${esc(f.q)}"></div>
-    <div><label>สถานะ</label><select id="nst"><option value="">ทั้งหมด</option><option value="__mine" ${f.st==='__mine'?'selected':''}>⏳ รออนุมัติของฉัน (${mineN})</option>${STATUS.map(s=>`<option ${s===f.st?'selected':''}>${s}</option>`).join('')}</select></div>
+    <div><label>สถานะ</label><select id="nst"><option value="">ทั้งหมด</option><option value="__pf" ${f.st==='__pf'?'selected':''}>📁 แฟ้มยังไม่ครบ</option><option value="__mine" ${f.st==='__mine'?'selected':''}>⏳ รออนุมัติของฉัน (${mineN})</option>${STATUS.map(s=>`<option ${s===f.st?'selected':''}>${s}</option>`).join('')}</select></div>
     <div style="flex:0"><button class="btn pri" id="nx">⬇ ส่งออก Excel</button></div><div style="flex:0"><button class="btn" onclick="window.print()">🖨 พิมพ์</button></div></div>
     ${mineN?`<div class="hint" style="margin:10px 0;color:var(--warn)"><b>มี ${mineN} รายการรอคุณอนุมัติ</b></div>`:''}
     <div class="hint" style="margin:10px 0">${a.length} รายการ · เริ่มเสนอชื่อได้ที่เมนู "รายชื่อพนักงาน" ปุ่ม ＋ เสนอชื่อ แล้วกด "ส่งขออนุมัติ" ${FLOW.ready?'':'<span style="color:var(--bad)">· ยังไม่ได้รัน supabase_update_hub51.sql (Flow อนุมัติยังไม่เปิดใช้)</span>'}</div>
-    <div class="scroll"><table><thead><tr><th>วันที่</th><th>รหัส</th><th>ชื่อ-สกุล</th><th>ตำแหน่งปัจจุบัน</th><th>ตำแหน่งที่เสนอ</th><th>เกรดเฉลี่ย</th><th>คุณสมบัติ</th><th>ผู้เสนอ</th><th>สถานะ / ขั้นอนุมัติ</th><th class="noprint"></th></tr></thead><tbody>
+    <div class="scroll"><table><thead><tr><th>วันที่</th><th>รหัส</th><th>ชื่อ-สกุล</th><th>ตำแหน่งปัจจุบัน</th><th>ตำแหน่งที่เสนอ</th><th>เกรดเฉลี่ย</th><th>คุณสมบัติ</th><th>ผู้เสนอ</th><th>ความคืบหน้าแฟ้ม</th><th>สถานะ / ขั้นอนุมัติ</th><th class="noprint"></th></tr></thead><tbody>
     ${a.map(n=>{const e=empOf(n.empId)||{name:'(ไม่พบ)'},ck=(n.checks||[]),ok=ck.filter(Boolean).length,act=canAct(n);
       const apprs=n.status==='เสนอแล้ว'?(db.approvers||[]).filter(x=>x.step_no===n.step&&scopeMatchE(x.scope,e)).map(x=>x.name||x.emp_id).join(', '):'';
       return `<tr><td>${esc(n.date||'')}</td><td>${esc(n.empId)}</td><td>${esc(e.name)}</td><td>${esc(n.fromPos)} <span class="tag">L${n.fromLevel}</span></td>
-      <td>${esc(n.toPos)} <span class="tag pri">L${n.toLevel}</span></td><td>${fmt1(n.snap?.avg)}</td><td>${ck.length?`${ok}/${ck.length} ข้อ`:'-'}</td><td>${esc(n.by||'')}</td>
+      <td>${esc(n.toPos)} <span class="tag pri">L${n.toLevel}</span></td><td>${fmt1(n.snap?.avg)}</td><td>${ck.length?`${ok}/${ck.length} ข้อ`:'-'}</td><td>${esc(n.by||'')}</td><td>${pfCell(n)}</td>
       <td>${n.special?`<span class="tag warn" title="${esc(n.exc||'')}" style="margin-right:4px">กรณีพิเศษ</span>`:''}<span class="tag ${STCLS[n.status]}">${esc(n.status)}</span>${n.status==='เสนอแล้ว'?`<div style="font-size:12.5px;margin-top:4px">รอขั้นที่ <b>${stepPos(n)}${total?'/'+total:''}</b> ${esc(stepName(n))}</div>${apprs?`<div class="hint">ผู้อนุมัติ: ${esc(apprs)}</div>`:'<div class="hint" style="color:var(--bad)">ยังไม่มีผู้อนุมัติขั้นนี้ในขอบเขต</div>'}`:''}${n.note?`<div class="hint">${esc(n.note)}</div>`:''}</td>
       <td class="noprint" style="white-space:nowrap">
         ${n.status==='ร่าง'&&CAN.nom?`<button class="btn sm pri" data-sub="${esc(n.id)}">ส่งขออนุมัติ</button> <button class="btn sm" data-e="${esc(n.id)}">แก้ไข</button> <button class="btn sm bad" data-x="${esc(n.id)}">ลบ</button> `:''}
         ${act?`<button class="btn sm ok" data-ap="${esc(n.id)}">✓ อนุมัติ</button> <button class="btn sm" data-rt="${esc(n.id)}">↩ ส่งกลับ</button> <button class="btn sm bad" data-rj="${esc(n.id)}">✕ ไม่อนุมัติ</button> `:''}
         ${(n.status==='เสนอแล้ว'||n.status==='ร่าง')&&CAN.nom?`<button class="btn sm" data-cx="${esc(n.id)}">ยกเลิก</button> `:''}
-        <button class="btn sm" data-pfo="${esc(n.id)}" title="แฟ้ม Promotion Portfolio: แบบฟอร์ม · Competency · Checklist หลักฐาน">📁 แฟ้ม ${pfDocDone(db.pf[n.id])}/${PF_DOCS.length}</button> <button class="btn sm" data-lg="${esc(n.id)}">ประวัติ</button></td></tr>`}).join('')||'<tr><td colspan="10" class="hint">ยังไม่มีรายการ</td></tr>'}</tbody></table></div></div>`;
+        <button class="btn sm" data-pfo="${esc(n.id)}" title="แฟ้ม Promotion Portfolio: แบบฟอร์ม · Competency · Checklist หลักฐาน">📁 แฟ้ม ${pfDocDone(db.pf[n.id])}/${PF_DOCS.length}</button> <button class="btn sm" data-lg="${esc(n.id)}">ประวัติ</button></td></tr>`}).join('')||'<tr><td colspan="11" class="hint">ยังไม่มีรายการ</td></tr>'}</tbody></table></div></div>`;
   $('#nq').oninput=e=>{f.q=e.target.value;rNoms();$('#nq').focus();$('#nq').setSelectionRange(f.q.length,f.q.length)};$('#nst').onchange=e=>{f.st=e.target.value;rNoms()};
   $('#nx').onclick=exportNoms;
   const run=async(id,action,note,msg)=>{try{await nomRpc(id,action,note);if(msg)alert(msg);rNoms()}catch(er){alert('ทำรายการไม่สำเร็จ: '+errTxt(er))}};
@@ -525,7 +555,7 @@ function rNoms(){
   $$('#v-noms [data-rj]').forEach(b=>b.onclick=()=>{const r=prompt('เหตุผลที่ไม่อนุมัติ (จำเป็น) — รายการจะเป็น "ไม่ผ่านการพิจารณา"');if(r&&r.trim())run(b.dataset.rj,'reject',r.trim())});
   $$('#v-noms [data-cx]').forEach(b=>b.onclick=async()=>{if(!confirm('ยกเลิกการเสนอชื่อรายการนี้?'))return;const r=await sb.from('promo_nominations').update({status:'ยกเลิก',updated_at:new Date().toISOString()}).eq('id',b.dataset.cx);if(r.error)return alert('ยกเลิกไม่สำเร็จ: '+errTxt(r.error));const n=db.noms.find(x=>x.id===b.dataset.cx);n.status='ยกเลิก';n.step=0;rNoms()});
   $$('#v-noms [data-lg]').forEach(b=>b.onclick=()=>openNomLog(b.dataset.lg));
-  $$('#v-noms [data-pfo]').forEach(b=>b.onclick=()=>openPf(b.dataset.pfo));
+  $$('#v-noms [data-pfo]').forEach(b=>b.onclick=ev=>{ev.preventDefault();openPf(b.dataset.pfo)});
   $$('#v-noms [data-x]').forEach(b=>b.onclick=async()=>{if(!confirm('ลบรายการเสนอชื่อนี้? (ลบแล้วกู้คืนไม่ได้)'))return;
     const r=await sb.from('promo_nominations').delete().eq('id',b.dataset.x);if(r.error)return alert('ลบไม่สำเร็จ: '+errTxt(r.error));db.noms=db.noms.filter(x=>x.id!==b.dataset.x);rNoms()});
 }
@@ -747,88 +777,145 @@ const PF={nomId:'',tab:'form',data:{},timer:null,state:''};
 const pfGet=(o,path)=>path.split('.').reduce((a,k)=>a==null?undefined:a[k],o);
 function pfSet(o,path,v){const ks=path.split('.');let a=o;ks.slice(0,-1).forEach((k,i)=>{if(a[k]==null)a[k]=/^\d+$/.test(ks[i+1])?[]:{};a=a[k]});a[ks[ks.length-1]]=v}
 const pfDocDone=d=>(d&&d.docs?PF_DOCS.map((_,i)=>d.docs[i]||{}):PF_DOCS.map(()=>({}))).filter(x=>x.status==='ครบถ้วน'||x.status==='ไม่เกี่ยวข้อง').length;
-function openPf(nomId,tab){PF.nomId=nomId;PF.tab=tab||'form';PF.data=JSON.parse(JSON.stringify(db.pf[nomId]||{}));PF.state='';show('pf')}
+function openPf(nomId,tab){PF.nomId=nomId;PF.step=({form:'1',comp:'3',docs:'6'})[tab]||(/^[1-6]$/.test(String(tab))?String(tab):'1');PF.data=JSON.parse(JSON.stringify(db.pf[nomId]||{}));PF.state='';show('pf')}
 function pfSchedule(){PF.state='กำลังบันทึก…';const el=$('#pfState');if(el)el.textContent=PF.state;clearTimeout(PF.timer);PF.timer=setTimeout(pfSave,900)}
+const mgrMode=n=>!!n&&n.status==='เสนอแล้ว'&&canAct(n)&&(activeSteps()[0]||{}).step_no===n.step;
+const pfCanSave=()=>CAN.nom||mgrMode(db.noms.find(x=>x.id===PF.nomId));
 async function pfSave(){
-  if(!CAN.nom)return;const id=PF.nomId;
+  if(!pfCanSave())return;const id=PF.nomId;
   const r=await sb.from('promo_portfolio').upsert({nom_id:id,data:PF.data,updated_at:new Date().toISOString(),updated_by:FLOW.me||''});
   PF.state=r.error?'บันทึกไม่สำเร็จ: '+errTxt(r.error)+(/promo_portfolio/.test(r.error.message||'')?' (ยังไม่ได้รัน supabase_update_hub63.sql)':''):'บันทึกแล้ว ✓';if(!r.error)db.pf[id]=JSON.parse(JSON.stringify(PF.data));
   const el=$('#pfState');if(el){el.textContent=PF.state;el.style.color=r.error?'var(--bad)':'var(--ok)'}
 }
 function pfEvalDefaults(e){const rows=GRADE_YEARS.slice().reverse().slice(0,4).map(y=>({year:y,kpi:e.grades[y]?('เกรดประเมิน '+e.grades[y]):'',comp:'',note:''}));
   const c=db.comp[e.id];if(c&&rows.length){const r=rows.find(x=>x.year===String(db.compYear))||rows[0];r.year=String(db.compYear);r.comp=[c.core?`Core ${fmt1(c.core.score)} (${c.core.grade})`:'',c.managerial?`Managerial ${fmt1(c.managerial.score)} (${c.managerial.grade})`:''].filter(Boolean).join(' / ')}return rows}
+const PF_STEPS=[['1','ข้อมูลและเหตุผล','🧾'],['2','ผลงานเด่น','🏆'],['3','ผลประเมิน & Competency','📊'],['4','การพัฒนา & ความพร้อม','🌱'],['5','ความเห็นและอนุมัติ','✍️'],['6','เอกสารหลักฐาน','📎']];
+function pfProgress(d,n,e){
+  const c=pfCompleteness(d,n,e),parts=[c.items[0][1]?1:0,c.items[1][1]?1:0,c.scores/PF_COMP.length,c.items[3][1]?1:0,c.docs/PF_DOCS.length];
+  const pct=Math.round(parts.reduce((a,b)=>a+b,0)/parts.length*100),ok={1:c.items[0][1],2:c.items[1][1],3:c.items[2][1],4:c.items[3][1],5:!!pfGet(d,'form.mgrOpt'),6:c.items[4][1]};
+  const todo=[];if(!c.items[0][1])todo.push([1,'ระบุผู้บังคับบัญชา วันที่เสนอให้มีผล และเหตุผล']);if(!c.items[1][1])todo.push([2,'เพิ่มผลงานอย่างน้อย 1 รายการ']);if(!c.items[2][1])todo.push([3,`ให้คะแนน Competency ให้ครบ (${c.scores}/${PF_COMP.length} ข้อ)`]);if(!c.items[3][1])todo.push([4,'เลือกความพร้อมสำหรับตำแหน่งใหม่']);if(!c.items[4][1])todo.push([6,`เอกสารหลักฐานยังไม่ครบ (${c.docs}/${PF_DOCS.length} รายการ)`]);
+  const g=p=>{const v=pfGet(d,p);return v==null?'':v},ach=[0,1,2,3,4].filter(i=>g(`form.ach.${i}.proj`)).length,evN=(Array.isArray(pfGet(d,'form.eval'))?pfGet(d,'form.eval'):[]).filter(r=>r&&(r.kpi||r.comp)).length,trN=(Array.isArray(pfGet(d,'form.train'))?pfGet(d,'form.train'):[]).filter(r=>r&&r.course).length;
+  const b1=[g('form.supervisor'),g('form.effDate'),g('form.reason')||n.why].filter(Boolean).length,hr=PF_HR.filter(([k])=>g('form.hrChk.'+k)).length,ap=[0,1,2,3].filter(i=>g(`form.appr.${i}.opt`)).length;
+  const steps={1:{pct:Math.round(b1/3*100),txt:`กรอก ${b1}/3 ช่อง`},2:{pct:ach?100:0,txt:ach?`ผลงาน ${ach} รายการ`:'ยังไม่มีผลงาน'},3:{pct:Math.round(c.scores/PF_COMP.length*100),txt:`ให้คะแนน ${c.scores}/${PF_COMP.length} ข้อ${evN?` · ผลประเมินย้อนหลัง ${evN} ปี`:''}`},4:{pct:c.items[3][1]?100:0,txt:`${c.items[3][1]?'เลือกความพร้อมแล้ว':'ยังไม่เลือกความพร้อม'}${trN?` · อบรม ${trN} รายการ`:''}`},5:{pct:Math.round(([g('form.mgrOpt')?1:0,hr||g('form.hrOpinion')?1:0,ap?1:0].reduce((a,b)=>a+b,0))/3*100),txt:`ผบ.${g('form.mgrOpt')?'✓':'○'} · HR ${hr}/${PF_HR.length} · อนุมัติ ${ap}/4 (ไม่บังคับ)`},6:{pct:Math.round(c.docs/PF_DOCS.length*100),txt:`เอกสารครบ ${c.docs}/${PF_DOCS.length}`}};
+  return{c,pct,ok,todo,steps}}
+const pfStepOf=path=>/^docs\./.test(path)?'6':/^comp\./.test(path)||/^form\.eval/.test(path)?'3':/^form\.ach/.test(path)?'2':/^form\.(train|ready)/.test(path)?'4':/^form\.(mgr|hr|appr)/.test(path)?'5':'1';
+function pfTouch(step){const m=PF.data.meta=PF.data.meta||{};const now=new Date().toISOString(),by=(FLOW.me||''),nm=((empOf(FLOW.me)||{}).name)||($('#meTxt')&&$('#meTxt').textContent)||by;m.at=now;m.by=by;m.byName=nm;m.steps=m.steps||{};m.steps[step]={at:now,by:nm}}
+const fmtAt=iso=>{if(!iso)return '';const d=new Date(iso);return d.toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'})+' '+d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})};
+function tlHtml(Q,step,d){
+  const first=PF_STEPS.find(([k])=>['1','2','3','4','6'].includes(k)&&!Q.ok[k]);
+  return PF_STEPS.map(([k,title,ic],i)=>{const s=Q.steps[k],st=(d.meta&&d.meta.steps&&d.meta.steps[k])||null,state=s.pct>=100?'done':s.pct>0?'part':'todo',opt=k==='5';
+    return `<button class="tl-item ${state} ${step===k?'on':''}" data-step="${k}"><span class="tl-dot">${state==='done'?'✓':ic}</span><span class="tl-main"><b>${k}. ${title}</b>${opt?' <span class="hint">(ไม่บังคับ)</span>':''}${first&&first[0]===k?' <span class="tag pri" style="font-size:11px">ทำต่อที่นี่</span>':''}<span class="tl-bar"><i style="width:${s.pct}%"></i></span><span class="hint" style="font-size:12px">${s.pct}% · ${esc(s.txt)}</span>${st?`<span class="hint" style="font-size:11.5px;display:block">อัปเดต ${fmtAt(st.at)} · ${esc(st.by||'')}</span>`:''}</span></button>`}).join('')}
+const pfEmp=n=>empOf(n.empId)||{name:'(ไม่พบ)',grades:{}};
+function pfCell(n){const Q=pfProgress(db.pf[n.id]||{},n,pfEmp(n)),m=(db.pf[n.id]||{}).meta;
+  return `<a href="#" data-pfo="${esc(n.id)}" style="text-decoration:none;color:inherit;display:block;min-width:130px" title="${esc(Q.todo.length?'ยังขาด: '+Q.todo.map(x=>x[1]).join(' · '):'ข้อมูลครบแล้ว')}${m&&m.at?' · อัปเดต '+fmtAt(m.at)+' โดย '+(m.byName||''):''}"><div style="display:flex;gap:6px;align-items:center"><span class="tl-bar" style="flex:1;margin:0"><i style="width:${Q.pct}%"></i></span><b style="font-size:12.5px;color:${Q.pct>=100?'var(--ok)':'inherit'}">${Q.pct}%</b></div><div class="hint" style="font-size:11.5px">${Q.pct>=100?'✓ ครบแล้ว':esc((Q.todo[0]||[0,''])[1])}</div></a>`}
+function pfDash(){
+  const act=db.noms.filter(n=>!['ยกเลิก','ไม่ผ่านการพิจารณา'].includes(n.status)).map(n=>({n,Q:pfProgress(db.pf[n.id]||{},n,pfEmp(n))}));
+  if(!act.length)return '';const done=act.filter(x=>x.Q.pct>=100).length,avg=Math.round(act.reduce((a,x)=>a+x.Q.pct,0)/act.length),low=act.filter(x=>x.Q.pct<100).sort((a,b)=>a.Q.pct-b.Q.pct).slice(0,6);
+  return `<div class="card"><h2>ติดตามความคืบหน้าแฟ้ม Portfolio</h2><div class="grid g4" style="margin-bottom:10px"><div class="kpi"><span>รายการเสนอชื่อที่ติดตาม</span><b>${act.length}</b></div><div class="kpi"><span>แฟ้มครบ 100%</span><b style="color:var(--ok)">${done}</b></div><div class="kpi"><span>ยังไม่ครบ</span><b style="color:var(--warn)">${act.length-done}</b></div><div class="kpi"><span>ความคืบหน้าเฉลี่ย</span><b>${avg}%</b></div></div>
+    ${low.length?`<div class="hint" style="margin-bottom:6px">ต้องติดตาม (คืบหน้าน้อยสุด)</div>${low.map(({n,Q})=>`<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--line);flex-wrap:wrap"><div style="flex:2;min-width:200px"><b>${esc(pfEmp(n).name)}</b><div class="hint">${esc(n.fromPos)} → ${esc(n.toPos)} <span class="tag ${STCLS[n.status]||''}" style="font-size:11px">${esc(n.status)}</span></div></div><div style="flex:2;min-width:180px"><div style="display:flex;gap:6px;align-items:center"><span class="tl-bar" style="flex:1;margin:0"><i style="width:${Q.pct}%"></i></span><b>${Q.pct}%</b></div><div class="hint" style="font-size:12px">${esc((Q.todo[0]||[0,''])[1])}</div></div><button class="btn sm" onclick="openPf('${esc(n.id)}')">เปิดแฟ้ม</button></div>`).join('')}`:'<div class="hint" style="color:var(--ok)">✓ ทุกแฟ้มครบ 100% แล้ว</div>'}</div>`}
+window.addEventListener('pagehide',()=>{if(PF.state==='กำลังบันทึก…'&&pfCanSave())pfSave()});document.addEventListener('visibilitychange',()=>{if(document.hidden&&PF.state==='กำลังบันทึก…'&&pfCanSave())pfSave()});
 function rPf(){
   const el=$('#v-pf'),n=db.noms.find(x=>x.id===PF.nomId);if(!n){el.innerHTML='<div class="card hint">ไม่พบรายการเสนอชื่อ</div>';return}
-  const e=empOf(n.empId)||{name:'(ไม่พบ)',grades:{}},ro=!CAN.nom,d=PF.data,done=pfDocDone(d);
-  const ro_=ro?'disabled':'';
+  const MG=mgrMode(n);
+  const e=empOf(n.empId)||{name:'(ไม่พบ)',grades:{}},ro=MG?false:!CAN.nom,d=PF.data,ro_=ro?'disabled':'',step=MG?'5':String(PF.step||'1');
+  if(MG){const me=empOf(FLOW.me),today=new Date().toISOString().slice(0,10);let ch=false;
+    if(!pfGet(d,'form.mgrName')&&me){pfSet(d,'form.mgrName',me.name||'');ch=true}
+    if(!pfGet(d,'form.mgrDate')){pfSet(d,'form.mgrDate',today);ch=true}
+    if(ch){pfTouch('5');pfSchedule()}}
   const V=(path,def)=>{const v=pfGet(d,path);return v==null?(def==null?'':def):v};
   const inp=(path,ph,type,def)=>`<input data-pf="${path}" type="${type||'text'}" value="${esc(V(path,def))}" placeholder="${esc(ph||'')}" ${ro_}>`;
-  const area=(path,rows,def)=>`<textarea data-pf="${path}" rows="${rows||3}" ${ro_}>${esc(V(path,def))}</textarea>`;
-  const chk=(path,label)=>`<label class="chk" style="margin:4px 14px 4px 0"><input type="checkbox" data-pf="${path}" data-bool="1" ${V(path,false)?'checked':''} ${ro_}><span>${esc(label)}</span></label>`;
-  const rad=(path,opts)=>opts.map(([v,l])=>`<label class="chk" style="margin:4px 14px 4px 0"><input type="radio" name="${path}" data-pf="${path}" data-val="${v}" ${V(path,'')===v?'checked':''} ${ro_}><span>${esc(l)}</span></label>`).join('');
-  const kv=(l,v)=>`<div><label>${l}</label><div style="padding:9px 12px;background:#f3f4fb;border-radius:12px;min-height:40px">${v||'<span class="hint">-</span>'}</div></div>`;
-  const sec=(t,b)=>`<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-bottom:14px"><h2 style="font-size:15px">${t}</h2>${b}</div>`;
-  const tabs=[['form','📄 แบบฟอร์มเสนอเลื่อนตำแหน่ง'],['comp','🧭 ประเมิน Competency'],['docs',`✅ Checklist หลักฐาน (${done}/${PF_DOCS.length})`]];
+  const area=(path,rows,def,ph)=>`<textarea data-pf="${path}" rows="${rows||3}" placeholder="${esc(ph||'')}" ${ro_}>${esc(V(path,def))}</textarea>`;
+  const seg=(path,opts,cls)=>`<div class="seg ${cls||''}">${opts.map(([v,l])=>`<button type="button" class="seg-b ${String(V(path,''))===String(v)?'on':''}" data-seg="${path}" data-val="${v}" ${ro_}>${l}</button>`).join('')}</div>`;
+  const tog=(path,l)=>`<button type="button" class="seg-b ${V(path,false)?'on':''}" data-tg="${path}" ${ro_}>${V(path,false)?'✓ ':''}${esc(l)}</button>`;
+  const fld=(l,h)=>`<div><label>${l}</label>${h}</div>`;
+  const card=(t,b,hint)=>`<div class="pf-card"><div style="font-weight:700;margin-bottom:${hint?2:8}px">${t}</div>${hint?`<div class="hint" style="margin-bottom:8px">${hint}</div>`:''}${b}</div>`;
+  const arr=(k,cap)=>{const a=V('form.'+k,[]);return Array.isArray(a)?a:[]};
+  const P=pfProgress(d,n,e);
   let body='';
-  if(PF.tab==='form'){
-    const ach=[0,1,2,3,4].map(i=>`<tr><td>${i+1}</td><td>${inp(`form.ach.${i}.proj`)}</td><td>${inp(`form.ach.${i}.role`)}</td><td>${inp(`form.ach.${i}.result`)}</td><td>${inp(`form.ach.${i}.evid`)}</td></tr>`).join('');
-    const evr=[0,1,2,3].map(i=>`<tr><td>${inp(`form.eval.${i}.year`)}</td><td>${inp(`form.eval.${i}.kpi`)}</td><td>${inp(`form.eval.${i}.comp`)}</td><td>${inp(`form.eval.${i}.note`)}</td></tr>`).join('');
-    const trn=[0,1,2,3].map(i=>`<tr><td>${i+1}</td><td>${inp(`form.train.${i}.course`)}</td><td>${inp(`form.train.${i}.org`)}</td><td>${inp(`form.train.${i}.date`)}</td><td>${inp(`form.train.${i}.result`)}</td></tr>`).join('');
-    const rdy=['หน้าที่และความรับผิดชอบ','ขอบเขตอำนาจตัดสินใจ','ความซับซ้อนของงาน','การบริหารบุคลากร','การบริหารงบประมาณ / ทรัพยากร','การประสานงานภายใน / ภายนอก'].map((t,i)=>`<tr><td>${t}</td><td>${inp(`form.ready.${i}.cur`)}</td><td>${inp(`form.ready.${i}.new`)}</td><td>${inp(`form.ready.${i}.det`)}</td></tr>`).join('');
-    const apr=PF_APPR.map((t,i)=>`<tr><td>${t}</td><td>${rad(`form.appr.${i}.opt`,[['approve','อนุมัติ'],['reject','ไม่อนุมัติ']])}</td><td>${inp(`form.appr.${i}.sign`,'ชื่อผู้ลงนาม')}</td><td>${inp(`form.appr.${i}.date`,'','date')}</td></tr>`).join('');
-    const T=(h,rows)=>`<div class="scroll" style="max-height:none"><table><thead><tr>${h.map(x=>`<th style="cursor:default">${x}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
-    body=sec('ส่วนที่ 1 ข้อมูลประวัติพนักงาน (Employee Information) <span class="hint" style="font-weight:400">ดึงจากระบบอัตโนมัติ</span>',`<div class="grid g2">${kv('ชื่อ-นามสกุล',esc(e.name))}${kv('รหัสพนักงาน',esc(e.id||n.empId))}${kv('บริษัท / หน่วยงาน',esc(e.group||'')+(e.line?' › '+esc(e.line):''))}${kv('ฝ่าย / แผนก',esc([e.dept,e.section].filter(Boolean).join(' / ')))}${kv('ตำแหน่งปัจจุบัน',esc(e.pos))}${kv('ระดับตำแหน่งปัจจุบัน','Level '+(e.level??n.fromLevel))}${kv('วันที่เริ่มงาน',thDate(e.start))}${kv('อายุงาน',ymd(e.start))}<div><label>ผู้บังคับบัญชาโดยตรง</label>${inp('form.supervisor')}</div>${kv('วันที่เสนอ',esc(n.date?thDate(n.date):''))}</div>`)
-     +sec('ส่วนที่ 2 รายละเอียดการเสนอขอเลื่อนตำแหน่ง (Promotion Proposal)',`<div class="grid g2">${kv('ตำแหน่งที่เสนอขอ',esc(n.toPos))}${kv('ระดับตำแหน่งใหม่','Level '+n.toLevel)}<div><label>หน่วยงาน</label>${inp('form.unit','',null,e.dept||'')}</div><div><label>วันที่เสนอให้มีผล</label>${inp('form.effDate','','date')}</div></div>
-       <div style="margin-top:10px"><label>ประเภทการเสนอ</label>${PF_TYPE.map(([k,l])=>chk('form.type.'+k,l)).join('')}</div><div style="margin-top:10px"><label>เหตุผลและความจำเป็น</label>${area('form.reason',4,n.why||'')}</div>`)
-     +sec('ส่วนที่ 3 ผลงานและความสำเร็จ (Performance & Achievement) <span class="hint" style="font-weight:400">ผลงานช่วง 1–3 ปีที่ผ่านมา</span>',T(['ลำดับ','ผลงาน / โครงการ','บทบาทและความรับผิดชอบ','ผลสำเร็จ / ผลลัพธ์ที่วัดได้','หลักฐานประกอบ'],ach))
-     +sec('ส่วนที่ 4 ผลการประเมินการปฏิบัติงาน (Performance Evaluation)',(ro?'':'<button class="btn sm" id="pfFillEval" style="margin-bottom:8px">⤓ ดึงเกรดและ Competency จากระบบ</button>')+T(['ปี','ผลการประเมิน KPI','ผลการประเมิน Competency','หมายเหตุ'],evr))
-     +sec('ส่วนที่ 5 ประวัติการพัฒนาและฝึกอบรม (Learning & Development)',T(['ลำดับ','หลักสูตร / การอบรม','หน่วยงานผู้จัด','วันที่ / ปี','ผลการพัฒนา'],trn))
-     +sec('ส่วนที่ 6 ความพร้อมสำหรับตำแหน่งใหม่ (Readiness Assessment)',T(['หัวข้อ','ตำแหน่งปัจจุบัน','ตำแหน่งใหม่','รายละเอียด / ความแตกต่าง'],rdy)+`<div style="margin-top:10px"><label>ความพร้อม</label>${rad('form.readyOpt',PF_READY)}</div><div style="margin-top:8px"><label>รายละเอียดความพร้อมและประเด็นที่ต้องพัฒนา</label>${area('form.readyDet',3)}</div>`)
-     +sec('ส่วนที่ 7 ความเห็นและการรับรองจากผู้บังคับบัญชา (Manager Recommendation)',`<label>เหตุผลที่เห็นว่าพนักงานมีความเหมาะสมสำหรับตำแหน่งใหม่</label>${area('form.mgrReason',3)}<div style="margin-top:8px"><label>ข้อเสนอแนะ</label>${rad('form.mgrOpt',PF_MGR)}</div><div class="row" style="margin-top:8px"><div style="flex:2"><label>ลงชื่อผู้บังคับบัญชา</label>${inp('form.mgrName')}</div><div><label>วันที่</label>${inp('form.mgrDate','','date')}</div></div>`)
-     +sec('ส่วนที่ 8 ความเห็นของฝ่ายทรัพยากรบุคคล (HR Review)',`<label>ตรวจสอบ</label><div>${PF_HR.map(([k,l])=>chk('form.hrChk.'+k,l)).join('')}</div><div style="margin-top:8px"><label>ความเห็นของ HR</label>${area('form.hrOpinion',3)}</div><div class="row" style="margin-top:8px"><div style="flex:2"><label>ลงชื่อผู้ตรวจสอบ HR</label>${inp('form.hrName')}</div><div><label>วันที่</label>${inp('form.hrDate','','date')}</div></div>`)
-     +sec('ส่วนที่ 9 การพิจารณาอนุมัติ (Approval)',T(['ผู้พิจารณา','ความเห็น / ผลการพิจารณา','ลายเซ็น','วันที่'],apr));
-  }else if(PF.tab==='comp'){
-    const sc=PF_COMP.map((_,i)=>{const v=pfGet(d,`comp.s.${i}`);return v===''||v==null?null:+v}),got=sc.filter(x=>x!=null),sum=got.reduce((a,b)=>a+b,0),avg=got.length?sum/got.length:null;
-    const c=db.comp[e.id],ref=c?`<div class="hint" style="margin-bottom:10px">ผลประเมิน Competency ปี ${db.compYear} จากระบบ: ${compCell(c.core)} Core · ${compCell(c.managerial)} Managerial</div>`:'';
-    body=sec('แบบประเมินความรู้ ความสามารถ และศักยภาพ (Competency & Potential)',`${ref}<div class="hint" style="margin-bottom:8px">เกณฑ์คะแนน: 1 = ต้องปรับปรุง · 2 = พอใช้ · 3 = ตามมาตรฐาน · 4 = ดี · 5 = ดีเยี่ยม</div>
-      <div class="scroll" style="max-height:none"><table><thead><tr><th style="cursor:default">ลำดับ</th><th style="cursor:default">หัวข้อประเมิน</th><th style="cursor:default">คะแนน (1–5)</th><th style="cursor:default">ระดับผลประเมิน</th><th style="cursor:default">หลักฐาน / ตัวอย่างพฤติกรรม</th></tr></thead><tbody>
-      ${PF_COMP.map((t,i)=>`<tr><td>${i+1}</td><td>${esc(t)}</td><td><select data-pf="comp.s.${i}" data-num="1" ${ro_} style="min-width:80px"><option value=""></option>${[1,2,3,4,5].map(k=>`<option ${V(`comp.s.${i}`,'')==k?'selected':''}>${k}</option>`).join('')}</select></td><td id="pfLv${i}">${esc(PF_LVL(sc[i]))}</td><td>${inp(`comp.e.${i}`)}</td></tr>`).join('')}
-      </tbody></table></div>
-      <div class="grid g4" style="margin-top:12px"><div class="kpi"><span>คะแนนรวม</span><b id="pfSum">${sum}</b></div><div class="kpi"><span>คะแนนเฉลี่ย</span><b id="pfAvg">${avg==null?'-':fmt1(avg)}</b></div><div class="kpi"><span>ระดับภาพรวม</span><b id="pfOv" style="font-size:20px">${esc(PF_LVL(avg))||'-'}</b></div></div>
-      <div class="hint" style="margin-top:8px">คะแนนเฉลี่ยเป็นข้อมูลประกอบการพิจารณา ไม่ใช่เกณฑ์อนุมัติอัตโนมัติ</div>`);
+  if(step==='1'){
+    body=card('ข้อมูลพนักงาน (ดึงจากระบบอัตโนมัติ)',`<div class="grid g2" style="gap:8px">${[['ชื่อ-สกุล',e.name],['รหัส',e.id||n.empId],['ตำแหน่งปัจจุบัน',`${e.pos||''} · Level ${e.level??n.fromLevel}`],['ตำแหน่งที่เสนอ',`${n.toPos} · Level ${n.toLevel}`],['สังกัด',[e.group,e.dept,e.section].filter(Boolean).join(' › ')],['อายุงาน',ymd(e.start)]].map(([l,v])=>`<div style="background:#f3f4fb;border-radius:12px;padding:8px 12px"><div class="hint" style="font-size:11.5px">${l}</div><b style="font-size:13.5px">${esc(v)}</b></div>`).join('')}</div>`)
+     +card('รายละเอียดการเสนอ',`<div class="grid g2">${fld('ผู้บังคับบัญชาโดยตรง',inp('form.supervisor','ชื่อ-สกุล'))}${fld('วันที่เสนอให้มีผล',inp('form.effDate','','date'))}${fld('หน่วยงานที่สังกัดตำแหน่งใหม่',inp('form.unit','',null,e.dept||''))}</div>
+       <div style="margin-top:12px"><label>ประเภทการเสนอ</label><div class="seg">${PF_TYPE.map(([k,l])=>tog('form.type.'+k,l)).join('')}</div></div>
+       <div style="margin-top:12px"><label>เหตุผลและความจำเป็น <span class="hint">— เขียนให้เห็นผลงาน ผลกระทบ และเหตุที่ต้องเลื่อนตอนนี้</span></label>${area('form.reason',5,n.why||'','เช่น รับผิดชอบโครงการ… ผลงาน… ตำแหน่งใหม่จำเป็นต่อ…')}</div>`)
+  }else if(step==='2'){
+    const a=arr('ach');const rows=a.length?a:[{}];
+    body=rows.map((r,i)=>card(`ผลงานที่ ${i+1} ${ro?'':`<button type="button" class="btn sm bad" data-rm="ach|${i}" style="float:right">ลบ</button>`}`,`<div class="grid g2">${fld('ผลงาน / โครงการ',inp(`form.ach.${i}.proj`,'ชื่อผลงานหรือโครงการ'))}${fld('บทบาทและความรับผิดชอบ',inp(`form.ach.${i}.role`,'เช่น หัวหน้าโครงการ'))}${fld('ผลสำเร็จ / ผลลัพธ์ที่วัดได้',inp(`form.ach.${i}.result`,'ตัวเลข / ผลลัพธ์ที่วัดได้'))}${fld('หลักฐานประกอบ',inp(`form.ach.${i}.evid`,'เอกสาร / รายงานอ้างอิง'))}</div>`)).join('')
+      +(ro||rows.length>=5?'':`<button type="button" class="btn" data-add="ach|5">＋ เพิ่มผลงาน (${rows.length}/5)</button>`)+'<div class="hint" style="margin-top:8px">แนะนำผลงานย้อนหลัง 1–3 ปี พร้อมผลลัพธ์ที่วัดได้และหลักฐานอ้างอิง</div>';
+  }else if(step==='3'){
+    const sc=PF_COMP.map((_,i)=>{const v=pfGet(d,`comp.s.${i}`);return v===''||v==null?null:+v}),got=sc.filter(v=>v!=null),avg=got.length?got.reduce((a,b)=>a+b,0)/got.length:null;
+    const ev=arr('eval');const evRows=ev.length?ev:[];
+    const c=db.comp[e.id];
+    body=card('ผลประเมินการปฏิบัติงานย้อนหลัง',(ro?'':`<button type="button" class="btn sm" id="pfFillEval" style="margin-bottom:8px">⤓ ดึงเกรดและ Competency จากระบบ</button>`)+(evRows.length?evRows.map((r,i)=>`<div class="grid g4" style="gap:8px;margin-bottom:8px;align-items:end">${fld('ปี',inp(`form.eval.${i}.year`))}${fld('KPI / เกรด',inp(`form.eval.${i}.kpi`))}${fld('Competency',inp(`form.eval.${i}.comp`))}${fld('หมายเหตุ',inp(`form.eval.${i}.note`))}</div>`).join(''):'<div class="hint">ยังไม่มีข้อมูล — กด "ดึงจากระบบ" เพื่อใส่เกรดย้อนหลังและผล Competency อัตโนมัติ</div>'))
+     +card('ประเมิน Competency & Potential (ให้คะแนน 1–5)',`${c?`<div class="hint" style="margin-bottom:8px">ผลจากระบบ ปี ${db.compYear}: ${compCell(c.core)} Core · ${compCell(c.managerial)} Managerial</div>`:''}
+       <div class="hint" style="margin-bottom:8px">1 = ต้องปรับปรุง · 2 = พอใช้ · 3 = ตามมาตรฐาน · 4 = ดี · 5 = ดีเยี่ยม</div>
+       ${PF_COMP.map((t,i)=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><b style="font-size:13.5px">${i+1}. ${esc(t)}</b><span class="hint" id="pfLv${i}">${esc(PF_LVL(sc[i]))}</span></div>${seg(`comp.s.${i}`,[1,2,3,4,5].map(k=>[k,k]),'seg-n')}<input data-pf="comp.e.${i}" value="${esc(V(`comp.e.${i}`))}" placeholder="หลักฐาน / ตัวอย่างพฤติกรรม (ไม่บังคับ)" style="margin-top:6px;min-height:36px;font-size:13px" ${ro_}></div>`).join('')}
+       <div class="grid g4" style="margin-top:12px"><div class="kpi"><span>ให้คะแนนแล้ว</span><b id="pfCnt">${got.length}/10</b></div><div class="kpi"><span>คะแนนรวม</span><b id="pfSum">${got.reduce((a,b)=>a+b,0)}</b></div><div class="kpi"><span>คะแนนเฉลี่ย</span><b id="pfAvg">${avg==null?'-':fmt1(avg)}</b></div><div class="kpi"><span>ระดับภาพรวม</span><b id="pfOv" style="font-size:20px">${esc(PF_LVL(avg))||'-'}</b></div></div>`);
+  }else if(step==='4'){
+    const tr=arr('train'),rows=tr.length?tr:[{}];
+    body=card('ประวัติการพัฒนาและฝึกอบรม',rows.map((r,i)=>`<div class="pf-card" style="background:#f8f9ff"><div style="font-weight:600;margin-bottom:6px">รายการที่ ${i+1} ${ro?'':`<button type="button" class="btn sm bad" data-rm="train|${i}" style="float:right">ลบ</button>`}</div><div class="grid g2">${fld('หลักสูตร / การอบรม',inp(`form.train.${i}.course`))}${fld('หน่วยงานผู้จัด',inp(`form.train.${i}.org`))}${fld('วันที่ / ปี',inp(`form.train.${i}.date`))}${fld('ผลการพัฒนา',inp(`form.train.${i}.result`))}</div></div>`).join('')+(ro||rows.length>=4?'':`<button type="button" class="btn" data-add="train|4">＋ เพิ่มการอบรม (${rows.length}/4)</button>`))
+     +card('ความพร้อมสำหรับตำแหน่งใหม่ — เปรียบเทียบตำแหน่งเดิม/ใหม่',['หน้าที่และความรับผิดชอบ','ขอบเขตอำนาจตัดสินใจ','ความซับซ้อนของงาน','การบริหารบุคลากร','การบริหารงบประมาณ / ทรัพยากร','การประสานงานภายใน / ภายนอก'].map((t,i)=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><b style="font-size:13.5px">${t}</b><div class="grid g2" style="margin-top:6px;gap:8px">${inp(`form.ready.${i}.cur`,'ตำแหน่งปัจจุบัน')}${inp(`form.ready.${i}.new`,'ตำแหน่งใหม่')}</div>${inp(`form.ready.${i}.det`,'รายละเอียด / ความแตกต่าง')}</div>`).join('')
+       +`<div style="margin-top:12px"><label>สรุปความพร้อม</label>${seg('form.readyOpt',PF_READY,'seg-c')}</div><div style="margin-top:10px"><label>รายละเอียดความพร้อมและประเด็นที่ต้องพัฒนา</label>${area('form.readyDet',3)}</div>`);
+  }else if(step==='5'&&MG){
+    body=card('ส่วนที่ 7 ความเห็นและการรับรองจากผู้บังคับบัญชา (Manager Recommendation)',`<div class="hint" style="margin-bottom:8px">คุณเป็นผู้อนุมัติขั้นที่ 1 — กรอกเฉพาะส่วนนี้ จากนั้นกด Gen Portfolio (PDF) และส่งอนุมัติขั้นถัดไป ข้อมูลส่วนอื่นผู้เสนอชื่อเป็นผู้กรอก</div><label>เหตุผลที่เห็นว่าพนักงานมีความเหมาะสมสำหรับตำแหน่งใหม่</label>${area('form.mgrReason',4)}<div style="margin-top:10px"><label>ข้อเสนอแนะ</label>${seg('form.mgrOpt',PF_MGR,'seg-c')}</div><div class="grid g2" style="margin-top:10px">${fld('ลงชื่อผู้บังคับบัญชา',inp('form.mgrName'))}${fld('วันที่',inp('form.mgrDate','','date'))}</div>`);
+  }else if(step==='5'){
+    body=card('ความเห็นผู้บังคับบัญชา',`<label>เหตุผลที่เห็นว่าเหมาะสมกับตำแหน่งใหม่</label>${area('form.mgrReason',3)}<div style="margin-top:10px"><label>ข้อเสนอแนะ</label>${seg('form.mgrOpt',PF_MGR,'seg-c')}</div><div class="grid g2" style="margin-top:10px">${fld('ลงชื่อผู้บังคับบัญชา',inp('form.mgrName'))}${fld('วันที่',inp('form.mgrDate','','date'))}</div>`)
+     +card('ความเห็นฝ่ายทรัพยากรบุคคล (HR Review)',`<label>ตรวจสอบแล้ว</label><div class="seg">${PF_HR.map(([k,l])=>tog('form.hrChk.'+k,l)).join('')}</div><div style="margin-top:10px"><label>ความเห็นของ HR</label>${area('form.hrOpinion',3)}</div><div class="grid g2" style="margin-top:10px">${fld('ลงชื่อผู้ตรวจสอบ HR',inp('form.hrName'))}${fld('วันที่',inp('form.hrDate','','date'))}</div>`)
+     +card('การพิจารณาอนุมัติ',PF_APPR.map((t,i)=>`<div style="padding:10px 0;border-top:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><b style="font-size:13.5px">${t}</b>${seg(`form.appr.${i}.opt`,[['approve','อนุมัติ'],['reject','ไม่อนุมัติ']])}</div><div class="grid g2" style="margin-top:6px;gap:8px">${inp(`form.appr.${i}.sign`,'ชื่อผู้ลงนาม')}${inp(`form.appr.${i}.date`,'','date')}</div></div>`).join(''),'บันทึกผลการพิจารณาในเอกสาร (การอนุมัติจริงใช้ Flow อนุมัติของระบบ)');
   }else{
-    body=sec(`Checklist เอกสารหลักฐานประกอบ Promotion Portfolio <span class="tag ${done===PF_DOCS.length?'ok':'warn'}" style="margin-left:6px">${done}/${PF_DOCS.length} ครบ</span>`,
-      `<div class="hint" style="margin-bottom:8px">เลือกสถานะ ใส่หมายเหตุ และแนบไฟล์หลักฐานของแต่ละรายการ (ไฟล์ละไม่เกิน 10 MB) — เก็บแบบส่วนตัว เห็นได้เฉพาะผู้มีสิทธิ์</div>
-      ${PF_DOCS.map((t,i)=>{const dd=(d.docs||[])[i]||{},fs=dd.files||[];return `<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-bottom:10px;padding:12px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>${i+1}. ${esc(t)}</b>
-        <select data-pf="docs.${i}.status" ${ro_} style="max-width:170px;min-height:34px;padding:4px 10px">${PF_DOC_ST.map(s=>`<option ${(dd.status||'รอตรวจสอบ')===s?'selected':''}>${s}</option>`).join('')}</select></div>
-        <div class="row" style="margin-top:8px"><div style="flex:2"><label>หมายเหตุ / ชื่อไฟล์</label>${inp(`docs.${i}.note`)}</div></div>
-        <div style="margin-top:6px">${fs.map((f,j)=>`<div style="display:flex;gap:8px;align-items:center;margin:3px 0;font-size:13px">📎 <a href="#" data-dl="${i}|${j}" style="color:var(--pri)">${esc(f.name)}</a> <span class="hint">${f.size?Math.round(f.size/1024)+' KB':''}</span>${ro?'':` <a href="#" data-rmf="${i}|${j}" style="color:var(--bad);text-decoration:none">✕</a>`}</div>`).join('')}
-        ${ro?'':`<label class="btn sm" style="display:inline-block;cursor:pointer;margin-top:4px">＋ แนบไฟล์<input type="file" data-up="${i}" multiple style="display:none"></label>`}</div></div>`}).join('')}`);
+    const done=pfDocDone(d);
+    body=card(`เอกสารหลักฐานประกอบ · ครบ ${done}/${PF_DOCS.length}`,PF_DOCS.map((t,i)=>{const dd=(d.docs||[])[i]||{},fs=dd.files||[],st=dd.status||'รอตรวจสอบ';
+      return `<div class="pf-card" style="background:#fbfbff"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between"><b style="font-size:13.5px">${i+1}. ${esc(t)}</b><div class="seg">${PF_DOC_ST.map(s=>`<button type="button" class="seg-b ${st===s?'on':''}" data-seg="docs.${i}.status" data-val="${s}" ${ro_} style="padding:5px 10px;font-size:12.5px">${s}</button>`).join('')}</div></div>
+        <div style="margin-top:8px">${inp(`docs.${i}.note`,'หมายเหตุ / ชื่อเอกสาร')}</div>
+        <div style="margin-top:6px">${fs.map((f,j)=>`<span class="tag" style="margin:2px 4px 2px 0;padding:4px 10px">📎 <a href="#" data-dl="${i}|${j}" style="color:var(--pri);text-decoration:none">${esc(cTrunc(f.name,34))}</a> <span class="hint">${f.size?Math.round(f.size/1024)+' KB':''}</span>${ro?'':` <a href="#" data-rmf="${i}|${j}" style="color:var(--bad);text-decoration:none">✕</a>`}</span>`).join('')}</div>
+        ${ro?'':`<label class="drop" data-drop="${i}" style="display:block;margin-top:8px;padding:10px;cursor:pointer;font-size:13px">⬆ ลากไฟล์มาวาง หรือ <b style="color:var(--pri)">เลือกไฟล์</b> (ไม่เกิน 10 MB)<input type="file" data-up="${i}" multiple style="display:none"></label>`}</div>`}).join(''));
   }
-  el.innerHTML=`<div class="card" style="padding:14px 18px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><div><button class="btn sm" id="pfBack">‹ กลับรายการเสนอชื่อ</button></div>
-    <div style="flex:1;min-width:240px"><b style="font-size:17px">📁 Promotion Portfolio — ${esc(e.name)}</b><div class="hint">${esc(n.empId)} · ${esc(n.fromPos)} (L${n.fromLevel}) → ${esc(n.toPos)} (L${n.toLevel}) · <span class="tag ${STCLS[n.status]||''}">${esc(n.status)}</span></div></div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="hint" id="pfState" style="min-width:110px;text-align:right">${esc(PF.state)}</span>${ro?'<span class="tag warn">ดูอย่างเดียว</span>':''}<button class="btn pri" id="pfX">⬇ ส่งออกแบบฟอร์ม (Excel)</button></div></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">${tabs.map(([k,l])=>`<button class="btn ${PF.tab===k?'pri':''}" data-pft="${k}">${l}</button>`).join('')}</div></div>${body}`;
-  $('#pfBack').onclick=async()=>{clearTimeout(PF.timer);if(CAN.nom&&PF.state==='กำลังบันทึก…')await pfSave();show('noms')};
-  $$('#v-pf [data-pft]').forEach(b=>b.onclick=async()=>{clearTimeout(PF.timer);if(CAN.nom&&PF.state==='กำลังบันทึก…')await pfSave();PF.tab=b.dataset.pft;rPf()});
-  $$('#v-pf [data-pf]').forEach(i=>{const path=i.dataset.pf,fire=()=>{let v;if(i.dataset.bool)v=i.checked;else if(i.dataset.val!=null){if(!i.checked)return;v=i.dataset.val}else if(i.dataset.num)v=i.value===''?'':+i.value;else v=i.value;pfSet(PF.data,path,v);
-      if(PF.tab==='comp'){const sc=PF_COMP.map((_,k)=>{const q=pfGet(PF.data,`comp.s.${k}`);return q===''||q==null?null:+q}),g=sc.filter(z=>z!=null),sum=g.reduce((a,b)=>a+b,0),av=g.length?sum/g.length:null;PF_COMP.forEach((_,k)=>{const c=$('#pfLv'+k);if(c)c.textContent=PF_LVL(sc[k])});$('#pfSum').textContent=sum;$('#pfAvg').textContent=av==null?'-':fmt1(av);$('#pfOv').textContent=PF_LVL(av)||'-'}
-      if(PF.tab==='docs'&&/\.status$/.test(path)){pfSchedule();return setTimeout(rPf,0)}
-      pfSchedule()};
-    i.addEventListener(i.tagName==='SELECT'||i.type==='checkbox'||i.type==='radio'||i.type==='date'?'change':'input',fire)});
-  if($('#pfFillEval'))$('#pfFillEval').onclick=()=>{pfSet(PF.data,'form.eval',pfEvalDefaults(e).map(r=>({year:r.year,kpi:r.kpi,comp:r.comp,note:r.note})));pfSchedule();rPf()};
-  $$('#v-pf [data-up]').forEach(f=>f.onchange=async()=>{const i=+f.dataset.up;if(!f.files.length)return;const st=$('#pfState');st.textContent='กำลังอัปโหลด…';
+  const idx=+step,prev=idx>1?String(idx-1):'',next=idx<6?String(idx+1):'';
+  el.innerHTML=`<div class="card" style="padding:14px 18px;position:sticky;top:0;z-index:5"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn sm" id="pfBack">‹ กลับ</button><div><b style="font-size:16px">📁 Portfolio — ${esc(e.name)}</b><div class="hint">${esc(n.fromPos)} (L${n.fromLevel}) → ${esc(n.toPos)} (L${n.toLevel}) · <span class="tag ${STCLS[n.status]||''}">${esc(n.status)}</span>${n.special?' <span class="tag warn">กรณีพิเศษ</span>':''}</div></div></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="hint" id="pfState" style="min-width:100px;text-align:right">${esc(PF.state)}</span>${ro?'<span class="tag warn">ดูอย่างเดียว</span>':''}<button class="btn" id="pfX" title="ส่งออกตามแบบฟอร์ม Excel">⬇ Excel</button><button class="btn pri" id="pfPdf">🖨 Gen Portfolio (PDF)</button></div></div>
+      <div style="display:flex;gap:12px;align-items:center;margin-top:10px"><div class="pf-bar" style="flex:1"><i id="pfBarI" style="width:${P.pct}%"></i></div><b id="pfPct" style="min-width:44px;text-align:right">${P.pct}%</b></div>
+      <div class="hint" id="pfTodo" style="margin-top:6px">${MG?'ความครบถ้วนของแฟ้มโดยผู้เสนอชื่อ (ผู้อนุมัติขั้นที่ 1 กรอกเฉพาะส่วนที่ 7)':P.todo.length?'ยังขาด: '+P.todo.map(([s,t])=>`<a href="#" data-goto="${s}" style="color:var(--pri)">${esc(t)}</a>`).join(' · '):'<span style="color:var(--ok)">✓ ข้อมูลครบแล้ว — กด Gen Portfolio (PDF) ได้เลย</span>'}</div></div>
+    <div class="pf-wrap" ${MG?'style="display:block"':''}>${MG?'':`<nav class="pf-nav" id="pfNav">${tlHtml(P,step,d)}</nav>`}
+    <div id="pfBody">${body}${MG?`<div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn" id="pfPdf2">🖨 Gen Portfolio (PDF)</button><button class="btn pri" id="pfSend">✅ ${activeSteps().length>1&&(activeSteps().slice(-1)[0]||{}).step_no!==n.step?'ส่งอนุมัติขั้นถัดไป':'อนุมัติ'}</button></div>`:`<div style="display:flex;justify-content:space-between;gap:8px;margin-top:6px">${prev?`<button class="btn" data-step="${prev}">‹ ก่อนหน้า</button>`:'<span></span>'}${next?`<button class="btn pri" data-step="${next}">ถัดไป ›</button>`:`<button class="btn pri" id="pfPdf2">🖨 Gen Portfolio (PDF)</button>`}</div>`}</div></div>`;
+  const flush=async()=>{clearTimeout(PF.timer);if(pfCanSave()&&PF.state==='กำลังบันทึก…')await pfSave()};
+  const go=async s=>{await flush();PF.step=s;rPf();window.scrollTo({top:0,behavior:'smooth'})};
+  $('#pfBack').onclick=async()=>{await flush();show('noms')};
+  $$('#v-pf [data-step]').forEach(b=>b.onclick=()=>go(b.dataset.step));$$('#v-pf [data-goto]').forEach(a=>a.onclick=ev=>{ev.preventDefault();go(a.dataset.goto)});
+  /* อัปเดตแถบความคืบหน้า/สถานะขั้นแบบไม่ต้องวาดใหม่ทั้งหน้า */
+  const upd=()=>{if(MG)return;const Q=pfProgress(PF.data,n,e);$('#pfBarI').style.width=Q.pct+'%';$('#pfPct').textContent=Q.pct+'%';
+    $('#pfTodo').innerHTML=Q.todo.length?'ยังขาด: '+Q.todo.map(([s,t])=>`<a href="#" data-goto="${s}" style="color:var(--pri)">${esc(t)}</a>`).join(' · '):'<span style="color:var(--ok)">✓ ข้อมูลครบแล้ว — กด Gen Portfolio (PDF) ได้เลย</span>';
+    $$('#v-pf #pfTodo [data-goto]').forEach(a=>a.onclick=ev=>{ev.preventDefault();go(a.dataset.goto)});
+    $('#pfNav').innerHTML=tlHtml(Q,PF.step,PF.data);$$('#pfNav [data-step]').forEach(b=>b.onclick=()=>go(b.dataset.step))};
+  $$('#v-pf [data-pf]').forEach(i=>{const path=i.dataset.pf,fire=()=>{pfSet(PF.data,path,i.value);pfTouch(pfStepOf(path));if(PF.step==='3'&&/^comp\./.test(path))compLive();pfSchedule();upd()};i.addEventListener(i.type==='date'?'change':'input',fire)});
+  const compLive=()=>{const sc=PF_COMP.map((_,k)=>{const q=pfGet(PF.data,`comp.s.${k}`);return q===''||q==null?null:+q}),g=sc.filter(z=>z!=null),sum=g.reduce((a,b)=>a+b,0),av=g.length?sum/g.length:null;PF_COMP.forEach((_,k)=>{const c=$('#pfLv'+k);if(c)c.textContent=PF_LVL(sc[k])});$('#pfCnt').textContent=g.length+'/10';$('#pfSum').textContent=sum;$('#pfAvg').textContent=av==null?'-':fmt1(av);$('#pfOv').textContent=PF_LVL(av)||'-'};
+  $$('#v-pf [data-seg]').forEach(b=>b.onclick=()=>{const path=b.dataset.seg,raw=b.dataset.val,v=/^\d+$/.test(raw)&&/^comp\./.test(path)?+raw:raw;pfSet(PF.data,path,v);pfTouch(pfStepOf(path));pfSchedule();const y=window.scrollY;rPf();window.scrollTo(0,y)});
+  $$('#v-pf [data-tg]').forEach(b=>b.onclick=()=>{const path=b.dataset.tg;pfSet(PF.data,path,!pfGet(PF.data,path));pfTouch(pfStepOf(path));pfSchedule();const y=window.scrollY;rPf();window.scrollTo(0,y)});
+  $$('#v-pf [data-add]').forEach(b=>b.onclick=()=>{const [k,cap]=b.dataset.add.split('|'),a=(pfGet(PF.data,'form.'+k)||[]).slice();if(!a.length)a.push({});if(a.length<+cap)a.push({});pfSet(PF.data,'form.'+k,a);pfTouch(pfStepOf('form.'+k));pfSchedule();rPf()});
+  $$('#v-pf [data-rm]').forEach(b=>b.onclick=()=>{const [k,i]=b.dataset.rm.split('|'),a=(pfGet(PF.data,'form.'+k)||[]).slice();a.splice(+i,1);pfSet(PF.data,'form.'+k,a);pfTouch(pfStepOf('form.'+k));pfSchedule();rPf()});
+  if($('#pfFillEval'))$('#pfFillEval').onclick=()=>{pfSet(PF.data,'form.eval',pfEvalDefaults(e).map(r=>({year:r.year,kpi:r.kpi,comp:r.comp,note:r.note})));pfTouch('3');pfSchedule();rPf()};
+  const upload=async(i,files)=>{if(!files.length)return;const st=$('#pfState');st.textContent='กำลังอัปโหลด…';
     try{PF.data.docs=PF.data.docs||[];const dd=PF.data.docs[i]=PF.data.docs[i]||{};dd.files=dd.files||[];
-      for(const file of f.files){if(file.size>10*1024*1024){alert(file.name+' ใหญ่เกิน 10 MB');continue}
+      for(const file of files){if(file.size>10*1024*1024){alert(file.name+' ใหญ่เกิน 10 MB');continue}
         const ext=(file.name.match(/\.[A-Za-z0-9]{1,8}$/)||[''])[0],path=`${PF.nomId}/${i+1}/${Date.now()}_${Math.random().toString(36).slice(2,8)}${ext}`;
         const up=await sb.storage.from('promo-docs').upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false});if(up.error)throw up.error;
         dd.files.push({name:file.name,path,size:file.size,at:new Date().toISOString()})}
-      if(!dd.status||dd.status==='รอตรวจสอบ')dd.status='รอตรวจสอบ';await pfSave();rPf()}
-    catch(er){st.textContent='';alert('อัปโหลดไม่สำเร็จ: '+errTxt(er)+(/bucket|not found/i.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub63.sql)':''))}});
+      if(!dd.status)dd.status='รอตรวจสอบ';pfTouch('6');await pfSave();rPf()}
+    catch(er){st.textContent='';alert('อัปโหลดไม่สำเร็จ: '+errTxt(er)+(/bucket|not found/i.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub63.sql)':''))}};
+  $$('#v-pf [data-up]').forEach(f=>f.onchange=()=>upload(+f.dataset.up,[...f.files]));
+  $$('#v-pf [data-drop]').forEach(z=>{z.ondragover=ev=>{ev.preventDefault();z.style.borderColor='var(--pri)'};z.ondragleave=()=>{z.style.borderColor=''};z.ondrop=ev=>{ev.preventDefault();z.style.borderColor='';upload(+z.dataset.drop,[...ev.dataTransfer.files])}});
   $$('#v-pf [data-dl]').forEach(a=>a.onclick=async ev=>{ev.preventDefault();const [i,j]=a.dataset.dl.split('|').map(Number),f=PF.data.docs[i].files[j];const s=await sb.storage.from('promo-docs').createSignedUrl(f.path,300);if(s.error)return alert('เปิดไฟล์ไม่สำเร็จ: '+errTxt(s.error));window.open(s.data.signedUrl,'_blank','noopener')});
   $$('#v-pf [data-rmf]').forEach(a=>a.onclick=async ev=>{ev.preventDefault();const [i,j]=a.dataset.rmf.split('|').map(Number),f=PF.data.docs[i].files[j];if(!confirm('ลบไฟล์ '+f.name+' ?'))return;
-    const r=await sb.storage.from('promo-docs').remove([f.path]);if(r.error)return alert('ลบไม่สำเร็จ: '+errTxt(r.error));PF.data.docs[i].files.splice(j,1);await pfSave();rPf()});
+    const r=await sb.storage.from('promo-docs').remove([f.path]);if(r.error)return alert('ลบไม่สำเร็จ: '+errTxt(r.error));PF.data.docs[i].files.splice(j,1);pfTouch('6');await pfSave();rPf()});
   $('#pfX').onclick=()=>pfExport(n,e).catch(er=>alert('ส่งออกไม่สำเร็จ: '+errTxt(er)));
+  const pdf=async b=>{const c=pfCompleteness(PF.data,n,e);if(!c.done&&!confirm('ข้อมูลยังไม่ครบ:\n- '+c.miss.join('\n- ')+'\n\nสร้างฉบับร่าง (มีตราฉบับร่าง) หรือไม่?'))return;
+    const t=b.textContent;b.disabled=true;b.textContent='กำลังสร้าง PDF…';try{await pfGenPdf(n,e,PF.data)}catch(er){alert('สร้าง PDF ไม่สำเร็จ: '+errTxt(er))}b.textContent=t;b.disabled=false};
+  if($('#pfSend'))$('#pfSend').onclick=async()=>{
+    if(!pfGet(PF.data,'form.mgrOpt'))return alert('กรุณาเลือก "ข้อเสนอแนะ" ก่อนส่งอนุมัติ');
+    if(!(pfGet(PF.data,'form.mgrReason')||'').trim()&&!confirm('ยังไม่ได้กรอกเหตุผล ต้องการส่งต่อเลยหรือไม่?'))return;
+    if(!confirm('บันทึกความเห็นและส่งอนุมัติขั้นถัดไป? (ส่งแล้วแก้ไขความเห็นไม่ได้)'))return;
+    const b=$('#pfSend');b.disabled=true;
+    try{await flush();await pfSave();if(PF.state.startsWith('บันทึกไม่สำเร็จ'))throw new Error(PF.state);await nomRpc(n.id,'approve','');alert('ส่งอนุมัติขั้นถัดไปแล้ว');show('noms')}
+    catch(er){b.disabled=false;alert('ทำรายการไม่สำเร็จ: '+errTxt(er))}};
+  $('#pfPdf').onclick=()=>pdf($('#pfPdf'));if($('#pfPdf2'))$('#pfPdf2').onclick=()=>pdf($('#pfPdf2'));
 }
 async function pfExport(n,e){
   if(!(await loadExcelJS()))throw new Error('โหลดไลบรารี Excel ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');
@@ -852,6 +939,59 @@ async function pfExport(n,e){
   const c=wb.worksheets[1];for(let i=0;i<10;i++){const v=pfGet(d,`comp.s.${i}`);if(v!==''&&v!=null)c.getCell('C'+(5+i)).value=+v;const lv=PF_LVL(v===''||v==null?null:+v);if(lv)c.getCell('D'+(5+i)).value=lv;const ev=pfGet(d,`comp.e.${i}`);if(ev)c.getCell('E'+(5+i)).value=ev}
   const k=wb.worksheets[2];for(let i=0;i<10;i++){const dd=(d.docs||[])[i]||{};k.getCell('C'+(5+i)).value=dd.status||'รอตรวจสอบ';const fn=(dd.files||[]).map(x=>x.name).join(', ');const txt=[dd.note,fn].filter(Boolean).join(' · ');if(txt)k.getCell('D'+(5+i)).value=txt}
   const out=await wb.xlsx.writeBuffer(),a=document.createElement('a');a.href=URL.createObjectURL(new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));a.download=`Promotion_Portfolio_${n.empId}_${new Date().toISOString().slice(0,10)}.xlsx`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
+}
+/* ============ ความครบถ้วนของแฟ้ม + Gen Portfolio (PDF) ============ */
+const loadHtml2Pdf=()=>window.html2pdf?Promise.resolve(true):new Promise(res=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';s.onload=()=>res(!!window.html2pdf);s.onerror=()=>res(false);document.head.appendChild(s)});
+function pfCompleteness(d,n,e){
+  const g=p=>{const v=pfGet(d,p);return v==null?'':v},miss=[];
+  const basic=!!(g('form.effDate')&&(g('form.reason')||n.why)&&g('form.supervisor'));if(!basic)miss.push('ข้อมูลข้อเสนอ: ผู้บังคับบัญชาโดยตรง / วันที่เสนอให้มีผล / เหตุผล');
+  const ach=[0,1,2,3,4].filter(i=>g(`form.ach.${i}.proj`)).length;if(!ach)miss.push('ผลงานและความสำเร็จ อย่างน้อย 1 รายการ');
+  const sc=PF_COMP.filter((_,i)=>{const v=pfGet(d,`comp.s.${i}`);return v!==''&&v!=null}).length;if(sc<PF_COMP.length)miss.push(`ประเมิน Competency (ให้คะแนน ${sc}/${PF_COMP.length} ข้อ)`);
+  const rd=!!g('form.readyOpt');if(!rd)miss.push('ความพร้อมสำหรับตำแหน่งใหม่ (เลือกผล)');
+  const dn=pfDocDone(d);if(dn<PF_DOCS.length)miss.push(`Checklist เอกสารหลักฐาน (ครบ/ไม่เกี่ยวข้อง ${dn}/${PF_DOCS.length} รายการ)`);
+  return{items:[['ข้อมูลข้อเสนอ',basic],['ผลงาน',ach>0],['Competency',sc===PF_COMP.length],['ความพร้อม',rd],['Checklist หลักฐาน',dn===PF_DOCS.length]],miss,done:!miss.length,docs:dn,scores:sc}}
+const pfReadyHtml=c=>`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${c.items.map(([t,ok])=>`<span class="tag ${ok?'ok':'warn'}">${ok?'✓':'○'} ${t}</span>`).join('')}</div>${c.done?'<div class="hint" style="margin-top:6px;color:var(--ok)">ข้อมูลครบแล้ว — สร้าง Portfolio (PDF) ได้</div>':`<div class="hint" style="margin-top:6px">ยังไม่ครบ: ${esc(c.miss.join(' · '))}</div>`}`;
+function pfHtml(n,e,d,draft){
+  const g=(p,def)=>{const v=pfGet(d,p);return v==null||v===''?(def==null?'':def):v},td=(v)=>`<td>${esc(v)}</td>`,dt=v=>v?thDate(v):'';
+  const box=(opts,sel)=>opts.map(([k,l])=>(sel===k?'☑ ':'☐ ')+l).join('&nbsp;&nbsp;&nbsp;');
+  const sec=(t,b)=>`<div class="sec"><h3>${t}</h3>${b}</div>`;
+  const kv=rows=>`<table class="pkv"><colgroup><col style="width:17%"><col style="width:33%"><col style="width:17%"><col style="width:33%"></colgroup>${rows.map(r=>`<tr>${r.map(([l,v])=>`<th>${l}</th><td>${esc(v)}</td>`).join('')}</tr>`).join('')}</table>`;
+  const tbl=(h,rows)=>`<table class="pgr"><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
+  const sysC=db.comp[e.id],cs=sysC?[sysC.core?`Core ${fmt1(sysC.core.score)} (${sysC.core.grade})`:'',sysC.managerial?`Managerial ${fmt1(sysC.managerial.score)} (${sysC.managerial.grade})`:''].filter(Boolean).join(' / '):'';
+  const sc=PF_COMP.map((_,i)=>{const v=pfGet(d,`comp.s.${i}`);return v===''||v==null?null:+v}),got=sc.filter(v=>v!=null),sum=got.reduce((a,b)=>a+b,0),avg=got.length?sum/got.length:null;
+  const evr=[0,1,2,3].map(i=>[g(`form.eval.${i}.year`),g(`form.eval.${i}.kpi`),g(`form.eval.${i}.comp`),g(`form.eval.${i}.note`)]).filter(r=>r.some(Boolean));
+  const evRows=(evr.length?evr:pfEvalDefaults(e).map(r=>[r.year,r.kpi,r.comp,r.note])).map(r=>`<tr>${r.map(td).join('')}</tr>`);
+  const comp=pfCompleteness(d,n,e);
+  return `<div class="pdf">
+  <style>
+   .pdf{font-family:"Noto Sans Thai","Sarabun","Tahoma","Leelawadee UI",sans-serif;font-size:12px;color:#1f2340;line-height:1.45;width:746px}
+   .pdf h1{margin:0;font-size:18px;text-align:center}.pdf h2{margin:2px 0;font-size:13px;text-align:center;font-weight:400}.pdf h3{margin:0 0 6px;font-size:13px;background:#e9ecff;padding:5px 8px;border-left:4px solid #4f6df5}
+   .pdf .sec{margin:0 0 10px;page-break-inside:avoid}.pdf table{width:100%;border-collapse:collapse}.pdf th,.pdf td{border:1px solid #9aa0c0;padding:4px 6px;vertical-align:top;text-align:left;word-break:break-word}
+   .pdf th{white-space:normal;position:static;cursor:default;background:#fff}.pdf table{table-layout:fixed;width:100%!important}.pdf table.auto{table-layout:auto}.pdf table.auto th{width:auto!important;white-space:nowrap}.pdf table.auto td{width:auto}.pdf .pgr th{background:#f1f3ff;font-weight:700}.pdf .pkv th{width:17%;background:#f6f7fd;font-weight:600}.pdf .pkv td{width:33%}.pdf .pb{page-break-before:always;height:0}.pdf .mut{color:#6b7090;font-size:11px}
+   .pdf .wm{text-align:center;color:#d9455f;font-weight:700;border:2px dashed #d9455f;padding:4px;margin-bottom:8px}.pdf .box{border:1px solid #9aa0c0;padding:6px 8px;min-height:34px;white-space:pre-wrap}
+  </style>
+  ${draft?'<div class="wm">ฉบับร่าง — ข้อมูลยังไม่ครบถ้วน</div>':''}
+  <h1>บริษัท เด็มโก้ จำกัด (มหาชน)</h1><h2><b>แบบฟอร์มเสนอขอเลื่อนตำแหน่ง / ปรับระดับตำแหน่ง</b></h2><h2>PROMOTION PORTFOLIO · หน่วยงานทรัพยากรบุคคล (Human Resources)</h2>
+  <table style="margin:8px 0"><tr><td style="border:0">รหัสเอกสาร: HR-FM-XXX</td><td style="border:0;text-align:right">วันที่เสนอ: ${n.date?thDate(n.date):''} · ออกเอกสาร: ${thDate(new Date().toISOString().slice(0,10))}</td></tr></table>
+  ${sec('ส่วนที่ 1 ข้อมูลประวัติพนักงาน (Employee Information)',kv([[['ชื่อ-นามสกุล',e.name],['รหัสพนักงาน',e.id||n.empId]],[['บริษัท / หน่วยงาน',[e.group,e.line].filter(Boolean).join(' › ')],['ฝ่าย / แผนก',[e.dept,e.section].filter(Boolean).join(' / ')]],[['ตำแหน่งปัจจุบัน',e.pos],['ระดับตำแหน่งปัจจุบัน','Level '+(e.level??n.fromLevel)]],[['วันที่เริ่มงาน',thDate(e.start)],['อายุงาน',ymd(e.start)]],[['ผู้บังคับบัญชาโดยตรง',g('form.supervisor')],['วันที่เสนอ',n.date?thDate(n.date):'']]]))}
+  ${sec('ส่วนที่ 2 รายละเอียดการเสนอขอเลื่อนตำแหน่ง (Promotion Proposal)',kv([[['ตำแหน่งที่เสนอขอ',n.toPos],['ระดับตำแหน่งใหม่','Level '+n.toLevel]],[['หน่วยงาน',g('form.unit',e.dept||'')],['วันที่เสนอให้มีผล',dt(g('form.effDate'))]]])+`<table class="pkv"><colgroup><col style="width:17%"><col style="width:83%"></colgroup><tr><th>ประเภทการเสนอ</th><td>${PF_TYPE.map(([k,l])=>(g('form.type.'+k)?'☑ ':'☐ ')+l).join('&nbsp;&nbsp;&nbsp;')}</td></tr></table><div class="box"><b>เหตุผลและความจำเป็น:</b> ${esc(g('form.reason',n.why||''))}${n.special?`\n<b style="color:#a8620a">กรณีพิเศษ (ไม่ผ่านเกณฑ์เบื้องต้น):</b> ${esc(n.exc||'')}`:''}</div>`)}
+  ${sec('ส่วนที่ 3 ผลงานและความสำเร็จ (Performance & Achievement)',tbl(['ลำดับ','ผลงาน / โครงการ','บทบาทและความรับผิดชอบ','ผลสำเร็จ / ผลลัพธ์ที่วัดได้','หลักฐานประกอบ'],[0,1,2,3,4].map(i=>`<tr><td>${i+1}</td>${td(g(`form.ach.${i}.proj`))}${td(g(`form.ach.${i}.role`))}${td(g(`form.ach.${i}.result`))}${td(g(`form.ach.${i}.evid`))}</tr>`)))}
+  ${sec('ส่วนที่ 4 ผลการประเมินการปฏิบัติงาน (Performance Evaluation)',tbl(['ปี','ผลการประเมิน KPI / เกรด','ผลการประเมิน Competency','หมายเหตุ'],evRows)+(cs?`<div class="mut" style="margin-top:3px">ผลประเมิน Competency ปี ${db.compYear} จากระบบ: ${esc(cs)}</div>`:''))}
+  ${sec('ส่วนที่ 5 ประวัติการพัฒนาและฝึกอบรม (Learning & Development)',tbl(['ลำดับ','หลักสูตร / การอบรม','หน่วยงานผู้จัด','วันที่ / ปี','ผลการพัฒนา'],[0,1,2,3].map(i=>`<tr><td>${i+1}</td>${td(g(`form.train.${i}.course`))}${td(g(`form.train.${i}.org`))}${td(g(`form.train.${i}.date`))}${td(g(`form.train.${i}.result`))}</tr>`)))}
+  ${sec('ส่วนที่ 6 ความพร้อมสำหรับตำแหน่งใหม่ (Readiness Assessment)',tbl(['หัวข้อ','ตำแหน่งปัจจุบัน','ตำแหน่งใหม่','รายละเอียด / ความแตกต่าง'],['หน้าที่และความรับผิดชอบ','ขอบเขตอำนาจตัดสินใจ','ความซับซ้อนของงาน','การบริหารบุคลากร','การบริหารงบประมาณ / ทรัพยากร','การประสานงานภายใน / ภายนอก'].map((t,i)=>`<tr>${td(t)}${td(g(`form.ready.${i}.cur`))}${td(g(`form.ready.${i}.new`))}${td(g(`form.ready.${i}.det`))}</tr>`))+`<div class="box" style="margin-top:4px">ความพร้อม: ${box(PF_READY,g('form.readyOpt'))}\n<b>รายละเอียดความพร้อมและประเด็นที่ต้องพัฒนา:</b> ${esc(g('form.readyDet'))}</div>`)}
+  ${sec('ส่วนที่ 7 ความเห็นและการรับรองจากผู้บังคับบัญชา (Manager Recommendation)',`<div class="box"><b>เหตุผลที่เห็นว่าพนักงานมีความเหมาะสมสำหรับตำแหน่งใหม่:</b> ${esc(g('form.mgrReason'))}</div><div class="box" style="margin-top:4px">ข้อเสนอแนะ: ${box(PF_MGR,g('form.mgrOpt'))}</div><table class="pkv auto"><tr><th>ลงชื่อผู้บังคับบัญชา</th><td>${esc(g('form.mgrName'))}</td><th>วันที่</th><td>${dt(g('form.mgrDate'))}</td></tr></table>`)}
+  ${sec('ส่วนที่ 8 ความเห็นของฝ่ายทรัพยากรบุคคล (HR Review)',`<div class="box">ตรวจสอบ: ${PF_HR.map(([k,l])=>(g('form.hrChk.'+k)?'☑ ':'☐ ')+l).join('&nbsp;&nbsp;')}\n<b>ความเห็นของ HR:</b> ${esc(g('form.hrOpinion'))}</div><table class="pkv auto"><tr><th>ลงชื่อผู้ตรวจสอบ HR</th><td>${esc(g('form.hrName'))}</td><th>วันที่</th><td>${dt(g('form.hrDate'))}</td></tr></table>`)}
+  ${sec('ส่วนที่ 9 การพิจารณาอนุมัติ (Approval)',tbl(['ผู้พิจารณา','ความเห็น / ผลการพิจารณา','ลายเซ็น','วันที่'],PF_APPR.map((t,i)=>`<tr>${td(t)}<td>${g(`form.appr.${i}.opt`)==='approve'?'☑':'☐'} อนุมัติ&nbsp;&nbsp;${g(`form.appr.${i}.opt`)==='reject'?'☑':'☐'} ไม่อนุมัติ</td>${td(g(`form.appr.${i}.sign`))}<td>${dt(g(`form.appr.${i}.date`))}</td></tr>`)))}
+  <div class="pb"></div>
+  ${sec('แบบประเมินความรู้ ความสามารถ และศักยภาพ (COMPETENCY & POTENTIAL)',`<div class="mut" style="margin-bottom:4px">เกณฑ์คะแนน: 1 = ต้องปรับปรุง · 2 = พอใช้ · 3 = ตามมาตรฐาน · 4 = ดี · 5 = ดีเยี่ยม</div>`+tbl(['ลำดับ','หัวข้อประเมิน','คะแนน (1–5)','ระดับผลประเมิน','หลักฐาน / ตัวอย่างพฤติกรรม'],PF_COMP.map((t,i)=>`<tr><td>${i+1}</td>${td(t)}<td style="text-align:center">${sc[i]==null?'':sc[i]}</td>${td(PF_LVL(sc[i]))}${td(g(`comp.e.${i}`))}</tr>`))+`<table class="pkv auto" style="margin-top:4px"><tr><th>คะแนนรวม</th><td>${sum}</td><th>คะแนนเฉลี่ย</th><td>${avg==null?'':fmt1(avg)}</td><th>ระดับภาพรวม</th><td>${esc(PF_LVL(avg))}</td></tr></table>`)}
+  ${sec('Checklist เอกสารหลักฐานประกอบ Promotion Portfolio',tbl(['ลำดับ','รายการเอกสาร','สถานะ','หมายเหตุ / ชื่อไฟล์'],PF_DOCS.map((t,i)=>{const dd=(d.docs||[])[i]||{};return `<tr><td>${i+1}</td>${td(t)}${td(dd.status||'รอตรวจสอบ')}${td([dd.note,(dd.files||[]).map(f=>f.name).join(', ')].filter(Boolean).join(' · '))}</tr>`}))+`<div class="mut" style="margin-top:4px">ครบถ้วน/ไม่เกี่ยวข้อง ${comp.docs}/${PF_DOCS.length} รายการ · ข้อมูลพนักงานเป็นข้อมูลภายใน ควรจำกัดสิทธิ์การเข้าถึงและจัดเก็บอย่างเหมาะสม</div>`)}
+  </div>`}
+async function pfGenPdf(n,e,d,opt){
+  opt=opt||{};if(!(await loadHtml2Pdf()))throw new Error('โหลดไลบรารี PDF ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');
+  const comp=pfCompleteness(d,n,e),wrap=document.createElement('div'),el=document.createElement('div');wrap.style.cssText='position:fixed;left:-12000px;top:0;width:746px;pointer-events:none';el.style.cssText='width:746px;background:#fff';el.innerHTML=pfHtml(n,e,d,!comp.done);wrap.appendChild(el);document.body.appendChild(wrap);
+  const name=`Promotion_Portfolio_${n.empId}_${new Date().toISOString().slice(0,10)}.pdf`;
+  try{const job=html2pdf().set({margin:[10,8,12,8],filename:name,image:{type:'jpeg',quality:.95},html2canvas:{scale:2,useCORS:true,windowWidth:794,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy'],avoid:['tr','h3']}}).from(el);
+    if(opt.blob)return await job.outputPdf('blob');await job.save()}finally{wrap.remove()}
 }
 function exportNoms(){
   const rows=db.noms.map(n=>{const e=empOf(n.empId)||{};return{วันที่เสนอ:n.date,รหัส:n.empId,'ชื่อ-สกุล':e.name,ฝ่าย:e.dept,ตำแหน่งเดิม:n.fromPos,'Level เดิม':n.fromLevel,ตำแหน่งที่เสนอ:n.toPos,'Level ที่เสนอ':n.toLevel,เกรดเฉลี่ย:n.snap?.avg!=null?Math.round(n.snap.avg*100)/100:'',
