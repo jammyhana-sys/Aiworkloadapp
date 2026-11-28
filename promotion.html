@@ -55,6 +55,9 @@ tr:hover td{background:#fafbff}
 .tl-main{flex:1;min-width:0}.tl-bar{display:block;height:6px;border-radius:4px;background:#e8eaf8;margin:4px 0;overflow:hidden}.tl-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--pri),var(--ok))}.tl-item.on .tl-main b{color:var(--pri)}
 .pf-bar{height:10px;border-radius:6px;background:#e8eaf8;overflow:hidden}.pf-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--pri),var(--ok));transition:width .3s}
 .seg{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.seg-b{border:1px solid var(--line);background:#fff;border-radius:12px;padding:8px 14px;font:inherit;cursor:pointer;color:var(--ink)}.seg-b:hover{border-color:var(--pri)}.seg-b.on{background:var(--pri);color:#fff;border-color:var(--pri)}.seg-b:disabled{opacity:.6;cursor:default}.seg-n .seg-b{min-width:46px;text-align:center}.seg-c .seg-b{flex:1;min-width:150px;padding:12px 14px;text-align:center}
+.hg{display:inline-block;animation:hgflip 3s ease-in-out infinite;transform-origin:50% 55%}
+@keyframes hgflip{0%,42%{transform:rotate(0)}58%,92%{transform:rotate(180deg)}100%{transform:rotate(360deg)}}
+.wait-live{font-variant-numeric:tabular-nums}
 .sigp{display:block;width:100%;max-width:440px;height:130px;border:1.5px dashed #aab0e0;border-radius:12px;background:#fff;touch-action:none;cursor:crosshair;margin:4px 0}
 .pf-card{border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px;background:#fff}.g4{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 @media print{header,nav,.noprint{display:none!important}}
@@ -643,6 +646,9 @@ db.log=[];
 async function loadLogs(){try{const r=await sb.from('promo_nom_log').select('*').order('id').range(0,9999);db.log=r.error?[]:(r.data||[])}catch(_){db.log=[]}}
 const nomTypeTag=n=>n.portfolioOnly?'<span class="tag pri" title="เสนอผลงานเข้าแฟ้ม Portfolio ไม่ระบุตำแหน่งที่ขอปรับ">📁 เสนอผลงาน (Portfolio)</span>':n.special?`<span class="tag warn" title="${esc(n.exc||'')}">เสนอปรับ (กรณีพิเศษ)</span>`:'<span class="tag pri">เสนอปรับตำแหน่ง</span>';
 const durTxt=ms=>{const m=Math.max(0,Math.floor(ms/60000)),d=Math.floor(m/1440),h=Math.floor(m%1440/60),mi=m%60;return d?`${d} วัน ${h} ชม.`:h?`${h} ชม. ${mi} นาที`:`${mi} นาที`};
+const durLive=ms=>{const t=Math.max(0,Math.floor(ms/1000)),d=Math.floor(t/86400),h=Math.floor(t%86400/3600),m=Math.floor(t%3600/60),s=t%60,p=v=>String(v).padStart(2,'0');return (d?d+' วัน ':'')+(d||h?p(h)+' ชม. ':'')+p(m)+' นาที '+p(s)+' วิ.'};
+/* นาฬิกาทรายรันเวลาจริง: อัปเดตทุกวินาทีเฉพาะที่มองเห็นอยู่ */
+if(!window.__waitTick){window.__waitTick=setInterval(()=>{document.querySelectorAll('.wait-live').forEach(el=>{const t=new Date(el.dataset.since).getTime();if(!isNaN(t))el.textContent=durLive(Date.now()-t)})},1000)}
 function nomFlowHtml(n,e){
   const steps=activeSteps();if(!steps.length)return '';
   const lg=(db.log||[]).filter(x=>x.nom_id===n.id);let si=-1;lg.forEach((x,i)=>{if(x.action==='submit')si=i});
@@ -650,7 +656,7 @@ function nomFlowHtml(n,e){
   const last=cyc.length?cyc[cyc.length-1]:null,cur=n.status==='เสนอแล้ว'?n.step:0;
   const rows=steps.map((s,i)=>{const d=doneAt[s.step_no],names=(db.approvers||[]).filter(x=>x.step_no===s.step_no&&scopeMatchE(x.scope,e)).map(x=>x.name||x.emp_id);
     if(d)return `<div style="color:var(--ok)">✓ ${i+1}. ${esc(s.name)} <span class="hint">· ${esc(d.by_name||d.by_emp)} · ${fmtAt(d.at)}</span></div>`;
-    if(s.step_no===cur)return `<div style="color:var(--warn);font-weight:600">● ${i+1}. ${esc(s.name)} — รออนุมัติ${last?` <span style="font-weight:400;color:inherit">มาแล้ว <b>${durTxt(Date.now()-new Date(last.at).getTime())}</b> (ตั้งแต่ ${fmtAt(last.at)})</span>`:''}${names.length?`<div class="hint" style="font-weight:400">ผู้อนุมัติ: ${esc(names.join(', '))}</div>`:'<div class="hint" style="color:var(--bad);font-weight:400">ยังไม่มีผู้อนุมัติขั้นนี้ในขอบเขต</div>'}</div>`;
+    if(s.step_no===cur)return `<div style="color:var(--warn);font-weight:600">● ${i+1}. ${esc(s.name)} — รออนุมัติ${last?` <span style="font-weight:400;color:inherit"><span class="hg" title="กำลังรอ — นับเวลาจริง">⏳</span> รอมาแล้ว <b class="wait-live" data-since="${esc(last.at)}">${durLive(Date.now()-new Date(last.at).getTime())}</b> <span class="hint">(ตั้งแต่ ${fmtAt(last.at)})</span></span>`:''}${names.length?`<div class="hint" style="font-weight:400">ผู้อนุมัติ: ${esc(names.join(', '))}</div>`:'<div class="hint" style="color:var(--bad);font-weight:400">ยังไม่มีผู้อนุมัติขั้นนี้ในขอบเขต</div>'}</div>`;
     return `<div class="hint">○ ${i+1}. ${esc(s.name)}${names.length?' · '+esc(cTrunc(names.join(', '),40)):''}</div>`});
   return `<div style="font-size:12.5px;margin-top:6px;line-height:1.5;min-width:230px">${si>=0?`<div class="hint">ส่งขออนุมัติ ${fmtAt(lg[si].at)}</div>`:''}${rows.join('')}</div>`}
 function rNoms(){
