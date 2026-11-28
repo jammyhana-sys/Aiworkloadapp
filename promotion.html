@@ -792,7 +792,7 @@ function nomFlowHtml(n,e){
   const rows=steps.map((s,i)=>{const d=doneAt[s.step_no],names=(db.approvers||[]).filter(x=>x.step_no===s.step_no&&scopeMatchE(x.scope,e)).map(x=>x.name||x.emp_id);
     if(d)return `<div style="color:var(--ok)">✓ ${i+1}. ${esc(s.name)} <span class="hint">· ${esc(d.by_name||d.by_emp)} · ${fmtAt(d.at)}${(()=>{const q=T&&T.steps.find(z=>z.step_no===s.step_no);return q?` · <b>ใช้เวลา ${durFmt(q.dur)}</b>`:''})()}</span></div>`;
     if(cyc.some(x=>x.action==='skip'&&x.step_no===s.step_no))return `<div class="hint">↷ ${i+1}. ${esc(s.name)} — ข้ามขั้น (ไม่มีผู้อนุมัติในขอบเขต)</div>`;
-    if(s.step_no===cur)return `<div style="color:var(--warn);font-weight:600">● ${i+1}. ${esc(s.name)} — รออนุมัติ${last?` <span style="font-weight:400;color:inherit"><span class="hg" title="กำลังรอ — นับเวลาจริง">⏳</span> รอมาแล้ว <b class="wait-live" data-since="${esc(last.at)}">${durLive(Date.now()-new Date(last.at).getTime())}</b> <span class="hint">(ตั้งแต่ ${fmtAt(last.at)})</span></span>`:''}${names.length?`<div class="hint" style="font-weight:400">ผู้อนุมัติ: ${esc(names.join(', '))}</div>`:'<div class="hint" style="color:var(--bad);font-weight:400">ยังไม่มีผู้อนุมัติขั้นนี้ในขอบเขต</div>'}</div>`;
+    if(s.step_no===cur)return `<div style="color:var(--warn);font-weight:600">● ${i+1}. ${esc(s.name)} — รออนุมัติ${last?` <span style="font-weight:400;color:inherit"><span class="hg" title="กำลังรอ — นับเวลาจริง">⏳</span> รอมาแล้ว <b class="wait-live" data-since="${esc(last.at)}">${durLive(Date.now()-new Date(last.at).getTime())}</b> <span class="hint">(ตั้งแต่ ${fmtAt(last.at)})</span></span>`:''}${names.length?`<div class="hint" style="font-weight:400">ผู้อนุมัติ: ${esc(names.join(', '))}</div>`:`<div class="hint" style="color:var(--bad);font-weight:400">ยังไม่มีผู้อนุมัติขั้นนี้ในขอบเขต — <a href="#" data-skip="${esc(n.id)}" style="color:var(--pri);font-weight:600">⏭ ข้ามขั้นนี้ไปขั้นถัดไป</a></div>`}</div>`;
     return `<div class="hint">○ ${i+1}. ${esc(s.name)}${names.length?' · '+esc(cTrunc(names.join(', '),40)):' · ไม่มีผู้อนุมัติในขอบเขต — จะข้ามอัตโนมัติ'}</div>`});
   return `<div style="font-size:12.5px;margin-top:6px;line-height:1.5;min-width:230px">${si>=0?`<div class="hint">ส่งขออนุมัติ ${fmtAt(lg[si].at)}</div>`:''}${T?`<div style="margin-top:2px">⏱ ระยะเวลารวมในการพิจารณา: ${T.ongoing?`<b class="wait-live" data-since="${esc(T.submitAt)}">${durLive(T.total)}</b> <span class="hint">(นับถึงตอนนี้)</span>`:`<b>${durFmt(T.total)}</b>`}</div>`:''}${rows.join('')}</div>`}
 /* ============ Inbox แจ้งเตือนผู้อนุมัติ: กระดิ่ง + แถบแจ้งเตือน + ป๊อปอัป + แจ้งเตือนบนเบราว์เซอร์ (รีเฟรชทุก 45 วินาที) ============ */
@@ -876,6 +876,7 @@ function rNoms(){
   $$('#v-noms [data-cx]').forEach(b=>b.onclick=async()=>{if(!confirm('ยกเลิกการเสนอชื่อรายการนี้?'))return;const r=await sb.from('promo_nominations').update({status:'ยกเลิก',updated_at:new Date().toISOString()}).eq('id',b.dataset.cx);if(r.error)return alert('ยกเลิกไม่สำเร็จ: '+errTxt(r.error));const n=db.noms.find(x=>x.id===b.dataset.cx);n.status='ยกเลิก';n.step=0;rNoms()});
   $$('#v-noms [data-lg]').forEach(b=>b.onclick=()=>openNomLog(b.dataset.lg));
   $$('#v-noms [data-pfo]').forEach(b=>b.onclick=ev=>{ev.preventDefault();openPf(b.dataset.pfo)});
+  $$('#v-noms [data-skip]').forEach(a=>a.onclick=ev=>{ev.preventDefault();skipNow(a.dataset.skip)});
   $$('#v-noms [data-reopen]').forEach(b=>b.onclick=()=>reopenNom(b.dataset.reopen));
   $$('#v-noms [data-x]').forEach(b=>b.onclick=async()=>{if(!confirm('ลบรายการเสนอชื่อนี้? (ลบแล้วกู้คืนไม่ได้)'))return;
     const r=await sb.from('promo_nominations').delete().eq('id',b.dataset.x);if(r.error)return alert('ลบไม่สำเร็จ: '+errTxt(r.error));db.noms=db.noms.filter(x=>x.id!==b.dataset.x);rNoms()});
@@ -1111,8 +1112,15 @@ async function autoSkipStuck(){
   if(!READY||!sb)return false;let any=false;
   for(const n of db.noms){if(n.status!=='เสนอแล้ว'||!n.step)continue;const e=empOf(n.empId);if(!e)continue;
     if((db.approvers||[]).some(a=>a.step_no===n.step&&scopeMatchE(a.scope,e)))continue;
-    try{const r=await sb.rpc('promo_nom_autoskip',{p_id:n.id});if(!r.error&&r.data){n.status=r.data.status;n.step=r.data.step||0;any=true}}catch(_){}}
+    try{const r=await sb.rpc('promo_nom_autoskip',{p_id:n.id});
+      if(r.error){const m=String(r.error.message||r.error);window.__skipErr=m;if(!window.__skipErrShown){window.__skipErrShown=1;inboxToast(`⚠ <b>เลื่อนรายการที่ค้างขั้นที่ไม่มีผู้อนุมัติไม่ได้</b><div>${esc(/promo_nom_autoskip|schema cache|does not exist|Could not find/i.test(m)?'ยังไม่ได้รัน supabase_update_hub72.sql ใน Supabase':m)}</div>`,null)}}
+      else if(r.data){n.status=r.data.status;n.step=r.data.step||0;any=true}}catch(_){}}
   if(any)await loadLogs();return any}
+async function skipNow(id){
+  const r=await sb.rpc('promo_nom_autoskip',{p_id:id});
+  if(r.error){const m=String(r.error.message||r.error);return alert('ข้ามขั้นไม่สำเร็จ: '+(/promo_nom_autoskip|schema cache|does not exist|Could not find/i.test(m)?'ยังไม่ได้รัน supabase_update_hub72.sql ใน Supabase SQL Editor':m))}
+  const n=db.noms.find(x=>x.id===id);if(n&&r.data){n.status=r.data.status;n.step=r.data.step||0}
+  await loadLogs();updateInbox(false);render()}
 const appMode=n=>!!n&&n.status==='เสนอแล้ว'&&canAct(n)&&!mgrMode(n);
 const pfCanSave=()=>{const n=db.noms.find(x=>x.id===PF.nomId);return CAN.nom||mgrMode(n)||appMode(n)};
 /* ชุดคะแนน Competency & Potential ของผู้อนุมัติ: แยกเก็บตามผู้อนุมัติแต่ละคน ไม่ทับชุดของผู้เสนอ (comp.s) */
