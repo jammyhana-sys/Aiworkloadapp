@@ -572,10 +572,10 @@ document.addEventListener('click',e=>{const a=e.target.closest&&e.target.closest
 /* ============ สมาชิก & สิทธิ์ (Super Admin) ============ */
 const MEM={q:'',acc:'',perm:'',rows:null,access:new Map(),busy:false};
 async function loadMem(){
-  const [E,M]=await Promise.all([sb.from('employees').select('id,name,email,dept,active,user_id,approved,promo_verified,role').order('id').range(0,4999),sb.from('module_access').select('*').eq('module','promo')]);
+  const [E,M]=await Promise.all([sb.from('employees').select('id,name,email,dept,active,user_id,approved,promo_verified,promo_suspended,role').order('id').range(0,4999),sb.from('module_access').select('*').eq('module','promo')]);
   if(E.error)throw E.error;MEM.rows=E.data||[];MEM.access=new Map((M.data||[]).map(a=>[a.emp_id,a]));
 }
-const accOf=r=>!r.user_id?['ยังไม่ได้ตั้งรหัสผ่าน','warn']:(r.approved||r.promo_verified)?['ใช้งานได้','ok']:['รอยืนยันอีเมล','pri'];
+const accOf=r=>r.promo_suspended?['ระงับ','bad']:!r.user_id?['ยังไม่ได้ตั้งรหัสผ่าน','warn']:(r.approved||r.promo_verified)?['ใช้งานได้','ok']:['รอยืนยัน','pri'];
 const PERM_TH={none:'ไม่มีสิทธิ์',view:'ดูอย่างเดียว',manage:'จัดการ'};
 async function rMem(){
   const el=$('#v-mem');if(!FLOW.sup){el.innerHTML='<div class="card"><div class="hint">เฉพาะ Super Admin</div></div>';return}
@@ -587,7 +587,7 @@ async function rMem(){
     <div class="hint" style="margin-bottom:12px">สมาชิกเข้าสู่ระบบที่หน้า <b>promotion-login.html</b> ด้วยอีเมลบริษัท — ถ้าอีเมลอยู่ในรายชื่อนี้ ระบบส่งลิงก์ยืนยันไปที่อีเมล แล้วให้ตั้งรหัสผ่าน จากนั้นใช้งานได้ตามสิทธิ์ที่กำหนดในตารางนี้ (ไม่มีสิทธิ์ = เข้าไม่ได้) · ขอบเขตข้อมูลจำกัดได้ตามโครงสร้างองค์กร</div>
     <div class="grid g4" style="margin-bottom:12px"><div class="kpi"><span>สมาชิกทั้งหมด</span><b>${MEM.rows.length}</b></div><div class="kpi"><span>ใช้งานได้ (ตั้งรหัสผ่านแล้ว)</span><b style="color:var(--ok)">${cnt('ใช้งานได้')}</b></div><div class="kpi"><span>ยังไม่ได้ตั้งรหัสผ่าน</span><b style="color:var(--warn)">${cnt('ยังไม่ได้ตั้งรหัสผ่าน')}</b></div><div class="kpi"><span>ได้รับสิทธิ์ Promotion</span><b style="color:var(--pri)">${withPerm}</b></div></div>
     <div class="row noprint"><div style="flex:2"><label>ค้นหา (รหัส / ชื่อ / อีเมล / ฝ่าย)</label><input id="mq" type="search" value="${esc(MEM.q)}"></div>
-      <div><label>บัญชี</label><select id="macc"><option value="">ทั้งหมด</option>${['ใช้งานได้','รอยืนยันอีเมล','ยังไม่ได้ตั้งรหัสผ่าน'].map(s=>`<option ${MEM.acc===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div><label>บัญชี</label><select id="macc"><option value="">ทั้งหมด</option>${['ใช้งานได้','รอยืนยัน','ยังไม่ได้ตั้งรหัสผ่าน','ระงับ'].map(s=>`<option ${MEM.acc===s?'selected':''}>${s}</option>`).join('')}</select></div>
       <div><label>สิทธิ์ Promotion</label><select id="mperm"><option value="">ทั้งหมด</option>${Object.entries(PERM_TH).map(([k,v])=>`<option value="${k}" ${MEM.perm===k?'selected':''}>${v}</option>`).join('')}</select></div>
       <div style="flex:0"><button class="btn pri" id="mAdd">＋ เพิ่มสมาชิก</button></div></div>
     <div class="hint" style="margin:10px 0">แสดง ${Math.min(list.length,150)} จาก ${list.length} คน${list.length>150?' (พิมพ์ค้นหาเพื่อกรอง)':''}</div>
@@ -598,7 +598,7 @@ async function rMem(){
       <td><span class="tag ${a[1]}">${a[0]}</span></td>
       <td><select data-mp="${esc(r.id)}" style="min-height:0;padding:5px 8px">${Object.entries(PERM_TH).map(([k,v])=>`<option value="${k}" ${pm===k?'selected':''}>${v}</option>`).join('')}</select></td>
       <td style="font-size:12.5px">${ac?`${esc(scopeTxt(ac.scope))} <a href="#" data-ms="${esc(r.id)}" style="color:var(--pri);text-decoration:none">กำหนด</a>`:'<span class="hint">—</span>'}</td>
-      <td style="white-space:nowrap">${r.email?`<button class="btn sm" data-ml="${esc(r.id)}" title="ส่งลิงก์เข้าสู่ระบบ/ตั้งรหัสผ่านไปที่อีเมลของสมาชิก">✉ ส่งลิงก์</button>`:''}</td></tr>`}).join('')||'<tr><td colspan="8" class="hint">ไม่พบสมาชิก</td></tr>'}</tbody></table></div></div>`;
+      <td style="white-space:nowrap">${memBtns(r,a[0])}</td></tr>`}).join('')||'<tr><td colspan="8" class="hint">ไม่พบสมาชิก</td></tr>'}</tbody></table></div></div>`;
   const rerender=()=>rMem();
   $('#mq').oninput=e=>{MEM.q=e.target.value;rerender();const i=$('#mq');i.focus();i.setSelectionRange(MEM.q.length,MEM.q.length)};$('#macc').onchange=e=>{MEM.acc=e.target.value;rerender()};$('#mperm').onchange=e=>{MEM.perm=e.target.value;rerender()};
   $$('#v-mem [data-mp]').forEach(s=>s.onchange=async()=>{const id=s.dataset.mp,v=s.value,r=MEM.rows.find(x=>x.id===id);
@@ -609,10 +609,9 @@ async function rMem(){
   $$('#v-mem [data-me]').forEach(a=>a.onclick=async ev=>{ev.preventDefault();const id=a.dataset.me,r=MEM.rows.find(x=>x.id===id),v=prompt(`อีเมลบริษัทของ ${r.name}`,r.email||'');if(v===null)return;const em=v.trim();
     if(!/^\S+@\S+\.\S+$/.test(em))return alert('รูปแบบอีเมลไม่ถูกต้อง');if(r.user_id&&!confirm('สมาชิกคนนี้มีบัญชีแล้ว — เปลี่ยนอีเมลในรายชื่อไม่เปลี่ยนอีเมลที่ใช้ล็อกอินของบัญชีเดิม ต้องการเปลี่ยนต่อหรือไม่?'))return;
     const u=await sb.from('employees').update({email:em}).eq('id',id);if(u.error)return alert('บันทึกไม่สำเร็จ: '+errTxt(u.error));r.email=em;rerender()});
-  $$('#v-mem [data-ml]').forEach(b=>b.onclick=async()=>{const r=MEM.rows.find(x=>x.id===b.dataset.ml);if(!confirm(`ส่งลิงก์เข้าสู่ระบบ/ตั้งรหัสผ่านไปที่ ${r.email} ?`))return;b.disabled=true;
-    const base=location.origin+location.pathname.replace(/[^/]*$/,'')+'promotion-login.html';
-    const x=await sb.auth.signInWithOtp({email:r.email,options:{shouldCreateUser:true,emailRedirectTo:base}});b.disabled=false;
-    alert(x.error?'ส่งลิงก์ไม่สำเร็จ: '+errTxt(x.error):'ส่งลิงก์ไปที่ '+r.email+' แล้ว')});
+  $$('#v-mem [data-pw]').forEach(b=>b.onclick=()=>memPassword(b.dataset.pw));
+  $$('#v-mem [data-vf]').forEach(b=>b.onclick=async()=>{const r=MEM.rows.find(x=>x.id===b.dataset.vf),on=b.dataset.on==='1';const x=await sb.rpc('promo_admin_verify',{p_emp:r.id,p_on:on});if(x.error)return alert('ทำรายการไม่สำเร็จ: '+errTxt(x.error)+(/promo_admin/.test(x.error.message)?' (ยังไม่ได้รัน supabase_update_hub59.sql)':''));r.promo_verified=on;rMem()});
+  $$('#v-mem [data-sp]').forEach(b=>b.onclick=async()=>{const r=MEM.rows.find(x=>x.id===b.dataset.sp),on=b.dataset.on==='1';if(on&&!confirm('ระงับสิทธิ์ใช้ Promotion ของ '+r.name+'? (เข้าใช้งานไม่ได้ทันที เก็บสิทธิ์ที่ตั้งไว้ และเปิดสิทธิ์คืนได้)'))return;const x=await sb.rpc('promo_admin_suspend',{p_emp:r.id,p_on:on});if(x.error)return alert('ทำรายการไม่สำเร็จ: '+errTxt(x.error)+(/promo_admin/.test(x.error.message)?' (ยังไม่ได้รัน supabase_update_hub59.sql)':''));r.promo_suspended=on;rMem()});
   $('#mAdd').onclick=()=>{modal(`<div style="display:flex;justify-content:space-between;gap:10px"><h2 style="margin:0;font-size:19px">เพิ่มสมาชิก</h2><button class="btn sm" onclick="closeModal()">✕</button></div>
     <div class="row" style="margin-top:12px"><div><label>รหัสพนักงาน</label><input id="nId"></div><div style="flex:2"><label>ชื่อ-สกุล</label><input id="nName"></div></div>
     <div class="row" style="margin-top:8px"><div style="flex:2"><label>อีเมลบริษัท</label><input id="nEmail" type="email"></div><div><label>รหัสฝ่าย (ไม่บังคับ)</label><input id="nDept"></div></div>
@@ -625,6 +624,34 @@ async function rMem(){
       if(pm!=='none'){const row={module:'promo',emp_id:id,perm:pm,scope:{type:'all'},granted_by:'Super Admin',granted_at:new Date().toISOString()};const u=await sb.from('module_access').upsert(row);if(!u.error)MEM.access.set(id,row)}
       MEM.rows=null;closeModal();rMem()}};
 }
+function memBtns(r,st){const id=esc(r.id),b=(a,tx,cls,extra)=>`<button class="btn sm ${cls||''}" ${a} ${extra||''}>${tx}</button> `;
+  if(!r.email)return '<span class="hint">ไม่มีอีเมล</span>';
+  if(st==='ระงับ')return b(`data-sp="${id}" data-on="0"`,'✔ เปิดสิทธิ์','ok')+b(`data-pw="${id}"`,'🔑 รีเซ็ตรหัส');
+  if(st==='ยังไม่ได้ตั้งรหัสผ่าน')return b(`data-pw="${id}"`,'🔑 ตั้งรหัสผ่าน','pri');
+  if(st==='รอยืนยัน')return b(`data-vf="${id}" data-on="1"`,'✓ ยืนยัน','ok')+b(`data-pw="${id}"`,'🔑 รีเซ็ตรหัส')+b(`data-sp="${id}" data-on="1"`,'⛔ ระงับ','bad');
+  return b(`data-pw="${id}"`,'🔑 รีเซ็ตรหัส')+b(`data-sp="${id}" data-on="1"`,'⛔ ระงับ','bad')}
+const genPw=()=>{const A='ABCDEFGHJKLMNPQRSTUVWXYZ',a='abcdefghijkmnpqrstuvwxyz',d='23456789',all=A+a+d,rnd=n=>crypto.getRandomValues(new Uint32Array(1))[0]%n;let s=A[rnd(A.length)]+a[rnd(a.length)]+d[rnd(d.length)]+d[rnd(d.length)];while(s.length<10)s+=all[rnd(all.length)];return s.split('').sort(()=>rnd(3)-1).join('')};
+function memPassword(id){
+  const r=MEM.rows.find(x=>x.id===id),has=!!r.user_id;
+  modal(`<div style="display:flex;justify-content:space-between;gap:10px"><div><h2 style="margin:0;font-size:19px">${has?'รีเซ็ตรหัสผ่าน':'ตั้งรหัสผ่านให้สมาชิก'}</h2><div class="hint">${esc(r.id)} ${esc(r.name)} · ${esc(r.email)}</div></div><button class="btn sm" onclick="closeModal()">✕</button></div>
+    <div class="row" style="margin-top:12px;align-items:end"><div style="flex:2"><label>รหัสผ่านใหม่ (อย่างน้อย 8 ตัว มีตัวอักษรและตัวเลข)</label><input id="pwV" type="text" autocomplete="off"></div><div style="flex:0"><button class="btn" id="pwGen">🎲 สุ่มรหัส</button></div></div>
+    <div class="hint" style="margin-top:8px">${has?'รหัสผ่านเดิมจะใช้ไม่ได้ทันที':'ระบบจะสร้างบัญชีล็อกอินและยืนยันสมาชิกให้เลย (ไม่ส่งอีเมล)'} · แจ้งรหัสผ่านให้สมาชิกด้วยตนเอง แล้วให้เข้าที่หน้า promotion-login.html</div>
+    <div id="pwOut" style="margin-top:10px"></div>
+    <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal()">ปิด</button><button class="btn pri" id="pwSave">บันทึก</button></div>`);
+  $('#pwGen').onclick=()=>{$('#pwV').value=genPw()};$('#pwGen').click();
+  $('#pwSave').onclick=async()=>{const pw=$('#pwV').value,btn=$('#pwSave'),out=$('#pwOut');
+    if(pw.length<8||!/[A-Za-z]/.test(pw)||!/\d/.test(pw))return alert('รหัสผ่านต้องยาวอย่างน้อย 8 ตัว และมีทั้งตัวอักษรและตัวเลข');
+    btn.disabled=true;btn.textContent='กำลังบันทึก…';
+    try{let x=await sb.rpc('promo_admin_set_password',{p_emp:id,p_password:pw});if(x.error)throw x.error;
+      if(x.data==='NEEDS_CREATE'){   /* สร้างบัญชีผ่านไคลเอนต์แยก (ไม่เก็บ session) เพื่อไม่ให้ Super Admin หลุด */
+        const c2=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+        const su=await c2.auth.signUp({email:r.email,password:pw});if(su.error&&!/registered|exists/i.test(su.error.message))throw su.error;
+        x=await sb.rpc('promo_admin_set_password',{p_emp:id,p_password:pw});if(x.error)throw x.error;if(x.data!=='OK')throw new Error('สร้างบัญชีไม่สำเร็จ ('+x.data+')')}
+      r.user_id=r.user_id||'x';r.promo_verified=true;
+      out.innerHTML=`<div class="card" style="box-shadow:none;border:1px solid #bfe9d9;background:#f0fbf6"><b style="color:var(--ok)">✓ บันทึกแล้ว</b><div style="margin-top:6px">อีเมล: <b>${esc(r.email)}</b><br>รหัสผ่าน: <b id="pwShow" style="font-family:monospace;font-size:16px">${esc(pw)}</b> <button class="btn sm" id="pwCopy">คัดลอก</button></div><div class="hint" style="margin-top:6px">แจ้งสมาชิกด้วยตนเอง (ปิดหน้าต่างแล้วจะไม่แสดงรหัสนี้อีก)</div></div>`;
+      $('#pwCopy').onclick=()=>{try{navigator.clipboard.writeText(pw);$('#pwCopy').textContent='คัดลอกแล้ว'}catch(_){}};
+      btn.textContent='เสร็จแล้ว';btn.onclick=()=>{closeModal();MEM.rows=null;rMem()}}
+    catch(er){btn.disabled=false;btn.textContent='บันทึก';alert('ไม่สำเร็จ: '+errTxt(er)+(/promo_admin/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub59.sql)':''))}}}
 function memScope(id){
   const r=MEM.rows.find(x=>x.id===id),ac=MEM.access.get(id)||{scope:{type:'all'}},nodes=unitNodes(),NB='\u00A0\u00A0\u00A0';
   const curKey=ac.scope&&ac.scope.type==='unit'?'unit:'+(ac.scope.keys||[])[0]:ac.scope&&ac.scope.type==='section'?'section:'+(ac.scope.keys||[])[0]:'all';
