@@ -61,14 +61,88 @@ tr:hover td{background:#fafbff}
 .pf-two{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}.pf-two>div{flex:1 1 430px;min-width:290px}
 .sigp{display:block;width:100%;max-width:440px;height:130px;border:1.5px dashed #aab0e0;border-radius:12px;background:#fff;touch-action:none;cursor:crosshair;margin:4px 0}
 .pf-card{border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px;background:#fff}.g4{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+/* ===== Hero ทิวทัศน์ (ภาพเคลื่อนไหว: นกบิน กังหันหมุน หญ้าไหว หมอกเคลื่อน พระอาทิตย์เป็นวงกลมตัวย่อชื่อ) ===== */
+header#hero{position:relative;padding:0;overflow:hidden;background:#243a63;color:#fff;--hh:clamp(330px,44vw,720px);height:var(--hh);transition:height .75s cubic-bezier(.4,0,.2,1)}
+header#hero.mini{--hh:182px}
+.hero-stage{position:absolute;z-index:0;overflow:hidden;--u:1;left:0;top:0;width:100%}
+.hero-bg{position:absolute;left:0;top:0;width:100%;height:100%;display:block}
+.hero-svg{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+.hero-svg .birds path{transform:scale(1.7)}
+.mist{position:absolute;pointer-events:none;mix-blend-mode:screen;border-radius:50%;filter:blur(calc(var(--u)*14px));background:radial-gradient(closest-side,rgba(255,255,255,.66),rgba(255,255,255,0))}
+.mist.m1{left:2%;top:55.5%;width:46%;height:8%;animation:mistA 34s ease-in-out infinite alternate}
+.mist.m2{left:40%;top:60%;width:52%;height:9%;opacity:.8;animation:mistB 44s ease-in-out infinite alternate}
+.mist.m3{left:-10%;top:50%;width:40%;height:7%;opacity:.6;animation:mistA 52s ease-in-out -20s infinite alternate-reverse}
+@keyframes mistA{from{transform:translateX(-10%)}to{transform:translateX(42%)}}
+@keyframes mistB{from{transform:translateX(18%)}to{transform:translateX(-38%)}}
+.grass{position:absolute;left:-.6%;width:101.2%;overflow:hidden;pointer-events:none;transform-origin:50% 100%;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 45%);mask-image:linear-gradient(180deg,transparent 0,#000 45%)}
+.grass img{position:absolute;left:0;bottom:0;width:100%;display:block}
+.grass.g1{bottom:0;height:30%;animation:sway1 5.2s ease-in-out infinite alternate}
+.grass.g2{bottom:0;height:17%;animation:sway2 3.6s ease-in-out -1.4s infinite alternate}
+@keyframes sway1{from{transform:skewX(-.9deg) translateX(-.35%)}to{transform:skewX(1deg) translateX(.4%)}}
+@keyframes sway2{from{transform:skewX(1.3deg) translateX(.4%)}to{transform:skewX(-1.5deg) translateX(-.5%)}}
+.sun{position:absolute;z-index:3;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#8a4b00;letter-spacing:.03em;transform:translate(-50%,-50%);cursor:default;
+  background:radial-gradient(circle at 38% 34%,#fffbe0,#ffe27a 55%,#ffc233);
+  box-shadow:0 0 0 calc(var(--u)*7px) rgba(255,224,130,.38),0 0 calc(var(--u)*46px) calc(var(--u)*14px) rgba(255,196,70,.65);animation:sunPulse 4.5s ease-in-out infinite}
+.sun::before{content:"";position:absolute;inset:-75%;border-radius:50%;z-index:-1;pointer-events:none;
+  background:repeating-conic-gradient(rgba(255,236,160,.55) 0 5deg,transparent 5deg 15deg);
+  -webkit-mask:radial-gradient(circle,transparent 36%,#000 40%,transparent 72%);mask:radial-gradient(circle,transparent 36%,#000 40%,transparent 72%);animation:sunSpin 60s linear infinite}
+@keyframes sunPulse{50%{box-shadow:0 0 0 calc(var(--u)*13px) rgba(255,224,130,.26),0 0 calc(var(--u)*70px) calc(var(--u)*22px) rgba(255,196,70,.8)}}
+@keyframes sunSpin{to{transform:rotate(360deg)}}
+.hero-ui{position:relative;z-index:6;height:100%;display:flex;flex-direction:column;padding:14px 20px 0;box-sizing:border-box;background:linear-gradient(180deg,rgba(12,20,46,.68),rgba(12,20,46,.10) 36%,rgba(12,20,46,0) 58%,rgba(12,20,46,.55))}
+header#hero h1,header#hero .sub,header#hero #meTxt{text-shadow:0 1px 6px rgba(0,0,0,.6)}
+header#hero.mini .sub{display:none}
+header#hero nav{margin-top:auto}
+@media (prefers-reduced-motion:reduce){.mist,.grass,.sun,.sun::before{animation:none!important}}
 @media print{header,nav,.noprint{display:none!important}}
 </style>
 </head>
 <body>
-<header>
-  <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px"><a href="./" style="color:#fff;opacity:.85;font-size:13px;text-decoration:none">‹ กลับหน้าหลัก Dynamic Work Sync</a><span style="font-size:13px"><a href="#" id="bell" title="Inbox ผู้อนุมัติ — รายการที่รออนุมัติของคุณ" style="position:relative;color:#fff;text-decoration:none;font-size:18px;margin-right:14px">🔔<span id="bellN" class="hide" style="position:absolute;top:-7px;right:-11px;background:#ef4444;color:#fff;border-radius:10px;font-size:11px;font-weight:700;padding:1px 6px;min-width:18px;text-align:center;line-height:1.4"></span></a><span id="meTxt" style="opacity:.9"></span> <a href="#" id="lgOut" style="color:#fff;font-weight:700;margin-left:10px;text-decoration:underline">ออกจากระบบ</a></span></div>
+<header id="hero">
+  <div class="hero-stage" id="stage" aria-hidden="true">
+    <img class="hero-bg" src="promotion-hero.webp" alt="" decoding="async">
+    <div class="mist m1"></div><div class="mist m2"></div><div class="mist m3"></div>
+    <svg class="hero-svg" viewBox="0 0 1672 941" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="bladeG" x1="0" x2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d9dfec"/></linearGradient>
+        
+      </defs>
+      <!-- กังหันลม: ใบพัดหมุน (ใบพัดในภาพต้นฉบับถูกลบออกแล้ว) -->
+      <g transform="translate(1453.5 364)"><g><animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="9s" repeatCount="indefinite"/>
+        <g fill="url(#bladeG)" stroke="#c9d0e0" stroke-width=".6">
+          <path d="M-6,0 Q-7.5,-45 -4,-78 Q-1,-112 1,-120 Q5,-96 7,-60 Q8,-25 7,0 Z"/>
+          <path d="M-6,0 Q-7.5,-45 -4,-78 Q-1,-112 1,-120 Q5,-96 7,-60 Q8,-25 7,0 Z" transform="rotate(120)"/>
+          <path d="M-6,0 Q-7.5,-45 -4,-78 Q-1,-112 1,-120 Q5,-96 7,-60 Q8,-25 7,0 Z" transform="rotate(240)"/>
+        </g></g><circle r="9.5" fill="#f3ecd9" stroke="#b9ad8e" stroke-width="1.2"/><circle r="3.4" fill="#fff"/></g>
+      <g transform="translate(1286.5 434)"><g><animateTransform attributeName="transform" type="rotate" from="70" to="430" dur="6.5s" repeatCount="indefinite"/>
+        <g fill="url(#bladeG)" stroke="#c9d0e0" stroke-width=".5">
+          <path d="M-3.4,0 Q-4.2,-24 -2.2,-42 Q-.5,-60 .5,-65 Q2.8,-52 3.8,-32 Q4.4,-14 3.8,0 Z"/>
+          <path d="M-3.4,0 Q-4.2,-24 -2.2,-42 Q-.5,-60 .5,-65 Q2.8,-52 3.8,-32 Q4.4,-14 3.8,0 Z" transform="rotate(120)"/>
+          <path d="M-3.4,0 Q-4.2,-24 -2.2,-42 Q-.5,-60 .5,-65 Q2.8,-52 3.8,-32 Q4.4,-14 3.8,0 Z" transform="rotate(240)"/>
+        </g></g><circle r="5.6" fill="#f3ecd9" stroke="#b9ad8e" stroke-width=".9"/><circle r="2" fill="#fff"/></g>
+      <g transform="translate(1581.5 440)"><g><animateTransform attributeName="transform" type="rotate" from="200" to="560" dur="5s" repeatCount="indefinite"/>
+        <g fill="url(#bladeG)" stroke="#c9d0e0" stroke-width=".4">
+          <path d="M-2.2,0 Q-2.8,-15 -1.4,-27 Q-.3,-38 .3,-42 Q1.8,-33 2.4,-20 Q2.8,-9 2.4,0 Z"/>
+          <path d="M-2.2,0 Q-2.8,-15 -1.4,-27 Q-.3,-38 .3,-42 Q1.8,-33 2.4,-20 Q2.8,-9 2.4,0 Z" transform="rotate(120)"/>
+          <path d="M-2.2,0 Q-2.8,-15 -1.4,-27 Q-.3,-38 .3,-42 Q1.8,-33 2.4,-20 Q2.8,-9 2.4,0 Z" transform="rotate(240)"/>
+        </g></g><circle r="3.6" fill="#f3ecd9" stroke="#b9ad8e" stroke-width=".7"/></g>
+      <!-- นกบิน: ขยับปีก + บินข้ามฟ้า -->
+      <g class="birds" fill="none" stroke="#27304a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <g><path d="M-9,2 Q-4,-5 0,0 Q4,-5 9,2"><animate attributeName="d" dur=".85s" repeatCount="indefinite" values="M-9,2 Q-4,-5 0,0 Q4,-5 9,2;M-9,-3 Q-4,1 0,0 Q4,1 9,-3;M-9,2 Q-4,-5 0,0 Q4,-5 9,2"/></path><animateMotion dur="34s" repeatCount="indefinite" begin="-2s" path="M640,150 C860,70 1180,190 1760,95"/></g>
+        <g><path d="M-9,2 Q-4,-5 0,0 Q4,-5 9,2"><animate attributeName="d" dur=".95s" repeatCount="indefinite" values="M-9,2 Q-4,-5 0,0 Q4,-5 9,2;M-9,-3 Q-4,1 0,0 Q4,1 9,-3;M-9,2 Q-4,-5 0,0 Q4,-5 9,2"/></path><animateMotion dur="34s" repeatCount="indefinite" begin="-3.1s" path="M620,175 C840,100 1160,215 1740,125"/></g>
+        <g><path d="M-9,2 Q-4,-5 0,0 Q4,-5 9,2"><animate attributeName="d" dur=".8s" repeatCount="indefinite" values="M-9,2 Q-4,-5 0,0 Q4,-5 9,2;M-9,-3 Q-4,1 0,0 Q4,1 9,-3;M-9,2 Q-4,-5 0,0 Q4,-5 9,2"/></path><animateMotion dur="34s" repeatCount="indefinite" begin="-4.4s" path="M600,128 C820,45 1140,160 1720,70"/></g>
+        <g><path d="M-9,2 Q-4,-5 0,0 Q4,-5 9,2"><animate attributeName="d" dur="1s" repeatCount="indefinite" values="M-9,2 Q-4,-5 0,0 Q4,-5 9,2;M-9,-3 Q-4,1 0,0 Q4,1 9,-3;M-9,2 Q-4,-5 0,0 Q4,-5 9,2"/></path><animateMotion dur="34s" repeatCount="indefinite" begin="-5.6s" path="M580,200 C800,122 1120,240 1700,150"/></g>
+        <g><path d="M-9,2 Q-4,-5 0,0 Q4,-5 9,2"><animate attributeName="d" dur=".9s" repeatCount="indefinite" values="M-9,2 Q-4,-5 0,0 Q4,-5 9,2;M-9,-3 Q-4,1 0,0 Q4,1 9,-3;M-9,2 Q-4,-5 0,0 Q4,-5 9,2"/></path><animateMotion dur="34s" repeatCount="indefinite" begin="-6.8s" path="M560,160 C780,80 1100,200 1680,108"/></g>
+      </g>
+    </svg>
+    <div class="grass g1"><img src="promotion-hero.webp" alt="" decoding="async"></div>
+    <div class="grass g2"><img src="promotion-hero.webp" alt="" decoding="async"></div>
+    <div class="sun" id="heroSun" title="บัญชีของคุณ"><span id="heroInit">DS</span></div>
+  </div>
+  <div class="hero-ui">
+  <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px"><a href="./" style="color:#fff;opacity:.85;font-size:13px;text-decoration:none">‹ กลับหน้าหลัก Dynamic Work Sync</a><span style="font-size:13px"><a href="#" id="heroTog" title="ย่อ / ขยายภาพทิวทัศน์" style="color:#fff;font-weight:700;margin-right:14px;text-decoration:none;text-shadow:0 1px 5px rgba(0,0,0,.6);font-size:13px">⛰ ย่อ/ขยาย</a><a href="#" id="bell" title="Inbox ผู้อนุมัติ — รายการที่รออนุมัติของคุณ" style="position:relative;color:#fff;text-decoration:none;font-size:18px;margin-right:14px">🔔<span id="bellN" class="hide" style="position:absolute;top:-7px;right:-11px;background:#ef4444;color:#fff;border-radius:10px;font-size:11px;font-weight:700;padding:1px 6px;min-width:18px;text-align:center;line-height:1.4"></span></a><span id="meTxt" style="opacity:.9"></span> <a href="#" id="lgOut" style="color:#fff;font-weight:700;margin-left:10px;text-decoration:underline">ออกจากระบบ</a></span></div>
   <h1>🚀 Promotion <span style="font-weight:400;opacity:.9">· เสนอชื่อปรับตำแหน่ง</span></h1>
   <div class="sub">พิจารณาคุณสมบัติเบื้องต้นจากเกรด การศึกษา อายุงาน เทียบกับข้อกำหนดของตำแหน่งที่จะปรับ · ข้อมูลอยู่ในระบบกลาง คุมสิทธิ์ด้วย Supabase · <span id="who"></span></div>
+  <div style="flex:1;min-height:6px"></div>
   <nav id="nav">
     <button data-v="dash" class="on">📊 ภาพรวม</button>
     <button data-v="emps">👥 รายชื่อพนักงาน</button>
@@ -78,6 +152,7 @@ tr:hover td{background:#fafbff}
     <button data-v="mem" id="navMem" class="hide">👤 สมาชิก & สิทธิ์</button>
     <button data-v="data">⚙ นำเข้า / ตั้งค่า</button>
   </nav>
+  </div>
 </header>
 <div id="inboxBar" class="hide noprint" style="background:#fff7e0;border-bottom:2px solid #f59e0b;padding:10px 18px;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:14px"></div>
 <main>
@@ -392,7 +467,7 @@ async function boot(){
     await loadAll();READY=true;try{const nr=await sb.rpc('promo_is_nominator');if(nr&&nr.data===true)CAN.nom=true}catch(_){}
     const g=$('#gate');if(g)g.remove();$('#nav').classList.remove('hide');
     $('#who').textContent=(CAN.manage?'สิทธิ์: จัดการ':CAN.nom?'สิทธิ์: ผู้อนุมัติ (เสนอชื่อพนักงานในขอบเขตของตนได้)':'สิทธิ์: ดูอย่างเดียว')+' · ขอบเขตข้อมูล: '+(CAN.all?'ทั้งหมด':'จำกัดตามที่ Super Admin กำหนด');
-     {const se=s&&s.session;$('#meTxt').textContent=(se&&se.user&&se.user.email)||'';if(FLOW.sup){$('#navMem').classList.remove('hide');$('#navFlow').classList.remove('hide')}}
+     {const se=s&&s.session;$('#meTxt').textContent=(se&&se.user&&se.user.email)||'';heroInit((se&&se.user&&se.user.email)||'');if(FLOW.sup){$('#navMem').classList.remove('hide');$('#navFlow').classList.remove('hide')}}
     await autoSkipStuck();show(V.cur);initInbox();
   }catch(er){gate(`<h2 style="margin:0 0 8px">เชื่อมต่อไม่สำเร็จ</h2><div class="hint">${esc(errTxt(er))}</div><div style="margin-top:14px"><button class="btn pri" onclick="boot()">ลองใหม่</button></div>`)}
 }
@@ -525,6 +600,26 @@ async function newPortfolioNom(empId){
 const V={cur:'dash',emp:{q:'',lv:'',dept:'',only:'',sort:'id',dir:1,lim:100},nom:{q:'',st:''}};
 function show(v){if((v==='flow'||v==='mem')&&!FLOW.sup)v='dash';V.cur=v;$$('main>section').forEach(s=>s.classList.toggle('hide',s.id!=='v-'+v));$$('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));render()}
 $('#nav').onclick=e=>{const b=e.target.closest('button');if(b)show(b.dataset.v)};
+/* ============ Hero ทิวทัศน์: จัดตำแหน่งภาพ / ตัวย่อชื่อในพระอาทิตย์ / ย่อ-ขยาย ============ */
+function layoutHero(){
+  const h=$('#hero'),st=$('#stage');if(!h||!st)return;
+  const w=h.clientWidth,hh=h.clientHeight,AR=1672/941,mini=h.classList.contains('mini');
+  const W=Math.max(w,hh*AR),H=W/AR,u=W/1672,left=(w-W)*0.85,top=mini?-H*0.04:Math.min(0,Math.max(hh-H,-H*0.015));
+  st.style.cssText=`width:${W}px;height:${H}px;left:${left}px;top:${top}px;--u:${u}`;
+  const sun=$('#heroSun');if(sun){const dd=84*u;sun.style.cssText=`left:${(1507/1672*100).toFixed(3)}%;top:${(113/941*100).toFixed(3)}%;width:${dd}px;height:${dd}px;font-size:${Math.max(12,dd*0.37)}px`}}
+function heroTween(ms){const t0=performance.now();(function f(){layoutHero();if(performance.now()-t0<ms)requestAnimationFrame(f)})()}
+function heroMini(on){const h=$('#hero');if(!h)return;h.classList.toggle('mini',on);heroTween(900)}
+function heroInit(email){
+  const loc=String(email||'').split('@')[0],ps=loc.split(/[._\-+]+/).filter(Boolean);
+  const ini=((ps.length>=2?ps[0][0]+ps[1][0]:loc.slice(0,2))||'DS').toUpperCase();
+  const el=$('#heroInit');if(el)el.textContent=ini;const s=$('#heroSun');if(s)s.title='บัญชี: '+(email||'')}
+(function(){
+  const h=$('#hero');if(!h)return;
+  let seen=false;try{seen=sessionStorage.getItem('promo_hero_seen')==='1';sessionStorage.setItem('promo_hero_seen','1')}catch(_){}
+  h.classList.toggle('mini',seen);layoutHero();window.addEventListener('resize',layoutHero);
+  const img=$('.hero-bg');if(img)img.addEventListener('load',layoutHero);
+  const tg=$('#heroTog');if(tg)tg.onclick=e=>{e.preventDefault();heroMini(!h.classList.contains('mini'))};
+  const nv=$('#nav');if(nv)nv.addEventListener('click',()=>{if(!h.classList.contains('mini'))heroMini(true)})})();
 function render(){({dash:rDash,emps:rEmps,noms:rNoms,flow:rFlow,mem:rMem,pf:rPf,reqs:rReqs,data:rData})[V.cur]()}
 const needData=()=>db.emps.length?'':`<div class="card"><div class="drop">ยังไม่มีข้อมูลพนักงาน<br><br><button class="btn pri" onclick="show('data')">⚙ ไปนำเข้าไฟล์ Excel</button></div></div>`;
 
