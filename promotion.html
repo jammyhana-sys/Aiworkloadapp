@@ -166,6 +166,42 @@ function parseTraining(buf){
     out.push({course,date:dt,sort:srt,hrs:isNaN(h)?0:h,place:str(r.E),inst:str(r.F),speaker:str(r.G)})});
   return{name,rows:out};
 }
+/* รวมประวัติ: คงรายการจากแหล่งอื่นไว้ แทนที่เฉพาะแหล่งเดียวกัน และตัดรายการซ้ำ (วันที่เริ่ม + ชื่อหลักสูตร 10 ตัวแรก) */
+const trKey=r=>(r.sort||r.date||'')+'|'+String(r.course||'').replace(/[\s​]+/g,'').slice(0,10);
+function trMerge(existing,fresh,src){
+  const kept=(existing||[]).filter(r=>(r.src||'xlsx')!==src),seen=new Set(kept.map(trKey)),add=[];
+  fresh.forEach(r=>{const k=trKey(r);if(!seen.has(k)){seen.add(k);add.push({...r,src})}});
+  return kept.concat(add)}
+/* รายงานการอบรม TRN002 ที่ส่งออกจาก empeo (ทั้งบริษัทในไฟล์เดียว) */
+function parseEmpeoTraining(buf){
+  if(!window.XLSX)throw new Error('โหลดไลบรารี Excel ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');
+  const wb=XLSX.read(buf,{type:'array'}),ws=wb.Sheets[wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(ws,{header:'A',defval:'',raw:true,blankrows:false});
+  const hi=rows.findIndex(r=>String(r.B||'').trim()==='รหัส'&&String(r.F||'').includes('ชื่อการอบรม'));
+  if(hi<0)throw new Error('ไม่ใช่ไฟล์รายงานการอบรม (TRN002) — ไม่พบหัวตาราง รหัส / ชื่อการอบรม');
+  const str=v=>String(v==null?'':v).replace(/\s+/g,' ').trim(),out=[];
+  rows.slice(hi+1).forEach(r=>{const code=str(r.B),course=str(r.F),dtx=str(r.I);if(!/^\d+$/.test(code)||!course)return;
+    if(str(r.N)&&str(r.N)!=='เสร็จสิ้น')return;
+    const ds=dtx.match(/\d{2}\/\d{2}\/\d{4}/g)||[];if(!ds.length)return;
+    const m=ds[0].match(/(\d{2})\/(\d{2})\/(\d{4})/),y=+m[3]>2400?+m[3]:+m[3]+543,sort=''+y+m[2]+m[1];
+    const hm=dtx.match(/\(\s*(?:(\d+(?:\.\d+)?)\s*ชม\.?)?\s*(?:(\d+)\s*น\.?)?\s*\)/);
+    const hrs=hm?(+(hm[1]||0)+(+(hm[2]||0))/60):0;
+    out.push({code,name:str(r.C),course,date:ds.length>1&&ds[1]!==ds[0]?ds[0]+' - '+ds[1]:ds[0],sort,hrs:Math.round(hrs*100)/100,place:'',inst:str(r.J),speaker:str(r.H)})});
+  return out}
+async function empeoImport(file,onProg){
+  if(!(CAN.manage&&CAN.all))throw new Error('ต้องมีสิทธิ์จัดการและขอบเขตข้อมูลทั้งหมด');
+  const rows=parseEmpeoTraining(await file.arrayBuffer()),byId={},unmatched=new Map();let total=0;
+  const byCode=new Map(db.emps.map(e=>[String(e.id).replace(/^0+/,''),e]));
+  rows.forEach(r=>{let e=byCode.get(r.code.replace(/^0+/,''));
+    if(!e){const m=matchEmp(r.name);e=m.e}
+    if(!e){unmatched.set(r.code,r.name);return}
+    (byId[e.id]=byId[e.id]||[]).push(r);total++});
+  const ids=Object.keys(byId),now=new Date().toISOString();let added=0;
+  for(let i=0;i<ids.length;i+=20){onProg&&onProg(Math.min(i+20,ids.length),ids.length);
+    const batch=ids.slice(i,i+20).map(id=>{const before=(db.train[id]||[]).length,merged=trMerge(db.train[id],byId[id],'empeo');added+=merged.length-before;return{emp_id:id,rows:merged,src:'empeo',updated_at:now}});
+    const r=await sb.from('promo_training').upsert(batch);if(r.error)throw r.error}
+  await loadTrain();
+  return{emps:ids.length,rows:total,added,unmatched:[...unmatched.entries()].map(([c,n])=>c+' '+n)}}
 async function trainImport(files,onProg){
   if(!(CAN.manage&&CAN.all))throw new Error('ต้องมีสิทธิ์จัดการและขอบเขตข้อมูลทั้งหมด');
   const byEmp={},unmatched=[],failed=[];let n=0;
@@ -175,7 +211,7 @@ async function trainImport(files,onProg){
       byEmp[m.e.id]={rows:p.rows,name:p.name,file:f.name}}
     catch(er){failed.push(f.name+': '+((er&&er.message)||er))}}
   const ids=Object.keys(byEmp),now=new Date().toISOString();
-  for(let i=0;i<ids.length;i+=20){const r=await sb.from('promo_training').upsert(ids.slice(i,i+20).map(id=>({emp_id:id,rows:byEmp[id].rows,src:byEmp[id].file,updated_at:now})));if(r.error)throw r.error}
+  for(let i=0;i<ids.length;i+=20){const r=await sb.from('promo_training').upsert(ids.slice(i,i+20).map(id=>({emp_id:id,rows:trMerge(db.train[id],byEmp[id].rows,'xlsx'),src:byEmp[id].file,updated_at:now})));if(r.error)throw r.error}
   await loadTrain();
   return{ok:ids.length,courses:ids.reduce((s,id)=>s+byEmp[id].rows.length,0),unmatched,failed};
 }
@@ -1093,6 +1129,8 @@ function rData(){
   ${CAN.manage&&CAN.all?`<div class="card"><h2>นำเข้าประวัติการฝึกอบรม (.xlsx รายบุคคล)</h2>
     <div class="hint" style="margin-bottom:10px">เลือกไฟล์ "ประวัติการฝึกอบรม (TRAINING RECORD)" ของพนักงานได้หลายไฟล์พร้อมกัน — จับคู่พนักงานด้วย ชื่อ + นามสกุล (ในเซลล์ชื่อ) เก็บหลักสูตร วันที่ จำนวนชั่วโมง สถานที่/สถาบัน วิทยากร (ไม่เก็บค่าใช้จ่าย) · นำเข้าซ้ำจะแทนที่ประวัติของคนนั้น · แสดงในแฟ้ม Portfolio ขั้น 4 และใน PDF</div>
     <div class="row" style="align-items:end"><div style="flex:2"><label>ไฟล์ Excel (เลือกได้หลายไฟล์)</label><input type="file" id="trx" accept=".xlsx" multiple></div></div>
+    <div class="row" style="align-items:end;margin-top:12px"><div style="flex:2"><label>รายงานการอบรมจาก empeo (TRN002 .xlsx — ทั้งบริษัทในไฟล์เดียว จับคู่ด้วยรหัสพนักงาน)</label><input type="file" id="empx" accept=".xlsx"></div></div>
+    <div class="hint" style="margin-top:6px">ข้อมูลจาก empeo กับจาก Excel รายบุคคลเก็บแยกแหล่ง นำเข้าซ้ำแต่ละแหล่งจะแทนที่เฉพาะของแหล่งนั้น และตัดรายการซ้ำ (วันที่ + ชื่อหลักสูตร) ออกให้</div>
     <div id="trmsg" class="hint" style="margin-top:10px">${Object.keys(db.train).length?`ข้อมูลปัจจุบัน: ${Object.keys(db.train).length} คน · ${Object.values(db.train).reduce((s,a)=>s+a.length,0)} รายการ`:'ยังไม่เคยนำเข้า'}</div></div>`:''}
   <div class="card"><h2>เกณฑ์พิจารณาเบื้องต้น (ปรับตามนโยบายบริษัท)</h2><div class="row">
     <div><label>เกรดเฉลี่ยขั้นต่ำ (4.0 = A)</label><input id="cAvg" type="number" step="0.1" value="${c.minAvg}"></div>
@@ -1111,6 +1149,10 @@ function rData(){
   if($('#trx'))$('#trx').onchange=async e=>{const fs=[...e.target.files];if(!fs.length)return;const m=$('#trmsg');m.textContent='กำลังอ่านไฟล์…';
     try{const r=await trainImport(fs,(i,t)=>{m.textContent=`กำลังอ่านไฟล์ ${i}/${t}…`});
       m.innerHTML=`<span style="color:var(--ok)">✓ นำเข้าสำเร็จ ${r.ok} คน · ${r.courses} รายการอบรม</span>`+(r.unmatched.length?`<div style="color:var(--warn);margin-top:6px">จับคู่พนักงานไม่ได้ ${r.unmatched.length} ไฟล์: ${esc(r.unmatched.join(' · '))}</div>`:'')+(r.failed.length?`<div style="color:var(--bad);margin-top:6px">อ่านไม่สำเร็จ: ${esc(r.failed.join(' · '))}</div>`:'')}
+    catch(er){m.innerHTML=`<span style="color:var(--bad)">นำเข้าไม่สำเร็จ: ${esc(errTxt(er))}${/promo_training/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub66.sql)':''}</span>`}};
+  if($('#empx'))$('#empx').onchange=async e=>{const f=e.target.files[0];if(!f)return;const m=$('#trmsg');m.textContent='กำลังอ่านรายงาน empeo…';
+    try{const r=await empeoImport(f,(i,t)=>{m.textContent=`กำลังบันทึก ${i}/${t} คน…`});
+      m.innerHTML=`<span style="color:var(--ok)">✓ นำเข้าจาก empeo สำเร็จ: ${r.emps} คน · ${r.rows} รายการในรายงาน · เพิ่มใหม่ ${r.added} รายการ (ที่เหลือซ้ำกับของเดิม)</span>`+(r.unmatched.length?`<div class="hint" style="margin-top:6px">ไม่อยู่ในรายชื่อพนักงานของระบบ ${r.unmatched.length} คน (ข้าม)</div>`:'')}
     catch(er){m.innerHTML=`<span style="color:var(--bad)">นำเข้าไม่สำเร็จ: ${esc(errTxt(er))}${/promo_training/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub66.sql)':''}</span>`}};
   $('#fx').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('#fmsg').textContent='กำลังอ่านไฟล์และบันทึกขึ้นระบบกลาง…';
     try{if(!window.XLSX)throw new Error('โหลดไลบรารี Excel ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');const r=await doImport(await f.arrayBuffer(),f.name);
