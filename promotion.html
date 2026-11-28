@@ -501,9 +501,6 @@ function openNom(id,editId){
   <div style="margin-top:12px"><label>ตรวจคุณสมบัติตามข้อกำหนดของตำแหน่งที่เสนอ (ติ๊กข้อที่ผ่าน)</label><div id="nmQual"></div></div>
   <div id="nmPfBox" style="margin-top:14px"></div>
   ${x.pass?'':`<div class="card" style="box-shadow:none;border:1px solid #f1c27a;background:#fff8ec;margin:12px 0 0"><b style="color:var(--warn)">⚠ ไม่ผ่านเกณฑ์เบื้องต้น — เสนอเป็นกรณีพิเศษ</b><div class="hint" style="margin:4px 0 8px">${esc(x.why.join(' · '))}</div><label>เหตุผลขอพิจารณาเป็นกรณีพิเศษ (จำเป็น)</label><textarea id="nmExc" rows="3" placeholder="เช่น ได้รับมอบหมายงานสำคัญ / เพิ่งโอนย้ายจึงมีเกรดไม่ครบ / ผลงานโดดเด่นเป็นพิเศษ">${esc(ed&&ed.exc||'')}</textarea></div>`}
-  <div class="row" style="margin-top:12px"><div style="flex:2"><label>เหตุผล / ผลงานเด่นประกอบการเสนอ</label><textarea id="nmWhy" rows="3"></textarea></div>
-    <div><label>ผู้เสนอชื่อ</label><input id="nmBy"></div><div><label>วันที่เสนอ</label><input id="nmDate" type="date"></div></div>
-  <div class="row" style="margin-top:12px"><div><label>สถานะ</label><div><span class="tag ${STCLS[ed?ed.status:'ร่าง']}">${ed?esc(ed.status):'ร่าง'}</span> <span class="hint">เปลี่ยนด้วยปุ่ม ส่งขออนุมัติ / อนุมัติ ในหน้ารายการเสนอชื่อ</span></div></div><div style="flex:2"><label>หมายเหตุ</label><input id="nmNote"></div></div>
   <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal()">ยกเลิก</button><button class="btn pri" id="nmSave">บันทึก</button></div>`);
   const fill=l=>{const q=reqOf(l),its=q?q.qual.split(/\r?\n/).map(s=>s.trim()).filter(Boolean):[],pl=q?q.posTh.map((p,i)=>[p,q.posEn[i]||'']):[];
     $('#nmPos').innerHTML=pl.map(([t,en])=>`<option value="${esc(t)}">${esc(t)}${en?' / '+esc(en):''}</option>`).join('')||'<option value="">(ไม่มีข้อมูลตำแหน่ง)</option>';
@@ -513,7 +510,8 @@ function openNom(id,editId){
     if(ed&&+ed.toLevel===l){$('#nmPos').value=ed.toPos;$$('#nmQual [data-q]').forEach(c=>c.checked=!!(ed.checks||[])[+c.dataset.q])}};
   $('#nmLv').onchange=ev=>fill(+ev.target.value);fill(to);
   const PFL=JSON.parse(JSON.stringify((ed&&db.pf[ed.id])||{}));
-  const nStub=()=>({id:ed?ed.id:'',empId:e.id,fromLevel:e.level,fromPos:e.pos,toLevel:+$('#nmLv').value,toPos:$('#nmPos').value,why:$('#nmWhy').value.trim(),by:$('#nmBy').value.trim(),date:$('#nmDate').value,status:ed?ed.status:'ร่าง',special:!x.pass,exc:$('#nmExc')?$('#nmExc').value.trim():((ed&&ed.exc)||'')});
+  const nmBy0=ed?ed.by:(((empOf(FLOW.me)||{}).name)||''),nmDate0=ed?ed.date:new Date().toISOString().slice(0,10);
+  const nStub=()=>({id:ed?ed.id:'',empId:e.id,fromLevel:e.level,fromPos:e.pos,toLevel:+$('#nmLv').value,toPos:$('#nmPos').value,why:ed?ed.why:'',by:nmBy0,date:nmDate0,status:ed?ed.status:'ร่าง',special:!x.pass,exc:$('#nmExc')?$('#nmExc').value.trim():((ed&&ed.exc)||'')});
   const updNmPf=()=>{const c=pfCompleteness(PFL,nStub(),e);$('#nmPfReady').innerHTML=pfReadyHtml(c);$('#nmPfProg').textContent=`${c.items.filter(x=>x[1]).length}/${c.items.length} หัวข้อครบ`;$('#nmPfGen').disabled=!c.done;$('#nmPfGen').style.opacity=c.done?1:.5};
   const renderNmPf=()=>{
     $('#nmPfBox').innerHTML=`<div class="card" style="box-shadow:none;border:1px solid var(--line);margin:0"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><b>📋 Checklist เอกสารหลักฐานประกอบ Promotion Portfolio</b><span class="tag pri" id="nmPfProg"></span></div>
@@ -529,12 +527,11 @@ function openNom(id,editId){
       db.pf[ed.id]=PFL;closeModal();openPf(ed.id)};
     updNmPf()};
   renderNmPf();
-  $('#nmBy').value=ed?ed.by:'';$('#nmDate').value=ed?ed.date:new Date().toISOString().slice(0,10);$('#nmWhy').value=ed?ed.why:'';$('#nmNote').value=ed?ed.note:'';
   $('#nmSave').onclick=()=>{const toL=+$('#nmLv').value;
     if(!ed&&activeNom(e.id))return alert('พนักงานคนนี้มีรายการเสนอชื่อที่ยังดำเนินอยู่แล้ว');
     if(!x.pass&&!($('#nmExc')&&$('#nmExc').value.trim()))return alert('พนักงานคนนี้ไม่ผ่านเกณฑ์เบื้องต้น — ระบุเหตุผลขอพิจารณาเป็นกรณีพิเศษก่อน');
     const rec={id:ed?ed.id:'N'+Date.now().toString(36),empId:e.id,fromLevel:e.level,fromPos:e.pos,toLevel:toL,toPos:$('#nmPos').value,checks:$$('#nmQual [data-q]').map(c=>c.checked),
-      why:$('#nmWhy').value.trim(),by:$('#nmBy').value.trim(),date:$('#nmDate').value,status:ed?ed.status:'ร่าง',note:$('#nmNote').value.trim(),special:!x.pass,exc:!x.pass?$('#nmExc').value.trim():'',snap:{avg:x.avg,ten:x.ten,pass:x.pass,grades:{...e.grades}},at:ed?ed.at:new Date().toISOString()};
+      why:ed?ed.why:'',by:nmBy0,date:nmDate0,status:ed?ed.status:'ร่าง',note:ed?ed.note:'',special:!x.pass,exc:!x.pass?$('#nmExc').value.trim():'',snap:{avg:x.avg,ten:x.ten,pass:x.pass,grades:{...e.grades}},at:ed?ed.at:new Date().toISOString()};
     if(!CAN.nom)return alert('ไม่มีสิทธิ์จัดการ');
     const btn=$('#nmSave');btn.disabled=true;btn.textContent='กำลังบันทึก…';
     (ed?sb.from('promo_nominations').update({data:rec,updated_at:new Date().toISOString()}).eq('id',rec.id):sb.from('promo_nominations').insert({id:rec.id,emp_id:rec.empId,status:'ร่าง',step:0,data:rec,created_by:rec.by||'',updated_at:new Date().toISOString()})).then(r=>{
@@ -923,8 +920,8 @@ function pfProgress(d,n,e){
   const AS=achStat(d),c=pfCompleteness(d,n,e),parts=[c.items[0][1]?1:0,c.items[1][1]?1:0,c.scores/PF_COMP.length,c.items[3][1]?1:0];
   const pct=Math.round(parts.reduce((a,b)=>a+b,0)/parts.length*100),ok={1:c.items[0][1],2:c.items[1][1],3:c.items[2][1],4:c.items[3][1],5:!!pfGet(d,'form.mgrOpt')&&!!pfGet(d,'form.mgrSig')};
   const todo=[];if(!c.items[0][1])todo.push([1,'ระบุเหตุผลและความจำเป็น']);if(!c.items[1][1])todo.push([2,AS.n?`ผลงานต้องกรอกครบทุกช่องและแนบไฟล์ (ครบ ${AS.ok}/${AS.n} รายการ)`:'เพิ่มผลงานอย่างน้อย 1 รายการ']);if(!c.items[2][1])todo.push([3,`ให้คะแนน Competency ให้ครบ (${c.scores}/${PF_COMP.length} ข้อ)`]);if(!c.items[3][1])todo.push([4,'เลือกความพร้อมสำหรับตำแหน่งใหม่']);  const g=p=>{const v=pfGet(d,p);return v==null?'':v},evN=(Array.isArray(pfGet(d,'form.eval'))?pfGet(d,'form.eval'):[]).filter(r=>r&&(r.kpi||r.comp)).length,trN=(Array.isArray(pfGet(d,'form.train'))?pfGet(d,'form.train'):[]).filter(r=>r&&r.course).length;
-  const b1=(g('form.reason')||n.why)?1:0;
-  const steps={1:{pct:b1?100:0,txt:b1?'กรอกเหตุผลแล้ว':'ยังไม่กรอกเหตุผล'},2:{pct:AS.n?Math.round(AS.ok/AS.n*100):0,txt:AS.n?`ผลงานครบ ${AS.ok}/${AS.n} รายการ`:'ยังไม่มีผลงาน'},3:{pct:Math.round(c.scores/PF_COMP.length*100),txt:`ให้คะแนน ${c.scores}/${PF_COMP.length} ข้อ${evN?` · ผลประเมินย้อนหลัง ${evN} ปี`:''}`},4:{pct:c.items[3][1]?100:0,txt:`${c.items[3][1]?'เลือกความพร้อมแล้ว':'ยังไม่เลือกความพร้อม'}${trN?` · อบรม ${trN} รายการ`:''}`},5:{pct:g('form.mgrOpt')&&g('form.mgrSig')?100:g('form.mgrOpt')||g('form.mgrSig')?50:0,txt:`ข้อเสนอแนะ ${g('form.mgrOpt')?'✓':'○'} · ลายเซ็น ${g('form.mgrSig')?'✓':'○'}`}};
+  const b1=1;
+  const steps={1:{pct:b1?100:0,txt:'ข้อมูลพนักงาน (ดึงจากระบบอัตโนมัติ)'},2:{pct:AS.n?Math.round(AS.ok/AS.n*100):0,txt:AS.n?`ผลงานครบ ${AS.ok}/${AS.n} รายการ`:'ยังไม่มีผลงาน'},3:{pct:Math.round(c.scores/PF_COMP.length*100),txt:`ให้คะแนน ${c.scores}/${PF_COMP.length} ข้อ${evN?` · ผลประเมินย้อนหลัง ${evN} ปี`:''}`},4:{pct:c.items[3][1]?100:0,txt:`${c.items[3][1]?'เลือกความพร้อมแล้ว':'ยังไม่เลือกความพร้อม'}${trN?` · อบรม ${trN} รายการ`:''}`},5:{pct:g('form.mgrOpt')&&g('form.mgrSig')?100:g('form.mgrOpt')||g('form.mgrSig')?50:0,txt:`ข้อเสนอแนะ ${g('form.mgrOpt')?'✓':'○'} · ลายเซ็น ${g('form.mgrSig')?'✓':'○'}`}};
   return{c,pct,ok,todo,steps}}
 const pfStepOf=path=>/^docs\./.test(path)?'6':/^comp\./.test(path)||/^form\.eval/.test(path)?'3':/^form\.ach/.test(path)?'2':/^form\.(train|ready)/.test(path)?'4':/^form\.(mgr|hr|appr)/.test(path)?'5':'1';
 function pfTouch(step){const m=PF.data.meta=PF.data.meta||{};const now=new Date().toISOString(),by=(FLOW.me||''),nm=((empOf(FLOW.me)||{}).name)||($('#meTxt')&&$('#meTxt').textContent)||by;m.at=now;m.by=by;m.byName=nm;m.steps=m.steps||{};m.steps[step]={at:now,by:nm}}
@@ -963,9 +960,6 @@ function rPf(){
   let body='';
   if(step==='1'){
     body=card('ข้อมูลพนักงาน (ดึงจากระบบอัตโนมัติ)',`<div class="grid g2" style="gap:8px">${[['ชื่อ-สกุล',e.name],['รหัส',e.id||n.empId],['ตำแหน่งปัจจุบัน',`${e.pos||''} · Level ${e.level??n.fromLevel}`],['ตำแหน่งที่เสนอ',`${n.toPos} · Level ${n.toLevel}`],['สังกัด',[e.group,e.dept,e.section].filter(Boolean).join(' › ')],['อายุงาน',ymd(e.start)]].map(([l,v])=>`<div style="background:#f3f4fb;border-radius:12px;padding:8px 12px"><div class="hint" style="font-size:11.5px">${l}</div><b style="font-size:13.5px">${esc(v)}</b></div>`).join('')}</div>`)
-     +card('รายละเอียดการเสนอ',`<div class="grid g2">${fld('หน่วยงานที่สังกัดตำแหน่งใหม่',inp('form.unit','',null,e.dept||''))}</div>
-       <div style="margin-top:12px"><label>ประเภทการเสนอ</label><div class="seg">${PF_TYPE.map(([k,l])=>tog('form.type.'+k,l)).join('')}</div></div>
-       <div style="margin-top:12px"><label>เหตุผลและความจำเป็น <span class="hint">— เขียนให้เห็นผลงาน ผลกระทบ และเหตุที่ต้องเลื่อนตอนนี้</span></label>${area('form.reason',5,n.why||'','เช่น รับผิดชอบโครงการ… ผลงาน… ตำแหน่งใหม่จำเป็นต่อ…')}</div>`)
   }else if(step==='2'){
     const a=arr('ach');const rows=a.length?a:[{}];
     const rq=' <span style="color:var(--bad)">*</span>';
@@ -1094,8 +1088,6 @@ async function pfExport(n,e){
   set('E3',n.date?thDate(n.date):'');
   set('B6',e.name);set('E6',e.id||n.empId);set('B7',[e.group,e.line].filter(Boolean).join(' › '));set('E7',[e.dept,e.section].filter(Boolean).join(' / '));set('B8',e.pos);set('E8','Level '+(e.level??n.fromLevel));set('B9',thDate(e.start));set('E9',ymd(e.start));set('B10',g('form.supervisor'));set('E10',n.date?thDate(n.date):'');
   set('B13',n.toPos);set('E13','Level '+n.toLevel);set('B14',g('form.unit',e.dept||''));set('E14',g('form.effDate')?thDate(g('form.effDate')):'');
-  f.getCell('B15').value=PF_TYPE.map(([k,l])=>(g('form.type.'+k)?'☑ ':'☐ ')+l).join('  ');
-  set('B16',g('form.reason',n.why||''));
   for(let i=0;i<5;i++){set('B'+(21+i),g(`form.ach.${i}.proj`));set('C'+(21+i),g(`form.ach.${i}.role`));set('D'+(21+i),g(`form.ach.${i}.result`));const fl=(pfGet(d,`form.ach.${i}.files`)||[]).map(x=>x.name).join(', ');set('E'+(21+i),[g(`form.ach.${i}.evid`),fl?'ไฟล์: '+fl:''].filter(Boolean).join(' · '))}
   const addSig=(v,col,row)=>{if(/^data:image\/png;base64,/.test(v||'')){const id=wb.addImage({base64:v,extension:'png'});f.addImage(id,{tl:{col,row},ext:{width:130,height:40}})}};
   addSig(g('form.mgrSig'),1,58);addSig(g('form.hrSig'),1,65);for(let i=0;i<4;i++)addSig(g(`form.appr.${i}.sig`),2,69+i);
@@ -1114,7 +1106,7 @@ async function pfExport(n,e){
 const loadHtml2Pdf=()=>window.html2pdf?Promise.resolve(true):new Promise(res=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';s.onload=()=>res(!!window.html2pdf);s.onerror=()=>res(false);document.head.appendChild(s)});
 function pfCompleteness(d,n,e){
   const g=p=>{const v=pfGet(d,p);return v==null?'':v},miss=[];
-  const basic=!!(g('form.reason')||n.why);if(!basic)miss.push('ข้อมูลข้อเสนอ: เหตุผลและความจำเป็น');
+  const basic=true;
   const AS=achStat(d),ach=AS.all?1:0;if(!AS.n)miss.push('ผลงานและความสำเร็จ อย่างน้อย 1 รายการ');else if(!AS.all)miss.push(`ผลงานและความสำเร็จ ต้องกรอกครบทุกช่องและแนบไฟล์ (ครบ ${AS.ok}/${AS.n} รายการ)`);
   const sc=PF_COMP.filter((_,i)=>{const v=pfGet(d,`comp.s.${i}`);return v!==''&&v!=null}).length;if(sc<PF_COMP.length)miss.push(`ประเมิน Competency (ให้คะแนน ${sc}/${PF_COMP.length} ข้อ)`);
   const rd=!!g('form.readyOpt');if(!rd)miss.push('ความพร้อมสำหรับตำแหน่งใหม่ (เลือกผล)');
@@ -1143,7 +1135,7 @@ function pfHtml(n,e,d,draft){
   <h1>บริษัท เด็มโก้ จำกัด (มหาชน)</h1><h2><b>แบบฟอร์มเสนอขอเลื่อนตำแหน่ง / ปรับระดับตำแหน่ง</b></h2><h2>PROMOTION PORTFOLIO · หน่วยงานทรัพยากรบุคคล (Human Resources)</h2>
   <table style="margin:8px 0"><tr><td style="border:0">รหัสเอกสาร: HR-FM-XXX</td><td style="border:0;text-align:right">วันที่เสนอ: ${n.date?thDate(n.date):''} · ออกเอกสาร: ${thDate(new Date().toISOString().slice(0,10))}</td></tr></table>
   ${sec('ส่วนที่ 1 ข้อมูลประวัติพนักงาน (Employee Information)',kv([[['ชื่อ-นามสกุล',e.name],['รหัสพนักงาน',e.id||n.empId]],[['บริษัท / หน่วยงาน',[e.group,e.line].filter(Boolean).join(' › ')],['ฝ่าย / แผนก',[e.dept,e.section].filter(Boolean).join(' / ')]],[['ตำแหน่งปัจจุบัน',e.pos],['ระดับตำแหน่งปัจจุบัน','Level '+(e.level??n.fromLevel)]],[['วันที่เริ่มงาน',thDate(e.start)],['อายุงาน',ymd(e.start)]],[['ผู้บังคับบัญชาโดยตรง',g('form.supervisor')],['วันที่เสนอ',n.date?thDate(n.date):'']]]))}
-  ${sec('ส่วนที่ 2 รายละเอียดการเสนอขอเลื่อนตำแหน่ง (Promotion Proposal)',kv([[['ตำแหน่งที่เสนอขอ',n.toPos],['ระดับตำแหน่งใหม่','Level '+n.toLevel]],[['หน่วยงาน',g('form.unit',e.dept||'')],['วันที่เสนอ',dt(n.date)]]])+`<table class="pkv"><colgroup><col style="width:17%"><col style="width:83%"></colgroup><tr><th>ประเภทการเสนอ</th><td>${PF_TYPE.map(([k,l])=>(g('form.type.'+k)?'☑ ':'☐ ')+l).join('&nbsp;&nbsp;&nbsp;')}</td></tr></table><div class="box"><b>เหตุผลและความจำเป็น:</b> ${esc(g('form.reason',n.why||''))}${n.special?`\n<b style="color:#a8620a">กรณีพิเศษ (ไม่ผ่านเกณฑ์เบื้องต้น):</b> ${esc(n.exc||'')}`:''}</div>`)}
+  ${sec('ส่วนที่ 2 รายละเอียดการเสนอขอเลื่อนตำแหน่ง (Promotion Proposal)',kv([[['ตำแหน่งที่เสนอขอ',n.toPos],['ระดับตำแหน่งใหม่','Level '+n.toLevel]],[['หน่วยงาน',g('form.unit',e.dept||'')],['วันที่เสนอ',dt(n.date)]]])+(n.special?`<div class="box"><b style="color:#a8620a">กรณีพิเศษ (ไม่ผ่านเกณฑ์เบื้องต้น):</b> ${esc(n.exc||'')}</div>`:''))}
   ${sec('ส่วนที่ 3 ผลงานและความสำเร็จ (Performance & Achievement)',tbl(['ลำดับ','ผลงาน / โครงการ','บทบาทและความรับผิดชอบ','ผลสำเร็จ / ผลลัพธ์ที่วัดได้','หลักฐานประกอบ','ไฟล์แนบ'],[0,1,2,3,4].map(i=>`<tr><td>${i+1}</td>${td(g(`form.ach.${i}.proj`))}${td(g(`form.ach.${i}.role`))}${td(g(`form.ach.${i}.result`))}${td(g(`form.ach.${i}.evid`))}${td(((pfGet(d,`form.ach.${i}.files`)||[]).map(f=>f.name)).join(', '))}</tr>`)))}
   ${sec('ส่วนที่ 4 ผลการประเมินการปฏิบัติงาน (Performance Evaluation)',tbl(['ปี','ผลการประเมิน KPI / เกรด','ผลการประเมิน Competency','หมายเหตุ'],evRows)+(cs?`<div class="mut" style="margin-top:3px">ผลประเมิน Competency ปี ${db.compYear} จากระบบ: ${esc(cs)}</div>`:''))}
   ${sec('ส่วนที่ 5 ประวัติการพัฒนาและฝึกอบรม (Learning & Development)',tbl(['ลำดับ','หลักสูตร / การอบรม','หน่วยงานผู้จัด','วันที่ / ปี','ผลการพัฒนา'],[0,1,2,3].map(i=>`<tr><td>${i+1}</td>${td(g(`form.train.${i}.course`))}${td(g(`form.train.${i}.org`))}${td(g(`form.train.${i}.date`))}${td(g(`form.train.${i}.result`))}</tr>`))+(()=>{const TH=(db.train[e.id]||[]).slice().sort((a,b)=>(b.sort||'').localeCompare(a.sort||''));return TH.length?`<div style="margin-top:6px;font-size:11px"><b>วิเคราะห์ทักษะจากหลักสูตรฝึกอบรม (สัดส่วนตามชั่วโมง รวม 100%)</b></div>${trChartHtml(TH,130,true)}<div style="margin-top:6px;font-size:11px"><b>ประวัติการฝึกอบรมทั้งหมดจากระบบ (${TH.length} หลักสูตร · ${fmt1(trHours(TH))} ชม.)</b></div>`+tbl(['#','หลักสูตร','วันที่','ชม.','สถาบัน / สถานที่'],TH.map((r,i)=>`<tr style="font-size:10px"><td>${i+1}</td>${td(r.course)}${td(r.date)}${td(r.hrs||'')}${td([r.inst,r.place].filter(Boolean).join(' · '))}</tr>`)):''})())}
