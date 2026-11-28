@@ -65,7 +65,7 @@ tr:hover td{background:#fafbff}
 </head>
 <body>
 <header>
-  <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px"><a href="./" style="color:#fff;opacity:.85;font-size:13px;text-decoration:none">‹ กลับหน้าหลัก Dynamic Work Sync</a><span style="font-size:13px"><span id="meTxt" style="opacity:.9"></span> <a href="#" id="lgOut" style="color:#fff;font-weight:700;margin-left:10px;text-decoration:underline">ออกจากระบบ</a></span></div>
+  <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px"><a href="./" style="color:#fff;opacity:.85;font-size:13px;text-decoration:none">‹ กลับหน้าหลัก Dynamic Work Sync</a><span style="font-size:13px"><a href="#" id="bell" title="Inbox ผู้อนุมัติ — รายการที่รออนุมัติของคุณ" style="position:relative;color:#fff;text-decoration:none;font-size:18px;margin-right:14px">🔔<span id="bellN" class="hide" style="position:absolute;top:-7px;right:-11px;background:#ef4444;color:#fff;border-radius:10px;font-size:11px;font-weight:700;padding:1px 6px;min-width:18px;text-align:center;line-height:1.4"></span></a><span id="meTxt" style="opacity:.9"></span> <a href="#" id="lgOut" style="color:#fff;font-weight:700;margin-left:10px;text-decoration:underline">ออกจากระบบ</a></span></div>
   <h1>🚀 Promotion <span style="font-weight:400;opacity:.9">· เสนอชื่อปรับตำแหน่ง</span></h1>
   <div class="sub">พิจารณาคุณสมบัติเบื้องต้นจากเกรด การศึกษา อายุงาน เทียบกับข้อกำหนดของตำแหน่งที่จะปรับ · ข้อมูลอยู่ในระบบกลาง คุมสิทธิ์ด้วย Supabase · <span id="who"></span></div>
   <nav id="nav">
@@ -78,6 +78,7 @@ tr:hover td{background:#fafbff}
     <button data-v="data">⚙ นำเข้า / ตั้งค่า</button>
   </nav>
 </header>
+<div id="inboxBar" class="hide noprint" style="background:#fff7e0;border-bottom:2px solid #f59e0b;padding:10px 18px;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:14px"></div>
 <main>
   <section id="v-dash"></section>
   <section id="v-emps" class="hide"></section>
@@ -339,7 +340,7 @@ async function boot(){
     const g=$('#gate');if(g)g.remove();$('#nav').classList.remove('hide');
     $('#who').textContent=(CAN.manage?'สิทธิ์: จัดการ':CAN.nom?'สิทธิ์: ผู้อนุมัติ (เสนอชื่อพนักงานในขอบเขตของตนได้)':'สิทธิ์: ดูอย่างเดียว')+' · ขอบเขตข้อมูล: '+(CAN.all?'ทั้งหมด':'จำกัดตามที่ Super Admin กำหนด');
      {const se=s&&s.session;$('#meTxt').textContent=(se&&se.user&&se.user.email)||'';if(FLOW.sup){$('#navMem').classList.remove('hide');$('#navFlow').classList.remove('hide')}}
-    show(V.cur);
+    show(V.cur);initInbox();
   }catch(er){gate(`<h2 style="margin:0 0 8px">เชื่อมต่อไม่สำเร็จ</h2><div class="hint">${esc(errTxt(er))}</div><div style="margin-top:14px"><button class="btn pri" onclick="boot()">ลองใหม่</button></div>`)}
 }
 const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -698,7 +699,7 @@ function canAct(n){if(n.status!=='เสนอแล้ว'||!n.step)return fals
 const myPending=()=>db.noms.filter(canAct);
 async function nomRpc(id,action,note){
   const r=action==='submit'?await sb.rpc('promo_nom_submit',{p_id:id}):await sb.rpc('promo_nom_decide',{p_id:id,p_action:action,p_note:note||''});
-  if(r.error)throw r.error;const n=db.noms.find(x=>x.id===id);if(n&&r.data){n.status=r.data.status;n.step=r.data.step}await loadLogs();
+  if(r.error)throw r.error;const n=db.noms.find(x=>x.id===id);if(n&&r.data){n.status=r.data.status;n.step=r.data.step}await loadLogs();updateInbox(false);
 }
 const ACT_TH={reopen:'เปิดรายการอีกครั้ง',submit:'ส่งขออนุมัติ',approve:'อนุมัติ',reject:'ไม่อนุมัติ',return:'ส่งกลับแก้ไข'};
 async function openNomLog(id){
@@ -726,6 +727,51 @@ function nomFlowHtml(n,e){
     if(s.step_no===cur)return `<div style="color:var(--warn);font-weight:600">● ${i+1}. ${esc(s.name)} — รออนุมัติ${last?` <span style="font-weight:400;color:inherit"><span class="hg" title="กำลังรอ — นับเวลาจริง">⏳</span> รอมาแล้ว <b class="wait-live" data-since="${esc(last.at)}">${durLive(Date.now()-new Date(last.at).getTime())}</b> <span class="hint">(ตั้งแต่ ${fmtAt(last.at)})</span></span>`:''}${names.length?`<div class="hint" style="font-weight:400">ผู้อนุมัติ: ${esc(names.join(', '))}</div>`:'<div class="hint" style="color:var(--bad);font-weight:400">ยังไม่มีผู้อนุมัติขั้นนี้ในขอบเขต</div>'}</div>`;
     return `<div class="hint">○ ${i+1}. ${esc(s.name)}${names.length?' · '+esc(cTrunc(names.join(', '),40)):''}</div>`});
   return `<div style="font-size:12.5px;margin-top:6px;line-height:1.5;min-width:230px">${si>=0?`<div class="hint">ส่งขออนุมัติ ${fmtAt(lg[si].at)}</div>`:''}${rows.join('')}</div>`}
+/* ============ Inbox แจ้งเตือนผู้อนุมัติ: กระดิ่ง + แถบแจ้งเตือน + ป๊อปอัป + แจ้งเตือนบนเบราว์เซอร์ (รีเฟรชทุก 45 วินาที) ============ */
+const nomSince=n=>{const lg=(db.log||[]).filter(x=>x.nom_id===n.id);return lg.length?lg[lg.length-1].at:(n.at||'')};
+async function refreshInbox(){
+  if(!READY||!sb)return;
+  try{const r=await sb.from('promo_nominations').select('*').range(0,9999);if(r.error)return;
+    const before=new Set(myPending().map(n=>n.id)),oldKey=JSON.stringify(db.noms.map(n=>[n.id,n.status,n.step]));
+    db.noms=(r.data||[]).map(x=>({...x.data,id:x.id,empId:x.emp_id,status:x.status,step:x.step||0}));await loadLogs();
+    const changed=oldKey!==JSON.stringify(db.noms.map(n=>[n.id,n.status,n.step]));
+    updateInbox(true);
+    if(changed&&!document.querySelector('#modal:not(.hide)')&&!(document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))&&(V.cur==='noms'||V.cur==='dash'))render()
+  }catch(_){}}
+function inboxToast(html,onclick){
+  let t=$('#inboxToast');if(!t){t=document.createElement('div');t.id='inboxToast';t.style.cssText='position:fixed;top:14px;right:14px;z-index:99999;max-width:360px;background:#fff;border:2px solid #f59e0b;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:14px 16px;cursor:pointer;font-size:14px;line-height:1.5';document.body.appendChild(t)}
+  t.innerHTML=html+'<div class="hint" style="font-size:12px;margin-top:4px">คลิกเพื่อเปิด Inbox</div>';t.style.display='block';t.onclick=()=>{t.style.display='none';onclick&&onclick()};clearTimeout(t._h);t._h=setTimeout(()=>{t.style.display='none'},15000)}
+function updateInbox(notify){
+  const mine=myPending(),ids=mine.map(n=>n.id),N=mine.length;
+  const b=$('#bellN');if(b){b.textContent=N>99?'99+':N;b.classList.toggle('hide',!N)}
+  const bar=$('#inboxBar');if(bar){bar.classList.toggle('hide',!N);bar.innerHTML=N?`<span>⏳ <b>มี ${N} รายการรออนุมัติของคุณ</b> — ${mine.slice(0,3).map(n=>esc((empOf(n.empId)||{}).name||n.empId)).join(', ')}${N>3?` และอีก ${N-3} รายการ`:''}</span> <button class="btn sm pri" id="inboxBarBtn">เปิด Inbox</button>`:'';const bb=$('#inboxBarBtn');if(bb)bb.onclick=openInbox}
+  document.title=(N?`(${N}) `:'')+'Promotion';
+  if(!notify)return;
+  const key='promo_seen_'+(FLOW.me||'x');let seen=[];try{seen=JSON.parse(localStorage.getItem(key)||'[]')}catch(_){}
+  const fresh=mine.filter(n=>!seen.includes(n.id));
+  try{localStorage.setItem(key,JSON.stringify(ids))}catch(_){}
+  if(fresh.length){
+    const names=fresh.slice(0,3).map(n=>(empOf(n.empId)||{}).name||n.empId).join(', ')+(fresh.length>3?` และอีก ${fresh.length-3} คน`:'');
+    inboxToast(`🔔 <b>มีรายการรออนุมัติ ${fresh.length} รายการ</b><div>${esc(names)}</div>`,openInbox);
+    try{if('Notification' in window&&Notification.permission==='granted')new Notification('Promotion — มีรายการรออนุมัติ',{body:`${fresh.length} รายการ: ${names}`,tag:'promo-inbox'})}catch(_){}}}
+function openInbox(){
+  const mine=myPending().slice().sort((a,b)=>String(nomSince(a)).localeCompare(String(nomSince(b))));
+  const perm='Notification' in window?Notification.permission:'unsupported';
+  modal(`<div style="display:flex;justify-content:space-between;gap:10px"><div><h2 style="margin:0;font-size:19px">🔔 Inbox ผู้อนุมัติ</h2><div class="hint">รายการที่รออนุมัติของคุณ ${mine.length} รายการ${FLOW.sup?' (Super Admin เห็นทุกรายการที่รออนุมัติ)':''} · เรียงตามที่รอนานที่สุดก่อน</div></div><button class="btn sm" onclick="closeModal()">✕</button></div>
+    ${perm==='default'?`<div class="card" style="box-shadow:none;border:1px solid var(--line);margin:10px 0;padding:10px"><button class="btn sm" id="ibNotif">🔔 เปิดการแจ้งเตือนบนเบราว์เซอร์</button> <span class="hint">เด้งเตือนเมื่อมีรายการใหม่ แม้เปิดแท็บนี้ค้างไว้ในพื้นหลัง</span></div>`:''}
+    <div style="margin-top:10px">${mine.map(n=>{const e=empOf(n.empId)||{name:'(ไม่พบ)'},since=nomSince(n),st=activeSteps().find(s=>s.step_no===n.step);
+      return `<div class="pf-card" style="background:#fffaf0;border-color:#f6d9a0"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><div><b>${esc(e.name)}</b> <span class="hint">${esc(n.empId)}</span> ${nomTypeTag(n)}<div class="hint">${esc(n.fromPos)}${n.toPos&&n.toPos!=='-ไม่มี-'?' → '+esc(n.toPos):''} · ขั้น: ${esc(st?st.name:'')}</div></div>
+        <div style="text-align:right"><span class="hg">⏳</span> <b class="wait-live" style="color:var(--warn)" data-since="${esc(since)}">${since?durLive(Date.now()-new Date(since).getTime()):''}</b><div class="hint" style="font-size:12px">รอตั้งแต่ ${since?fmtAt(since):'-'}</div></div></div>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm pri" data-ibo="${esc(n.id)}">📁 เปิดแฟ้ม / พิจารณา</button><button class="btn sm" data-ibl="${esc(n.id)}">ประวัติ</button></div></div>`}).join('')||'<div class="hint" style="padding:18px 0;text-align:center">✓ ไม่มีรายการรออนุมัติของคุณ</div>'}</div>
+    <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end"><button class="btn" id="ibAll">ไปหน้ารายการเสนอชื่อ (รออนุมัติของฉัน)</button></div>`);
+  $$('#modalBody [data-ibo]').forEach(b=>b.onclick=()=>{closeModal();openPf(b.dataset.ibo)});
+  $$('#modalBody [data-ibl]').forEach(b=>b.onclick=()=>{closeModal();openNomLog(b.dataset.ibl)});
+  $('#ibAll').onclick=()=>{closeModal();V.nom.st='__mine';show('noms')};
+  if($('#ibNotif'))$('#ibNotif').onclick=async()=>{try{await Notification.requestPermission()}catch(_){}openInbox()}}
+function initInbox(){
+  const bell=$('#bell');if(bell)bell.onclick=ev=>{ev.preventDefault();openInbox()};
+  updateInbox(true);
+  if(!window.__inboxTimer){window.__inboxTimer=setInterval(()=>{if(!document.hidden)refreshInbox()},45000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshInbox()})}}
 function rNoms(){
   const el=$('#v-noms'),f=V.nom;
   if(!db.emps.length){el.innerHTML=needData();return}
@@ -745,7 +791,7 @@ function rNoms(){
       <td>${nomTypeTag(n)}<div style="margin-top:3px"><span class="tag ${STCLS[n.status]}">${esc(n.status)}</span></div>${n.status==='เสนอแล้ว'||n.status==='ผ่านการพิจารณา'?nomFlowHtml(n,e):''}${n.special&&n.exc?`<div class="hint" title="${esc(n.exc)}">เหตุผลกรณีพิเศษ: ${esc(cTrunc(n.exc,50))}</div>`:''}${n.note?`<div class="hint">${esc(n.note)}</div>`:''}</td>
       <td class="noprint" style="white-space:nowrap">
         ${n.status==='ร่าง'&&CAN.nom?`${(()=>{const Q=pfProgress(db.pf[n.id]||{},n,pfEmp(n));return `<button class="btn sm pri" data-sub="${esc(n.id)}" ${Q.pct<100?`style="opacity:.5" title="แฟ้มยังไม่ครบ 100% (${Q.pct}%) — ส่งขออนุมัติไม่ได้"`:''}>ส่งขออนุมัติ${Q.pct<100?` (${Q.pct}%)`:''}</button>`})()} ${n.portfolioOnly?'':`<button class="btn sm" data-e="${esc(n.id)}">แก้ไข</button>`} <button class="btn sm bad" data-x="${esc(n.id)}">ลบ</button> `:''}
-        ${act?`<button class="btn sm ok" data-ap="${esc(n.id)}">✓ อนุมัติ</button> <button class="btn sm" data-rt="${esc(n.id)}">↩ ส่งกลับ</button> <button class="btn sm bad" data-rj="${esc(n.id)}">✕ ไม่อนุมัติ</button> `:''}
+        ${act?`${mgrMode(n)&&!FLOW.sup?`<button class="btn sm pri" data-pfo="${esc(n.id)}" title="ผู้อนุมัติขั้นที่ 1: เปิดแฟ้ม กรอกส่วนที่ 7 และลงลายเซ็น แล้วกด ส่งอนุมัติขั้นถัดไป">✍ ลงนามพิจารณา (ส่วนที่ 7)</button>`:`<button class="btn sm ok" data-ap="${esc(n.id)}">✓ อนุมัติ</button>`} <button class="btn sm" data-rt="${esc(n.id)}">↩ ส่งกลับ</button> <button class="btn sm bad" data-rj="${esc(n.id)}">✕ ไม่อนุมัติ</button> `:''}
         ${nomClosed(n)&&CAN.nom?`<button class="btn sm pri" data-reopen="${esc(n.id)}">↻ เปิดใหม่</button> <button class="btn sm bad" data-x="${esc(n.id)}" title="ลบรายการนี้ถาวร">ลบ</button> `:''}${(n.status==='เสนอแล้ว'||n.status==='ร่าง')&&CAN.nom?`<button class="btn sm" data-cx="${esc(n.id)}">ยกเลิก</button> `:''}
         <button class="btn sm" data-pfo="${esc(n.id)}" title="แฟ้ม Promotion Portfolio: แบบฟอร์ม · Competency · Checklist หลักฐาน">📁 แฟ้ม</button> <button class="btn sm" data-lg="${esc(n.id)}">ประวัติ</button></td></tr>`}).join('')||'<tr><td colspan="11" class="hint">ยังไม่มีรายการ</td></tr>'}</tbody></table></div></div>`;
   $('#nq').oninput=e=>{f.q=e.target.value;rNoms();$('#nq').focus();$('#nq').setSelectionRange(f.q.length,f.q.length)};$('#nst').onchange=e=>{f.st=e.target.value;rNoms()};
