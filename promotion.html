@@ -1163,6 +1163,8 @@ function rPf(){
   const MG=mgrMode(n),APP=appMode(n);
   const e=empOf(n.empId)||{name:'(ไม่พบ)',grades:{}},d=PF.data,showMgr=MG||!!pfGet(d,'form.mgrOpt'),stepRaw=MG?'5':String(PF.step||'1'),step=(stepRaw==='5'&&!showMgr)?'4':stepRaw,ro=MG?false:(APP||!CAN.nom||step==='5'),ro_=ro?'disabled':'';
   const ME='u'+(FLOW.me||'sup'),MYSET=APP?((d.compA||{})[ME]||null):null;
+  /* ผู้อนุมัติขั้นที่ 1: ดึงชื่อผู้อนุมัติ (ผู้ที่ล็อกอิน) มาใส่ช่อง "ลงชื่อ" ให้เลย — แก้ไขหรือลบได้ */
+  if(MG&&!pfGet(d,'form.mgrName')&&!pfGet(d,'form.mgrNameAuto')){const nm=((empOf(FLOW.me)||{}).name)||(($('#meTxt')&&$('#meTxt').textContent)||'');if(nm){pfSet(d,'form.mgrName',nm);pfSet(d,'form.mgrNameAuto',1);pfTouch('5');pfSchedule()}}
   const V=(path,def)=>{const v=pfGet(d,path);return v==null?(def==null?'':def):v};
   const inp=(path,ph,type,def)=>`<input data-pf="${path}" type="${type||'text'}" value="${esc(V(path,def))}" placeholder="${esc(ph||'')}" ${ro_}>`;
   const area=(path,rows,def,ph)=>`<textarea data-pf="${path}" rows="${rows||3}" placeholder="${esc(ph||'')}" ${ro_}>${esc(V(path,def))}</textarea>`;
@@ -1307,7 +1309,6 @@ function rPf(){
   if($('#pfSend'))$('#pfSend').onclick=async()=>{
     if(!pfGet(PF.data,'form.mgrOpt'))return alert('กรุณาเลือก "ข้อเสนอแนะ" ก่อนส่งอนุมัติ');
     if(!(pfGet(PF.data,'form.mgrName')||'').trim())return alert('กรุณากรอก ลงชื่อผู้บังคับบัญชา ก่อนส่งอนุมัติ');
-    if(!pfGet(PF.data,'form.mgrDate'))return alert('กรุณาเลือก วันที่ ก่อนส่งอนุมัติ');
     if(!pfGet(PF.data,'form.mgrSig'))return alert('กรุณาลงลายเซ็นก่อนส่งอนุมัติ');
     if(!(pfGet(PF.data,'form.mgrReason')||'').trim()&&!confirm('ยังไม่ได้กรอกเหตุผล ต้องการส่งต่อเลยหรือไม่?'))return;
     if(!confirm('บันทึกความเห็นและส่งอนุมัติขั้นถัดไป? (ส่งแล้วแก้ไขความเห็นไม่ได้)'))return;
