@@ -351,6 +351,28 @@ function openEmp(id){
 }
 
 /* ---- ฟอร์มเสนอชื่อ ---- */
+/* ============ ตรวจคุณสมบัติตามข้อกำหนดตำแหน่งอัตโนมัติจากข้อมูลในระบบ ============ */
+const EDU_RANK=[[/ป\.?\s*เอก|ปริญญาเอก/,7],[/ป\.?\s*โท|ปริญญาโท/,6],[/ป\.?\s*ตรี|ปริญญาตรี/,5],[/ปวส/,4],[/ปวช/,3],[/ม\.?\s*6|มัธยมศึกษาตอนปลาย/,2],[/ม\.?\s*3|มัธยมศึกษาตอนต้น/,1]];
+const EDU_NAME={7:'ป.เอก',6:'ป.โท',5:'ป.ตรี',4:'ปวส.',3:'ปวช.',2:'ม.6',1:'ม.3',0:'-'};
+const eduRankOf=s=>{const t=String(s||'');for(const [re,r] of EDU_RANK)if(re.test(t))return r;return 0};
+const eduReqRank=s=>{const rs=EDU_RANK.filter(([re])=>re.test(s)).map(([,r])=>r);return rs.length?Math.min(...rs):0};
+function autoQual(e,lines){
+  const ten=yearsBetween(e.start)||0,sin=posSince(e),posY=yearsBetween(sin.iso)||0;
+  const best=Math.max(eduRankOf(e.edu&&e.edu.lvl),eduRankOf(e.edu&&e.edu.lvl0));
+  return lines.map(raw=>{const s=raw.replace(/^\s*[-•]\s*/,'');
+    /* วุฒิการศึกษา */
+    if(/วุฒิ|ปริญญา|ปวส|ปวช/.test(s)&&!/ประสบการณ์|ปี/.test(s.replace(/พ\.ศ\.|ปริญญา/g,''))){const need=eduReqRank(s);
+      if(need)return best>=need?{state:'pass',note:`✓ ระบบตรวจ: วุฒิสูงสุด ${EDU_NAME[best]} (${[e.edu.lvl,e.edu.major].filter(Boolean).join(' ')}) ≥ ${EDU_NAME[need]} · สาขาให้ตรวจเอง`}:{state:'fail',note:`✗ ระบบตรวจ: วุฒิสูงสุด ${EDU_NAME[best]} ต่ำกว่า ${EDU_NAME[need]}`};
+      return {state:'manual',note:'ต้องตรวจเอง'}}
+    /* ประสบการณ์ / ระยะเวลา (ปี) */
+    const lv=s.match(/ระดับ\s*(\d+)[^\d]{0,40}?(?:ไม่น้อยกว่า|อย่างน้อย|ตั้งแต่)\s*(\d+)\s*ปี/),conds=[];
+    if(lv){const L7=+lv[1],yrs=+lv[2];conds.push({ok:e.level===L7?posY>=yrs:e.level>L7?null:false,txt:e.level===L7?`อยู่ในระดับ ${L7} มาแล้ว ${fmt1(posY)} ปี (ต้อง ≥ ${yrs} · ${sin.src==='start'?'นับจากวันเริ่มงานเพราะไม่มีประวัติปรับตำแหน่ง':'นับจากวันที่มีผลปรับตำแหน่งล่าสุด '+thDate(sin.iso)})`:`ปัจจุบันระดับ ${e.level} (ต้องเคยอยู่ระดับ ${L7} ≥ ${yrs} ปี — ตรวจจากประวัติเอง)`})}
+    const rest=s.replace(lv?lv[0]:'','');[...rest.matchAll(/(?:ไม่น้อยกว่า|อย่างน้อย)\s*(\d+)\s*ปี/g)].forEach(m=>conds.push({ok:ten>=+m[1],txt:`อายุงานรวม ${fmt1(ten)} ปี (ต้อง ≥ ${m[1]})`}));
+    if(conds.length){const okc=conds.filter(c=>c.ok===true),unk=conds.filter(c=>c.ok==null);
+      if(okc.length)return {state:'pass',note:'✓ ระบบตรวจ: '+okc.map(c=>c.txt).join(' · ')};
+      if(unk.length)return {state:'manual',note:'ต้องตรวจเอง: '+conds.map(c=>c.txt).join(' · ')};
+      return {state:'fail',note:'✗ ระบบตรวจ: '+conds.map(c=>c.txt).join(' · ')}}
+    return {state:'manual',note:'ต้องตรวจเอง'}})}
 function openNom(id,editId){
   const e=empOf(id),ed=editId?db.noms.find(n=>n.id===editId):null;if(!e)return;
   const x=evalEmp(e),to=ed?ed.toLevel:Math.min(14,e.level+1),r=reqOf(to);
@@ -370,7 +392,9 @@ function openNom(id,editId){
   <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal()">ยกเลิก</button><button class="btn pri" id="nmSave">บันทึก</button></div>`);
   const fill=l=>{const q=reqOf(l),its=q?q.qual.split(/\r?\n/).map(s=>s.trim()).filter(Boolean):[],pl=q?q.posTh.map((p,i)=>[p,q.posEn[i]||'']):[];
     $('#nmPos').innerHTML=pl.map(([t,en])=>`<option value="${esc(t)}">${esc(t)}${en?' / '+esc(en):''}</option>`).join('')||'<option value="">(ไม่มีข้อมูลตำแหน่ง)</option>';
-    $('#nmQual').innerHTML=its.map((s,i)=>`<label class="chk"><input type="checkbox" data-q="${i}"><span class="pre">${esc(s)}</span></label>`).join('')+(q&&q.auth?`<div class="hint pre" style="margin-top:8px">ผู้มีอำนาจอนุมัติ: ${esc(q.auth)}</div>`:'')||'<div class="hint">ไม่มีข้อกำหนด</div>';
+    const auto=autoQual(e,its),cnt={pass:auto.filter(a=>a.state==='pass').length,fail:auto.filter(a=>a.state==='fail').length,manual:auto.filter(a=>a.state==='manual').length};
+    $('#nmQual').innerHTML=(its.length?`<div class="hint" style="margin-bottom:6px">ระบบตรวจจากข้อมูลพนักงานให้อัตโนมัติ: <b style="color:var(--ok)">ผ่าน ${cnt.pass}</b> · <b style="color:var(--bad)">ไม่ผ่าน ${cnt.fail}</b> · ต้องตรวจเอง ${cnt.manual} ข้อ (ข้อที่ผ่านติ๊กให้แล้ว แก้ได้)</div>`:'')+its.map((s,i)=>`<label class="chk"><input type="checkbox" data-q="${i}"><span class="pre">${esc(s)}${auto[i].state!=='manual'||/ตรวจเอง:/.test(auto[i].note)?`<div style="font-size:12.5px;margin-top:2px;color:${auto[i].state==='pass'?'var(--ok)':auto[i].state==='fail'?'var(--bad)':'var(--mut)'}">${esc(auto[i].note)}</div>`:''}</span></label>`).join('')+(q&&q.auth?`<div class="hint pre" style="margin-top:8px">ผู้มีอำนาจอนุมัติ: ${esc(q.auth)}</div>`:'')||'<div class="hint">ไม่มีข้อกำหนด</div>';
+    if(!(ed&&+ed.toLevel===l))$$('#nmQual [data-q]').forEach(c=>{if(auto[+c.dataset.q].state==='pass')c.checked=true});
     if(ed&&+ed.toLevel===l){$('#nmPos').value=ed.toPos;$$('#nmQual [data-q]').forEach(c=>c.checked=!!(ed.checks||[])[+c.dataset.q])}};
   $('#nmLv').onchange=ev=>fill(+ev.target.value);fill(to);
   $('#nmBy').value=ed?ed.by:'';$('#nmDate').value=ed?ed.date:new Date().toISOString().slice(0,10);$('#nmWhy').value=ed?ed.why:'';$('#nmNote').value=ed?ed.note:'';

@@ -3316,3 +3316,1674 @@ begin
   end if;
   return new;
 end $$;
+
+-- ===== hub31 =====
+-- v155: โหมดทดลอง (att_test) — ลงเวลาเข้างานได้หลายครั้งต่อวัน (ลงเข้า-ออก-เข้า ต่อได้เรื่อย ๆ) และลงได้ทุกวัน แม้ไม่ใช่วันทำงาน
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub30.sql) — รันซ้ำได้
+-- ปิดโหมดทดลองก่อนใช้งานจริง (กลับเป็นลงเวลาเข้างานได้วันละครั้ง):  update public.app_settings set value = '{"on": false}'::jsonb where key = 'att_test';
+create or replace function public.att_punch(p_kind text, p_lat double precision default null, p_lng double precision default null,
+                                            p_acc real default null, p_note text default '', p_photo text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := public.my_emp_id(); v_last text; v_day date := (now() at time zone 'Asia/Bangkok')::date; r public.attendance_logs%rowtype;
+  v_sid text; v_sname text; v_d double precision; v_rad int; v_st record;
+  v_test boolean := coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_test'), false);
+begin
+  if v_emp is null then raise exception 'NO_EMPLOYEE'; end if;
+  if p_kind not in ('in', 'out', 'offsite_start', 'offsite_end') then raise exception 'BAD_KIND'; end if;
+  if p_kind in ('in', 'offsite_start') and not v_test and not public.is_work_day(v_emp, v_day) then
+    raise exception 'NOT_WORK_DAY:วันนี้ไม่ใช่วันทำงานตามปฏิทินของระบบ จึงลงเวลาไม่ได้';
+  end if;
+  select kind into v_last from public.attendance_logs where emp_id = v_emp and (at at time zone 'Asia/Bangkok')::date = v_day order by at desc limit 1;
+  if p_kind = 'in' and v_last is not null and not (v_test and v_last = 'out') then raise exception 'INVALID_SEQUENCE:ลงเวลาเข้างานได้วันละครั้งเท่านั้น (วันนี้ลงเวลาไปแล้ว) — หากต้องแก้ไขให้ติดต่อ Admin'; end if;
+  if p_kind = 'out'           and (v_last is null or v_last = 'out')                          then raise exception 'INVALID_SEQUENCE:ยังไม่ได้ลงเวลาเข้างาน'; end if;
+  if p_kind = 'out'           and v_last = 'offsite_start'                                    then raise exception 'INVALID_SEQUENCE:กรุณาบันทึกกลับจากนอกสถานที่ก่อน'; end if;
+  if p_kind = 'offsite_start' and (v_last is null or v_last in ('out', 'offsite_start'))      then raise exception 'INVALID_SEQUENCE:ต้องลงเวลาเข้างานก่อน และไม่อยู่ระหว่างออกนอกสถานที่'; end if;
+  if p_kind = 'offsite_end'   and (v_last is distinct from 'offsite_start')                   then raise exception 'INVALID_SEQUENCE:ยังไม่ได้บันทึกออกไปทำงานนอกสถานที่'; end if;
+  if exists (select 1 from public.attendance_logs where emp_id = v_emp and kind = p_kind and at > now() - interval '30 seconds') then raise exception 'INVALID_SEQUENCE:บันทึกซ้ำเร็วเกินไป'; end if;
+  -- ลงเวลาออกงานหลังทำงานครบ 8 ชม. ต้องระบุเหตุผล
+  if p_kind = 'out' and coalesce(trim(p_note), '') = '' then
+    select * into v_st from public.att_net_state(v_emp, v_day);
+    if v_st.is_open and v_st.net_secs >= 28800 then
+      raise exception 'REASON_REQUIRED:ทำงานครบ 8 ชั่วโมงแล้ว — กรุณาระบุเหตุผลที่ลงเวลาออกงาน (ช่องหมายเหตุ)';
+    end if;
+  end if;
+  if p_lat is not null and p_lng is not null then
+    select w.id, w.name, public.geo_dist_m(p_lat, p_lng, w.lat, w.lng), w.radius_m into v_sid, v_sname, v_d, v_rad
+      from public.work_sites w where w.active and public.site_applies(v_emp, w.id) order by 3 limit 1;
+  end if;
+  -- ต้องแนบรูป selfie (อัปโหลดไว้ใน bucket timesheet-files โฟลเดอร์ <รหัสพนักงาน>/att/...) ทุกครั้งที่ลงเวลา — ไม่มีรูป = ไม่ให้ลงเวลา
+  if coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_photo_required'), true) then
+    if p_photo is null or coalesce((storage.foldername(p_photo))[1], '') <> v_emp or coalesce((storage.foldername(p_photo))[2], '') <> 'att'
+       or not exists (select 1 from storage.objects o where o.bucket_id = 'timesheet-files' and o.name = p_photo) then
+      raise exception 'NO_PHOTO:ต้องถ่ายรูป selfie ก่อนลงเวลา (ไม่มีรูปแนบ ลงเวลาไม่ได้)';
+    end if;
+  end if;
+  -- ลงเวลาเข้า/ออกงานได้เฉพาะ "ในจุดที่กำหนดให้พนักงานคนนี้" (ตั้งผู้ใช้จุดที่เมนูลงเวลา > จุดสำนักงาน) · ต้องมี GPS
+  -- เปิด/ปิด: app_settings 'att_site_required' = {"on": true/false} (ค่าเริ่มต้น เปิด) · โหมดทดลอง att_test เปิดอยู่ = ข้ามการตรวจพื้นที่ · ไม่มีจุดที่ใช้ได้เลย = ไม่บังคับ
+  if coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_site_required'), true)
+     and not coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_test'), false) then
+    if not exists (select 1 from public.work_sites w where w.active and public.site_applies(v_emp, w.id)) then
+      raise exception 'NO_SITE:ยังไม่ได้กำหนดจุดลงเวลาให้คุณ — ลงเวลาไม่ได้ กรุณาติดต่อ Admin เพื่อกำหนดจุดลงเวลา';
+    end if;
+    if p_lat is null or p_lng is null then
+      raise exception 'NO_GPS:ต้องเปิด GPS และอนุญาตให้ใช้ตำแหน่ง จึงจะลงเวลาได้';
+    end if;
+    if v_sid is null or v_d > v_rad + least(coalesce(p_acc, 0), 50) then
+      raise exception 'OUT_OF_SITE:อยู่นอกจุดลงเวลาที่กำหนด — ใกล้สุด % ห่าง % ม. (รัศมี % ม.) กรุณาไปลงเวลาในพื้นที่', coalesce(v_sname, '-'), round(coalesce(v_d, 0)), coalesce(v_rad, 0);
+    end if;
+  end if;
+  insert into public.attendance_logs (emp_id, kind, at, lat, lng, accuracy_m, site_id, site_name, dist_m, source, note, photo_path)
+  values (v_emp, p_kind, clock_timestamp(), p_lat, p_lng, p_acc,
+          case when v_sid is not null and v_d <= v_rad then v_sid end,
+          case when v_sid is not null and v_d <= v_rad then v_sname else '' end,
+          case when v_sid is not null then round(v_d)::int end, 'app', left(coalesce(p_note, ''), 300), p_photo)
+  returning * into r;
+  return to_jsonb(r);
+end $$;
+revoke all on function public.att_punch(text, double precision, double precision, real, text, text) from public, anon;
+grant execute on function public.att_punch(text, double precision, double precision, real, text, text) to authenticated;
+
+
+-- ===== hub32 =====
+-- v156: พนักงานแก้ไข/ลบรายการที่อนุมัติแล้ว (ใบ Submitted) ได้ — ระบบจะยกเลิกการอนุมัติ ใบกลับเป็น Draft แล้วต้องส่งอนุมัติใหม่ทุกขั้น
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub31.sql) — รันซ้ำได้
+-- เปิด/ปิด: app_settings 'ts_edit_approved' = {"on": true/false}  (ค่าเริ่มต้น เปิด)
+--   ปิด:  update public.app_settings set value = '{"on": false}'::jsonb where key = 'ts_edit_approved';
+
+insert into public.app_settings (key, value) values ('ts_edit_approved', '{"on": true}'::jsonb) on conflict (key) do nothing;
+
+create or replace function public.ts_reopen_approved(p_id text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare t public.timesheets%rowtype; v_on boolean;
+begin
+  select coalesce((value->>'on')::boolean, true) into v_on from public.app_settings where key = 'ts_edit_approved';
+  if coalesce(v_on, true) is not true then raise exception 'DISABLED:ปิดการแก้ไขรายการที่อนุมัติแล้วอยู่ — ติดต่อ Admin'; end if;
+  select * into t from public.timesheets where id = p_id for update;
+  if t.id is null then raise exception 'NOT_FOUND:ไม่พบใบบันทึกงาน'; end if;
+  if not (t.emp_id = public.my_emp_id() or public.can_enter_for(t.emp_id)) then raise exception 'FORBIDDEN:แก้ไขได้เฉพาะใบของตัวเอง'; end if;
+  if t.status <> 'Submitted' then raise exception 'NOT_SUBMITTED:ใบนี้ไม่ได้อยู่สถานะอนุมัติแล้ว'; end if;
+  update public.timesheets
+     set status = 'Draft', submitted_at = null, approved_by = '', approved_at = null, reject_note = '',
+         entries = coalesce((select jsonb_agg(e - 'ap') from jsonb_array_elements(coalesce(entries, '[]'::jsonb)) e), '[]'::jsonb)
+   where id = p_id returning * into t;
+  return to_jsonb(t);
+end $$;
+revoke all on function public.ts_reopen_approved(text) from public, anon;
+grant execute on function public.ts_reopen_approved(text) to authenticated;
+
+-- ===== hub33 =====
+-- v157: แจ้งเตือนทาง LINE เมื่อเข้ารัศมีจุดลงเวลา + กดลงเวลาเข้า/ออกงานผ่าน LINE ได้เลย
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub32.sql) — รันซ้ำได้
+-- ต้อง deploy Edge Function line-notify.ts (hyper-api) และ line-webhook.ts (clever-task) ใหม่ด้วย
+-- วิธีที่ระบบรู้ว่า "เข้ารัศมี":  (1) แอปเปิดอยู่และอนุญาตตำแหน่ง → แอปตรวจเทียบกับจุด/รัศมีที่ตั้งไว้ (att_geo_enter)
+--                                 (2) พนักงานส่งตำแหน่ง (Share location) หรือพิมพ์ "ลงเวลา" ในแชต LINE (line_att_nearest)
+--                                 (3) AI-Beacon / LINE Beacon ที่ติดตั้งในพื้นที่ (ระบบเดิม att_beacon — ตรวจเข้ารัศมีเบื้องหลังได้จริง)
+-- การลงเวลาผ่าน LINE ไม่ต้องถ่าย selfie (บันทึก source = 'line') · ปิดได้: update public.app_settings set value = '{"on": false}'::jsonb where key = 'att_line_punch';
+
+alter table public.attendance_logs drop constraint if exists attendance_logs_source_check;
+alter table public.attendance_logs add constraint attendance_logs_source_check check (source in ('app', 'beacon', 'admin', 'test', 'line'));
+insert into public.app_settings (key, value) values ('att_line_punch', '{"on": true}'::jsonb) on conflict (key) do nothing;
+
+create table if not exists public.att_line_prompt (
+  id uuid primary key default gen_random_uuid(),
+  emp_id text not null references public.employees(id) on delete cascade,
+  site_id text, lat double precision, lng double precision, acc real,
+  used boolean not null default false,
+  created_at timestamptz not null default now()
+);
+alter table public.att_line_prompt enable row level security;
+revoke all on public.att_line_prompt from anon, authenticated;
+create index if not exists att_line_prompt_emp_idx on public.att_line_prompt (emp_id, created_at desc);
+
+-- (1) แอปตรวจพบว่าเข้ารัศมี → ส่งการ์ด LINE พร้อมปุ่มลงเวลา (ครั้งเดียวต่อจุดต่อ 6 ชม.)
+create or replace function public.att_geo_enter(p_lat double precision, p_lng double precision, p_acc real default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := public.my_emp_id(); s record; v_day date := (now() at time zone 'Asia/Bangkok')::date; v_last text; v_id uuid; v_url text; v_sec text;
+  v_test boolean := coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_test'), false);
+begin
+  if v_emp is null or p_lat is null or p_lng is null then return jsonb_build_object('notified', false); end if;
+  if coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_line_punch'), true) is not true then return jsonb_build_object('notified', false); end if;
+  if not exists (select 1 from public.employees where id = v_emp and active and approved and line_user_id is not null) then return jsonb_build_object('notified', false); end if;
+  select x.* into s from (select w.id, w.name, w.radius_m, public.geo_dist_m(p_lat, p_lng, w.lat, w.lng) as d
+                            from public.work_sites w where w.active and public.site_applies(v_emp, w.id)) x
+   where x.d <= x.radius_m + least(coalesce(p_acc, 0), 50) order by x.d limit 1;
+  if s.id is null then return jsonb_build_object('notified', false, 'inside', false); end if;
+  if not v_test and not public.is_work_day(v_emp, v_day) then return jsonb_build_object('notified', false); end if;
+  select kind into v_last from public.attendance_logs where emp_id = v_emp and (at at time zone 'Asia/Bangkok')::date = v_day order by at desc limit 1;
+  if not (v_last is null or (v_test and v_last = 'out')) then return jsonb_build_object('notified', false, 'inside', true); end if;   -- ลงเวลาเข้างานแล้ว ไม่ต้องแจ้ง
+  if exists (select 1 from public.att_line_prompt where emp_id = v_emp and site_id = s.id and created_at > now() - interval '6 hours') then
+    return jsonb_build_object('notified', false, 'dup', true);
+  end if;
+  insert into public.att_line_prompt (emp_id, site_id, lat, lng, acc) values (v_emp, s.id, p_lat, p_lng, p_acc) returning id into v_id;
+  begin
+    select value into v_url from public.private_config where key = 'line_notify_url';
+    select value into v_sec from public.private_config where key = 'line_notify_secret';
+    if v_url is not null and v_sec is not null then
+      perform net.http_post(url := v_url, headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', v_sec),
+                            body := jsonb_build_object('kind', 'geo_enter', 'prompt_id', v_id));
+    end if;
+  exception when others then null;
+  end;
+  return jsonb_build_object('notified', true, 'site', s.name);
+end $$;
+revoke all on function public.att_geo_enter(double precision, double precision, real) from public, anon;
+grant execute on function public.att_geo_enter(double precision, double precision, real) to authenticated;
+
+-- (2) พนักงานส่งตำแหน่งในแชต LINE → หาจุดที่ใกล้สุดและบอกว่าลงเวลาอะไรได้ (service_role เท่านั้น)
+create or replace function public.line_att_nearest(p_line_user text, p_lat double precision, p_lng double precision, p_acc real default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare e public.employees%rowtype; s record; v_day date := (now() at time zone 'Asia/Bangkok')::date; v_last text; v_kind text; v_id uuid;
+  v_test boolean := coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_test'), false);
+begin
+  select * into e from public.employees where line_user_id = p_line_user and active and approved;
+  if e.id is null then return jsonb_build_object('ok', false, 'msg', 'ไม่พบบัญชีที่ผูกกับ LINE นี้ในระบบ'); end if;
+  if coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_line_punch'), true) is not true then
+    return jsonb_build_object('ok', false, 'msg', 'ขณะนี้ปิดการลงเวลาผ่าน LINE — กรุณาลงเวลาในแอป');
+  end if;
+  select x.* into s from (select w.id, w.name, w.radius_m, public.geo_dist_m(p_lat, p_lng, w.lat, w.lng) as d
+                            from public.work_sites w where w.active and public.site_applies(e.id, w.id)) x order by x.d limit 1;
+  if s.id is null then return jsonb_build_object('ok', false, 'msg', 'ยังไม่ได้กำหนดจุดลงเวลาให้คุณ — กรุณาติดต่อ Admin'); end if;
+  select kind into v_last from public.attendance_logs where emp_id = e.id and (at at time zone 'Asia/Bangkok')::date = v_day order by at desc limit 1;
+  v_kind := case when v_last is null or (v_test and v_last = 'out') then 'in' when v_last in ('in', 'offsite_end') then 'out' else null end;
+  if s.d > s.radius_m + least(coalesce(p_acc, 0), 50) and not v_test then
+    return jsonb_build_object('ok', true, 'inside', false, 'name', e.name, 'site', s.name, 'dist', round(s.d), 'radius', s.radius_m);
+  end if;
+  if v_kind is null then return jsonb_build_object('ok', true, 'inside', true, 'name', e.name, 'site', s.name, 'dist', round(s.d), 'radius', s.radius_m, 'kind', null, 'last', v_last); end if;
+  insert into public.att_line_prompt (emp_id, site_id, lat, lng, acc) values (e.id, s.id, p_lat, p_lng, p_acc) returning id into v_id;
+  return jsonb_build_object('ok', true, 'inside', true, 'name', e.name, 'site', s.name, 'dist', round(s.d), 'radius', s.radius_m, 'kind', v_kind, 'prompt', v_id);
+end $$;
+revoke all on function public.line_att_nearest(text, double precision, double precision, real) from public, anon, authenticated;
+grant execute on function public.line_att_nearest(text, double precision, double precision, real) to service_role;
+
+-- กดปุ่มในการ์ด LINE → บันทึกลงเวลา (ตรวจกติกาเดียวกับในแอป: วันทำงาน · ลำดับเข้า/ออก · อยู่ในรัศมี · ใช้พิกัดจากตอนตรวจพบ ภายใน 20 นาที)
+create or replace function public.line_att_punch(p_line_user text, p_prompt uuid, p_kind text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare e public.employees%rowtype; pr public.att_line_prompt%rowtype; w record; v_day date := (now() at time zone 'Asia/Bangkok')::date; v_last text; r public.attendance_logs%rowtype; v_st record;
+  v_test boolean := coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_test'), false);
+begin
+  select * into e from public.employees where line_user_id = p_line_user and active and approved;
+  if e.id is null then return jsonb_build_object('ok', false, 'msg', 'ไม่พบบัญชีที่ผูกกับ LINE นี้ในระบบ'); end if;
+  if coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_line_punch'), true) is not true then
+    return jsonb_build_object('ok', false, 'msg', 'ขณะนี้ปิดการลงเวลาผ่าน LINE — กรุณาลงเวลาในแอป');
+  end if;
+  if p_kind not in ('in', 'out') then return jsonb_build_object('ok', false, 'msg', 'คำสั่งไม่ถูกต้อง'); end if;
+  select * into pr from public.att_line_prompt where id = p_prompt and emp_id = e.id for update;
+  if pr.id is null then return jsonb_build_object('ok', false, 'msg', 'ไม่พบคำขอลงเวลานี้ — กรุณาส่งตำแหน่งใหม่'); end if;
+  if pr.used then return jsonb_build_object('ok', false, 'msg', 'คำขอนี้ลงเวลาไปแล้ว'); end if;
+  if now() - pr.created_at > interval '20 minutes' then return jsonb_build_object('ok', false, 'msg', 'คำขอหมดอายุ (เกิน 20 นาที) — กรุณาส่งตำแหน่งใหม่เพื่อลงเวลา'); end if;
+  if p_kind = 'in' and not v_test and not public.is_work_day(e.id, v_day) then return jsonb_build_object('ok', false, 'msg', 'วันนี้ไม่ใช่วันทำงานตามปฏิทินของระบบ จึงลงเวลาไม่ได้'); end if;
+  select kind into v_last from public.attendance_logs where emp_id = e.id and (at at time zone 'Asia/Bangkok')::date = v_day order by at desc limit 1;
+  if p_kind = 'in' and not (v_last is null or (v_test and v_last = 'out')) then return jsonb_build_object('ok', false, 'msg', 'ลงเวลาเข้างานได้วันละครั้งเท่านั้น (วันนี้ลงเวลาไปแล้ว)'); end if;
+  if p_kind = 'out' and v_last not in ('in', 'offsite_end') then return jsonb_build_object('ok', false, 'msg', case when v_last is null then 'ยังไม่ได้ลงเวลาเข้างาน' when v_last = 'offsite_start' then 'กรุณาบันทึกกลับจากนอกสถานที่ในแอปก่อน' else 'ลงเวลาออกงานไปแล้ว' end); end if;
+  if exists (select 1 from public.attendance_logs where emp_id = e.id and kind = p_kind and at > now() - interval '30 seconds') then return jsonb_build_object('ok', false, 'msg', 'บันทึกซ้ำเร็วเกินไป'); end if;
+  select x.* into w from (select s.id, s.name, s.radius_m, public.geo_dist_m(pr.lat, pr.lng, s.lat, s.lng) as d
+                            from public.work_sites s where s.active and public.site_applies(e.id, s.id)) x order by x.d limit 1;
+  if not v_test then
+    if w.id is null then return jsonb_build_object('ok', false, 'msg', 'ยังไม่ได้กำหนดจุดลงเวลาให้คุณ — กรุณาติดต่อ Admin'); end if;
+    if w.d > w.radius_m + least(coalesce(pr.acc, 0), 50) then
+      return jsonb_build_object('ok', false, 'msg', format('อยู่นอกจุดลงเวลา — ใกล้สุด %s ห่าง %s ม. (รัศมี %s ม.)', w.name, round(w.d), w.radius_m));
+    end if;
+  end if;
+  if p_kind = 'out' then
+    select * into v_st from public.att_net_state(e.id, v_day);
+    if v_st.is_open and v_st.net_secs >= 28800 then
+      return jsonb_build_object('ok', false, 'msg', 'ทำงานครบ 8 ชั่วโมงแล้ว — ต้องระบุเหตุผลการออกงาน กรุณาลงเวลาออกในแอป');
+    end if;
+  end if;
+  insert into public.attendance_logs (emp_id, kind, at, lat, lng, accuracy_m, site_id, site_name, dist_m, source, note)
+  values (e.id, p_kind, clock_timestamp(), pr.lat, pr.lng, pr.acc, w.id, coalesce(w.name, ''), case when w.id is not null then round(w.d)::int end, 'line', '[ลงเวลาผ่าน LINE]')
+  returning * into r;
+  update public.att_line_prompt set used = true where id = pr.id;
+  return jsonb_build_object('ok', true, 'kind', p_kind, 'at', r.at, 'name', e.name, 'site', coalesce(w.name, ''));
+end $$;
+revoke all on function public.line_att_punch(text, uuid, text) from public, anon, authenticated;
+grant execute on function public.line_att_punch(text, uuid, text) to service_role;
+
+-- ===== hub34 =====
+-- v158: LINE แจ้งเตือนอย่างเดียว — ไม่ลงเวลาผ่าน LINE (ต้องไปลงเวลาที่แอปเท่านั้น เพื่อคง selfie + GPS + ตรวจจุด)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub33.sql) — รันซ้ำได้
+-- เปิด/ปิดการแจ้งเตือนเข้ารัศมี: update public.app_settings set value = '{"on": false}'::jsonb where key = 'att_line_notify';
+
+drop function if exists public.line_att_punch(text, uuid, text);
+insert into public.app_settings (key, value) values ('att_line_notify', '{"on": true}'::jsonb) on conflict (key) do nothing;
+create or replace function public.att_geo_enter(p_lat double precision, p_lng double precision, p_acc real default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := public.my_emp_id(); s record; v_day date := (now() at time zone 'Asia/Bangkok')::date; v_last text; v_id uuid; v_url text; v_sec text;
+  v_test boolean := coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_test'), false);
+begin
+  if v_emp is null or p_lat is null or p_lng is null then return jsonb_build_object('notified', false); end if;
+  if coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_line_notify'), true) is not true then return jsonb_build_object('notified', false); end if;
+  if not exists (select 1 from public.employees where id = v_emp and active and approved and line_user_id is not null) then return jsonb_build_object('notified', false); end if;
+  select x.* into s from (select w.id, w.name, w.radius_m, public.geo_dist_m(p_lat, p_lng, w.lat, w.lng) as d
+                            from public.work_sites w where w.active and public.site_applies(v_emp, w.id)) x
+   where x.d <= x.radius_m + least(coalesce(p_acc, 0), 50) order by x.d limit 1;
+  if s.id is null then return jsonb_build_object('notified', false, 'inside', false); end if;
+  if not v_test and not public.is_work_day(v_emp, v_day) then return jsonb_build_object('notified', false); end if;
+  select kind into v_last from public.attendance_logs where emp_id = v_emp and (at at time zone 'Asia/Bangkok')::date = v_day order by at desc limit 1;
+  if not (v_last is null or (v_test and v_last = 'out')) then return jsonb_build_object('notified', false, 'inside', true); end if;   -- ลงเวลาเข้างานแล้ว ไม่ต้องแจ้ง
+  if exists (select 1 from public.att_line_prompt where emp_id = v_emp and site_id = s.id and created_at > now() - interval '6 hours') then
+    return jsonb_build_object('notified', false, 'dup', true);
+  end if;
+  insert into public.att_line_prompt (emp_id, site_id, lat, lng, acc) values (v_emp, s.id, p_lat, p_lng, p_acc) returning id into v_id;
+  begin
+    select value into v_url from public.private_config where key = 'line_notify_url';
+    select value into v_sec from public.private_config where key = 'line_notify_secret';
+    if v_url is not null and v_sec is not null then
+      perform net.http_post(url := v_url, headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', v_sec),
+                            body := jsonb_build_object('kind', 'geo_enter', 'prompt_id', v_id));
+    end if;
+  exception when others then null;
+  end;
+  return jsonb_build_object('notified', true, 'site', s.name);
+end $$;
+revoke all on function public.att_geo_enter(double precision, double precision, real) from public, anon;
+grant execute on function public.att_geo_enter(double precision, double precision, real) to authenticated;
+
+-- ส่งตำแหน่งในแชต LINE → บอกว่าอยู่ในรัศมีจุดลงเวลาหรือไม่ (ไม่บันทึกลงเวลา)
+create or replace function public.line_att_nearest(p_line_user text, p_lat double precision, p_lng double precision, p_acc real default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare e public.employees%rowtype; s record;
+begin
+  select * into e from public.employees where line_user_id = p_line_user and active and approved;
+  if e.id is null then return jsonb_build_object('ok', false, 'msg', 'ไม่พบบัญชีที่ผูกกับ LINE นี้ในระบบ'); end if;
+  select x.* into s from (select w.id, w.name, w.radius_m, public.geo_dist_m(p_lat, p_lng, w.lat, w.lng) as d
+                            from public.work_sites w where w.active and public.site_applies(e.id, w.id)) x order by x.d limit 1;
+  if s.id is null then return jsonb_build_object('ok', false, 'msg', 'ยังไม่ได้กำหนดจุดลงเวลาให้คุณ — กรุณาติดต่อ Admin'); end if;
+  return jsonb_build_object('ok', true, 'name', e.name, 'site', s.name, 'dist', round(s.d), 'radius', s.radius_m,
+                            'inside', s.d <= s.radius_m + least(coalesce(p_acc, 0), 50));
+end $$;
+revoke all on function public.line_att_nearest(text, double precision, double precision, real) from public, anon, authenticated;
+grant execute on function public.line_att_nearest(text, double precision, double precision, real) to service_role;
+
+-- ===== hub35 =====
+-- v159: เอาการตรวจตำแหน่งผ่านแชต LINE ออก (LINE แจ้งเตือนเข้ารัศมีอย่างเดียว · ลงเวลาที่แอป)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub34.sql) — รันซ้ำได้
+drop function if exists public.line_att_nearest(text, double precision, double precision, real);
+
+-- ===== hub36 =====
+-- v163: แก้ไข/ตรวจสอบการแจ้งเตือน LINE เมื่อเข้ารัศมี — ส่งเหตุผลกลับมาให้เห็นว่าทำไมแจ้ง/ไม่แจ้ง + ปุ่มทดสอบในแอป
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub35.sql) — รันซ้ำได้
+-- ต้องรัน hub33 ก่อน (สร้างตาราง att_line_prompt) และ deploy Edge Function line-notify.ts (hyper-api) ที่มี kind 'geo_enter'
+
+drop function if exists public.att_geo_enter(double precision, double precision, real);
+create or replace function public.att_geo_enter(p_lat double precision, p_lng double precision, p_acc real default null, p_force boolean default false) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := public.my_emp_id(); s record; n record; v_day date := (now() at time zone 'Asia/Bangkok')::date; v_last text; v_id uuid; v_url text; v_sec text;
+  v_test boolean := coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_test'), false);
+begin
+  if v_emp is null or p_lat is null or p_lng is null then return jsonb_build_object('notified', false, 'reason', 'no_emp'); end if;
+  if coalesce((select (value->>'on')::boolean from public.app_settings where key = 'att_line_notify'), true) is not true then return jsonb_build_object('notified', false, 'reason', 'off'); end if;
+  if not exists (select 1 from public.employees where id = v_emp and active and approved and line_user_id is not null) then return jsonb_build_object('notified', false, 'reason', 'no_line'); end if;
+  select x.* into n from (select w.id, w.name, w.radius_m, public.geo_dist_m(p_lat, p_lng, w.lat, w.lng) as d
+                            from public.work_sites w where w.active and public.site_applies(v_emp, w.id)) x order by x.d limit 1;
+  if n.id is null then return jsonb_build_object('notified', false, 'reason', 'no_site'); end if;
+  if n.d > n.radius_m + least(coalesce(p_acc, 0), 50) then
+    return jsonb_build_object('notified', false, 'reason', 'outside', 'site', n.name, 'dist', round(n.d), 'radius', n.radius_m, 'acc', round(coalesce(p_acc, 0)));
+  end if;
+  s := n;
+  if not v_test and not public.is_work_day(v_emp, v_day) then return jsonb_build_object('notified', false, 'reason', 'nonwork'); end if;
+  select kind into v_last from public.attendance_logs where emp_id = v_emp and (at at time zone 'Asia/Bangkok')::date = v_day order by at desc limit 1;
+  if not p_force and not (v_last is null or (v_test and v_last = 'out')) then return jsonb_build_object('notified', false, 'reason', 'done', 'site', s.name); end if;
+  if not p_force and exists (select 1 from public.att_line_prompt where emp_id = v_emp and site_id = s.id and created_at > now() - interval '6 hours') then
+    return jsonb_build_object('notified', false, 'reason', 'dup', 'site', s.name);
+  end if;
+  insert into public.att_line_prompt (emp_id, site_id, lat, lng, acc) values (v_emp, s.id, p_lat, p_lng, p_acc) returning id into v_id;
+  select value into v_url from public.private_config where key = 'line_notify_url';
+  select value into v_sec from public.private_config where key = 'line_notify_secret';
+  if v_url is null or v_sec is null then return jsonb_build_object('notified', false, 'reason', 'no_url', 'site', s.name); end if;
+  begin
+    perform net.http_post(url := v_url, headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', v_sec),
+                          body := jsonb_build_object('kind', 'geo_enter', 'prompt_id', v_id));
+  exception when others then
+    return jsonb_build_object('notified', false, 'reason', 'http_error', 'site', s.name, 'err', sqlerrm);
+  end;
+  return jsonb_build_object('notified', true, 'reason', 'sent', 'site', s.name, 'dist', round(s.d));
+end $$;
+revoke all on function public.att_geo_enter(double precision, double precision, real, boolean) from public, anon;
+grant execute on function public.att_geo_enter(double precision, double precision, real, boolean) to authenticated;
+
+-- ===== hub38 =====
+-- v179: นำเข้า Budget (บาท) ของโครงการ/สัญญาขายจากไฟล์ IFS (DataIFS_TimeSheet.xlsx) อัตโนมัติ — ใช้กับสคริปต์ ifs_budget_sync.ps1 ที่รันในเครือข่ายบริษัท
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง — รันซ้ำได้
+-- ฟังก์ชันนี้ "อัปเดตเฉพาะรหัสที่มีอยู่แล้ว" ในตาราง projects / contracts (ไม่สร้างรหัสใหม่) และเรียกได้เฉพาะ service_role
+-- p_rows = [{"id":"AS19003-MT","baht":500000}, ...]
+
+create or replace function public.ifs_budget_sync(p_rows jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r jsonb; v_id text; v_baht numeric; n_p int := 0; n_c int := 0; v_miss text[] := '{}'; v_cnt int;
+begin
+  for r in select * from jsonb_array_elements(coalesce(p_rows, '[]'::jsonb)) loop
+    v_id := trim(r->>'id'); v_baht := nullif(r->>'baht', '')::numeric;
+    continue when v_id is null or v_id = '' or v_baht is null;
+    update public.projects set budget_baht = v_baht, updated_by = 'IFS', updated_at = now() where id = v_id and budget_baht is distinct from v_baht;
+    get diagnostics v_cnt = row_count; n_p := n_p + v_cnt;
+    if v_cnt = 0 and exists (select 1 from public.projects where id = v_id) then continue; end if;   -- มีอยู่แล้วและค่าเท่าเดิม
+    if v_cnt = 0 then
+      update public.contracts set budget_baht = v_baht, updated_by = 'IFS', updated_at = now() where id = v_id and budget_baht is distinct from v_baht;
+      get diagnostics v_cnt = row_count; n_c := n_c + v_cnt;
+      if v_cnt = 0 and not exists (select 1 from public.contracts where id = v_id) and array_length(v_miss, 1) is distinct from 40 then v_miss := v_miss || v_id; end if;
+    end if;
+  end loop;
+  return jsonb_build_object('updated_projects', n_p, 'updated_contracts', n_c, 'not_found_sample', to_jsonb(v_miss));
+end $$;
+revoke all on function public.ifs_budget_sync(jsonb) from public, anon, authenticated;
+grant execute on function public.ifs_budget_sync(jsonb) to service_role;
+
+-- ===== hub39 =====
+-- v180: ดึงรายการ "สัญญาขาย" (Sale Contract) ทั้งหมดจาก IFS เข้าแอปอัตโนมัติ — สร้างรหัสใหม่ที่ยังไม่มีในตาราง contracts (รหัสที่มีอยู่แล้วไม่แตะ Budget/ชื่อที่ตั้งไว้)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub38.sql) — รันซ้ำได้
+-- p_rows = [{"id":"M23030","name":"...","company":"Demco"}, ...] · เรียกได้เฉพาะ service_role · รหัสใหม่ตั้งเป็น active, Budget = 0
+
+create or replace function public.ifs_contract_sync(p_rows jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r jsonb; v_id text; v_name text; v_co text; n_new int := 0; n_skip int := 0; v_cnt int;
+begin
+  for r in select * from jsonb_array_elements(coalesce(p_rows, '[]'::jsonb)) loop
+    v_id := trim(r->>'id'); v_name := trim(coalesce(r->>'name', '')); v_co := case when r->>'company' = 'DP' then 'DP' else 'Demco' end;
+    continue when v_id is null or v_id = '';
+    insert into public.contracts (id, name, company, active, budget_hours, budget_baht, updated_by, updated_at)
+    values (v_id, coalesce(nullif(v_name, ''), v_id), v_co, true, 0, 0, 'IFS', now())
+    on conflict (id) do nothing;
+    get diagnostics v_cnt = row_count;
+    if v_cnt > 0 then n_new := n_new + 1; else n_skip := n_skip + 1; end if;
+  end loop;
+  return jsonb_build_object('inserted', n_new, 'already_exists', n_skip);
+end $$;
+revoke all on function public.ifs_contract_sync(jsonb) from public, anon, authenticated;
+grant execute on function public.ifs_contract_sync(jsonb) to service_role;
+
+-- ===== hub40 =====
+-- v181: เพิ่มชื่อ/นามสกุลภาษาอังกฤษในฐานข้อมูลสมาชิก (ดึงจาก Empeo) — ต้องรันก่อนใช้ฟอร์ม/Excel ช่อง Name_EN / Surname_EN
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub39.sql) — รันซ้ำได้
+
+alter table public.employees add column if not exists name_en text not null default '';
+alter table public.employees add column if not exists surname_en text not null default '';
+
+-- รับชุดชื่อ EN ที่ดึงจาก Empeo อัปเดตตามรหัสพนักงาน (service_role เท่านั้น) · p_rows = [{"id":"01897","first":"Chirasak","last":"Kraimuenwai"}, ...]
+create or replace function public.emp_en_names_sync(p_rows jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r jsonb; v_id text; v_f text; v_l text; n_upd int := 0; n_same int := 0; v_cnt int; v_miss text[] := '{}';
+begin
+  for r in select * from jsonb_array_elements(coalesce(p_rows, '[]'::jsonb)) loop
+    v_id := trim(r->>'id'); v_f := trim(coalesce(r->>'first', '')); v_l := trim(coalesce(r->>'last', ''));
+    continue when v_id is null or v_id = '';
+    update public.employees set name_en = v_f, surname_en = v_l where id = v_id and (name_en is distinct from v_f or surname_en is distinct from v_l);
+    get diagnostics v_cnt = row_count;
+    if v_cnt > 0 then n_upd := n_upd + v_cnt;
+    elsif exists (select 1 from public.employees where id = v_id) then n_same := n_same + 1;
+    elsif array_length(v_miss, 1) is distinct from 40 then v_miss := v_miss || v_id; end if;
+  end loop;
+  return jsonb_build_object('updated', n_upd, 'unchanged', n_same, 'not_in_members_sample', to_jsonb(v_miss));
+end $$;
+revoke all on function public.emp_en_names_sync(jsonb) from public, anon, authenticated;
+grant execute on function public.emp_en_names_sync(jsonb) to service_role;
+
+-- ===== hub41 =====
+-- v187: นำเข้าข้อมูลจากไฟล์ IFS (DataIFS_TimeSheet.xlsx) 2 ชีต ทุกคอลัมน์ ที่เมนู "ตั้งค่าข้อมูล" — ชีต "Project Summary" และ "Sale Contract"
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub40.sql) — รันซ้ำได้
+-- เก็บข้อมูลดิบทุกคอลัมน์ไว้ดู/ค้นในแอป (เฉพาะ Super Admin เพราะมียอดเงิน) และพร้อมกันนั้น: (1) อัปเดต Budget (บาท) ของโครงการ = ผลรวม BUDGET_COST ต่อรหัส  (2) เพิ่มสัญญาขายใหม่ (รหัสที่มีอยู่แล้วไม่แตะ)
+
+create table if not exists public.ifs_sheets (
+  sheet text primary key, cols jsonb not null default '[]'::jsonb, row_count int not null default 0,
+  imported_at timestamptz not null default now(), imported_by text not null default ''
+);
+create table if not exists public.ifs_rows (
+  sheet text not null references public.ifs_sheets(sheet) on delete cascade, row_no int not null, data jsonb not null,
+  primary key (sheet, row_no)
+);
+alter table public.ifs_sheets enable row level security;
+alter table public.ifs_rows enable row level security;
+drop policy if exists ifs_sheets_sel on public.ifs_sheets; create policy ifs_sheets_sel on public.ifs_sheets for select to authenticated using (public.is_super_admin());
+drop policy if exists ifs_rows_sel on public.ifs_rows;     create policy ifs_rows_sel   on public.ifs_rows   for select to authenticated using (public.is_super_admin());
+
+create or replace function public.ifs_import(p_sheet text, p_cols jsonb, p_rows jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n int := 0; v_up int := 0; v_new int := 0; v_by text := coalesce(public.my_emp_id(), 'IFS-script');
+begin
+  if coalesce(auth.role(), '') <> 'service_role' and not public.is_super_admin() then raise exception 'FORBIDDEN:นำเข้าได้เฉพาะ Super Admin'; end if;
+  if p_sheet not in ('Project Summary', 'Sale Contract') then raise exception 'BAD_SHEET:รองรับเฉพาะชีต Project Summary และ Sale Contract'; end if;
+  if jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) = 0 then raise exception 'EMPTY:ไม่มีข้อมูลในชีต'; end if;
+  insert into public.ifs_sheets (sheet, cols, row_count, imported_at, imported_by) values (p_sheet, coalesce(p_cols, '[]'::jsonb), 0, now(), v_by)
+  on conflict (sheet) do update set cols = excluded.cols, imported_at = now(), imported_by = v_by;
+  delete from public.ifs_rows where sheet = p_sheet;
+  insert into public.ifs_rows (sheet, row_no, data) select p_sheet, (t.ord)::int, t.e from jsonb_array_elements(p_rows) with ordinality as t(e, ord);
+  get diagnostics n = row_count;
+  update public.ifs_sheets set row_count = n where sheet = p_sheet;
+  if p_sheet = 'Project Summary' then
+    update public.projects p set budget_baht = s.b, updated_by = 'IFS', updated_at = now()
+      from (select trim(data->>'PROJECT_ID/CONTRACT') as id, sum(nullif(trim(data->>'BUDGET_COST'), '')::numeric) as b
+              from public.ifs_rows where sheet = 'Project Summary' group by 1) s
+     where p.id = s.id and s.b is not null and p.budget_baht is distinct from s.b;
+    get diagnostics v_up = row_count;
+  else
+    insert into public.contracts (id, name, company, active, budget_hours, budget_baht, updated_by, updated_at)
+    select x.id, coalesce(nullif(x.nm, ''), x.id), case when x.co = 'DP' then 'DP' else 'Demco' end, true, 0, 0, 'IFS', now()
+      from (select distinct on (trim(data->>'PROJECT_ID/CONTRACT')) trim(data->>'PROJECT_ID/CONTRACT') as id,
+                   trim(coalesce(nullif(data->>'NAME', ''), data->>'Short Name', '')) as nm, trim(coalesce(data->>'COMPANY', '')) as co
+              from public.ifs_rows where sheet = 'Sale Contract' and trim(coalesce(data->>'PROJECT_ID/CONTRACT', '')) <> ''
+             order by trim(data->>'PROJECT_ID/CONTRACT'), row_no) x
+    on conflict (id) do nothing;
+    get diagnostics v_new = row_count;
+  end if;
+  return jsonb_build_object('rows', n, 'projects_updated', v_up, 'contracts_added', v_new);
+end $$;
+revoke all on function public.ifs_import(text, jsonb, jsonb) from public, anon;
+grant execute on function public.ifs_import(text, jsonb, jsonb) to authenticated, service_role;
+
+-- ===== hub42 =====
+-- v188: นำเข้าเฉพาะ 2 ชีตของไฟล์ IFS (DataIFS_TimeSheet.xlsx) ทุกฟิลด์ — "Sale & Project" และ "Project Admin" ที่เมนู "ตั้งค่าข้อมูล"
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub41.sql) — รันซ้ำได้
+-- เก็บข้อมูลดิบทุกคอลัมน์ทุกแถวไว้ดู/ค้นในแอป (เฉพาะ Super Admin) · ไม่แตะ Budget/สัญญาขายในตาราง projects / contracts · ลบข้อมูลดิบของชีต Project Summary / Sale Contract ที่เคยนำเข้ารอบก่อนออก
+
+delete from public.ifs_sheets where sheet in ('Project Summary', 'Sale Contract');   -- ifs_rows ถูกลบตามอัตโนมัติ (cascade)
+
+create or replace function public.ifs_import(p_sheet text, p_cols jsonb, p_rows jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n int := 0; v_by text := coalesce(public.my_emp_id(), 'IFS-script');
+begin
+  if coalesce(auth.role(), '') <> 'service_role' and not public.is_super_admin() then raise exception 'FORBIDDEN:นำเข้าได้เฉพาะ Super Admin'; end if;
+  if p_sheet not in ('Sale & Project', 'Project Admin') then raise exception 'BAD_SHEET:รองรับเฉพาะชีต Sale & Project และ Project Admin'; end if;
+  if jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) = 0 then raise exception 'EMPTY:ไม่มีข้อมูลในชีต'; end if;
+  insert into public.ifs_sheets (sheet, cols, row_count, imported_at, imported_by) values (p_sheet, coalesce(p_cols, '[]'::jsonb), 0, now(), v_by)
+  on conflict (sheet) do update set cols = excluded.cols, imported_at = now(), imported_by = v_by;
+  delete from public.ifs_rows where sheet = p_sheet;
+  insert into public.ifs_rows (sheet, row_no, data) select p_sheet, (t.ord)::int, t.e from jsonb_array_elements(p_rows) with ordinality as t(e, ord);
+  get diagnostics n = row_count;
+  update public.ifs_sheets set row_count = n where sheet = p_sheet;
+  return jsonb_build_object('rows', n);
+end $$;
+revoke all on function public.ifs_import(text, jsonb, jsonb) from public, anon;
+grant execute on function public.ifs_import(text, jsonb, jsonb) to authenticated, service_role;
+
+-- ===== hub43 =====
+-- v189: Auto assign พนักงานจากชีต "Project Admin" (คอลัมน์ Admin = "รหัสพนักงาน ชื่อ") ให้เป็นผู้ได้รับ assign ของโครงการ/สัญญานั้นอัตโนมัติ
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub42.sql) — รันซ้ำได้
+-- กติกา: เพิ่มเฉพาะคู่ (พนักงาน, รหัส) ที่ยังไม่มี — ไม่ลบ/ไม่แก้ assign เดิม · ข้ามถ้าไม่พบรหัสพนักงานในสมาชิก หรือไม่พบรหัสโครงการ/สัญญาในระบบ
+-- ทำงานอัตโนมัติทุกครั้งที่นำเข้าชีต Project Admin และกดทำซ้ำได้ที่ปุ่ม "Assign อัตโนมัติ" ในการ์ดนำเข้า IFS
+
+create or replace function public.ifs_assign_admins() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r record; n_ins int := 0; n_have int := 0; n_nomem int := 0; n_noproj int := 0; v_cnt int;
+begin
+  if coalesce(auth.role(), '') <> 'service_role' and not public.is_super_admin() then raise exception 'FORBIDDEN:ทำได้เฉพาะ Super Admin'; end if;
+  for r in select distinct substring(trim(coalesce(data->>'Admin', '')) from '^(\d+)') as emp, trim(coalesce(data->>'Project ID', '')) as code
+             from public.ifs_rows where sheet = 'Project Admin' loop
+    continue when r.emp is null or r.code = '';
+    if not exists (select 1 from public.employees where id = r.emp) then n_nomem := n_nomem + 1; continue; end if;
+    if not exists (select 1 from public.projects where id = r.code) and not exists (select 1 from public.contracts where id = r.code) then n_noproj := n_noproj + 1; continue; end if;
+    insert into public.assignments (emp_id, code) values (r.emp, r.code) on conflict do nothing;
+    get diagnostics v_cnt = row_count;
+    if v_cnt > 0 then n_ins := n_ins + 1; else n_have := n_have + 1; end if;
+  end loop;
+  return jsonb_build_object('added', n_ins, 'already', n_have, 'no_member', n_nomem, 'no_project', n_noproj);
+end $$;
+revoke all on function public.ifs_assign_admins() from public, anon;
+grant execute on function public.ifs_assign_admins() to authenticated, service_role;
+
+create or replace function public.ifs_import(p_sheet text, p_cols jsonb, p_rows jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n int := 0; v_by text := coalesce(public.my_emp_id(), 'IFS-script'); v_asg jsonb := null;
+begin
+  if coalesce(auth.role(), '') <> 'service_role' and not public.is_super_admin() then raise exception 'FORBIDDEN:นำเข้าได้เฉพาะ Super Admin'; end if;
+  if p_sheet not in ('Sale & Project', 'Project Admin') then raise exception 'BAD_SHEET:รองรับเฉพาะชีต Sale & Project และ Project Admin'; end if;
+  if jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) = 0 then raise exception 'EMPTY:ไม่มีข้อมูลในชีต'; end if;
+  insert into public.ifs_sheets (sheet, cols, row_count, imported_at, imported_by) values (p_sheet, coalesce(p_cols, '[]'::jsonb), 0, now(), v_by)
+  on conflict (sheet) do update set cols = excluded.cols, imported_at = now(), imported_by = v_by;
+  delete from public.ifs_rows where sheet = p_sheet;
+  insert into public.ifs_rows (sheet, row_no, data) select p_sheet, (t.ord)::int, t.e from jsonb_array_elements(p_rows) with ordinality as t(e, ord);
+  get diagnostics n = row_count;
+  update public.ifs_sheets set row_count = n where sheet = p_sheet;
+  if p_sheet = 'Project Admin' then v_asg := public.ifs_assign_admins(); end if;   -- auto assign ตามคอลัมน์ Admin
+  return jsonb_build_object('rows', n, 'assign', v_asg);
+end $$;
+revoke all on function public.ifs_import(text, jsonb, jsonb) from public, anon;
+grant execute on function public.ifs_import(text, jsonb, jsonb) to authenticated, service_role;
+
+-- ===== hub44 =====
+-- v190: เพิ่มฟิลด์ Short Name จากการนำเข้า IFS ไว้กับรหัสโครงการ/สัญญา — มองเห็นได้เฉพาะ "ผู้อนุมัติ" (ตั้งแต่ธุรการขึ้นไป ที่มีขั้นอนุมัติ) และผู้ดูแลระบบ พนักงานทั่วไปมองไม่เห็นและอ่านจากฐานข้อมูลไม่ได้
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub43.sql) — รันซ้ำได้
+-- ที่มา: ชีต "Sale & Project" (คอลัมน์ Short Name) เป็นหลัก ถ้าไม่มีใช้ชีต "Project Admin" · อัปเดตอัตโนมัติทุกครั้งที่นำเข้า IFS
+
+create table if not exists public.ifs_short_names (
+  code text primary key, short_name text not null default '', updated_at timestamptz not null default now()
+);
+alter table public.ifs_short_names enable row level security;
+
+-- ผู้อนุมัติ = ผู้ดูแลระบบ หรือผู้ที่มีสิทธิ์อนุมัติ (approver_scopes) ใน Role ที่มีขั้นอนุมัติ (approval_perms เป็นเลขขั้น 1-6)
+create or replace function public.can_see_short_name() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_admin() or public.is_super_admin() or exists (
+    select 1 from public.approver_scopes s
+     where s.emp_id = public.my_emp_id()
+       and exists (select 1 from public.approval_perms p where p.role = s.role and p.perm ~ '^[1-6]$'))
+$$;
+revoke all on function public.can_see_short_name() from public, anon;
+grant execute on function public.can_see_short_name() to authenticated;
+drop policy if exists ifs_sn_sel on public.ifs_short_names;
+create policy ifs_sn_sel on public.ifs_short_names for select to authenticated using (public.can_see_short_name());
+
+-- สร้าง/อัปเดต Short Name จากข้อมูลดิบที่นำเข้า (ใช้ภายใน)
+create or replace function public.ifs_apply_short_names_int() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int := 0;
+begin
+  insert into public.ifs_short_names (code, short_name, updated_at)
+  select code, short_name, now() from (
+    select distinct on (code) code, short_name from (
+      select trim(coalesce(data->>'PROJECT_ID/CONTRACT', '')) as code, trim(coalesce(data->>'Short Name', '')) as short_name, 1 as pr
+        from public.ifs_rows where sheet = 'Sale & Project'
+      union all
+      select trim(coalesce(data->>'Project ID', '')), trim(coalesce(data->>'Short Name', '')), 2
+        from public.ifs_rows where sheet = 'Project Admin') u
+     where code <> '' and short_name <> ''
+     order by code, pr) x
+  on conflict (code) do update set short_name = excluded.short_name, updated_at = now() where public.ifs_short_names.short_name is distinct from excluded.short_name;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+revoke all on function public.ifs_apply_short_names_int() from public, anon, authenticated;
+
+-- นำเข้า IFS แล้วอัปเดต Short Name + Auto Assign (ต่อจาก hub43)
+create or replace function public.ifs_import(p_sheet text, p_cols jsonb, p_rows jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n int := 0; v_by text := coalesce(public.my_emp_id(), 'IFS-script'); v_asg jsonb := null; v_sn int := 0;
+begin
+  if coalesce(auth.role(), '') <> 'service_role' and not public.is_super_admin() then raise exception 'FORBIDDEN:นำเข้าได้เฉพาะ Super Admin'; end if;
+  if p_sheet not in ('Sale & Project', 'Project Admin') then raise exception 'BAD_SHEET:รองรับเฉพาะชีต Sale & Project และ Project Admin'; end if;
+  if jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) = 0 then raise exception 'EMPTY:ไม่มีข้อมูลในชีต'; end if;
+  insert into public.ifs_sheets (sheet, cols, row_count, imported_at, imported_by) values (p_sheet, coalesce(p_cols, '[]'::jsonb), 0, now(), v_by)
+  on conflict (sheet) do update set cols = excluded.cols, imported_at = now(), imported_by = v_by;
+  delete from public.ifs_rows where sheet = p_sheet;
+  insert into public.ifs_rows (sheet, row_no, data) select p_sheet, (t.ord)::int, t.e from jsonb_array_elements(p_rows) with ordinality as t(e, ord);
+  get diagnostics n = row_count;
+  update public.ifs_sheets set row_count = n where sheet = p_sheet;
+  v_sn := public.ifs_apply_short_names_int();
+  if p_sheet = 'Project Admin' then v_asg := public.ifs_assign_admins(); end if;
+  return jsonb_build_object('rows', n, 'assign', v_asg, 'short_names', v_sn);
+end $$;
+revoke all on function public.ifs_import(text, jsonb, jsonb) from public, anon;
+grant execute on function public.ifs_import(text, jsonb, jsonb) to authenticated, service_role;
+
+select public.ifs_apply_short_names_int() as short_names_updated;   -- เติมจากข้อมูลที่นำเข้าไว้แล้วทันที
+
+-- ===== hub45 =====
+-- v191: ให้ "ธุรการ" ที่อยู่ในชีต Project Admin (คอลัมน์ Admin) เห็น Short Name ของโครงการได้ด้วย — เดิมเห็นเฉพาะผู้ดูแลระบบและผู้มีสิทธิ์อนุมัติ (approver_scopes) ซึ่งธุรการโครงการไม่อยู่ในกลุ่มนี้
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub44.sql) — รันซ้ำได้
+-- ผู้เห็น = ผู้ดูแลระบบ · ผู้อนุมัติที่มีขั้นอนุมัติ · ธุรการที่อยู่ในคอลัมน์ Admin ของชีต Project Admin  |  พนักงานทั่วไปยังไม่เห็น
+
+create or replace function public.can_see_short_name() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_admin() or public.is_super_admin()
+      or exists (select 1 from public.approver_scopes s
+                  where s.emp_id = public.my_emp_id()
+                    and exists (select 1 from public.approval_perms p where p.role = s.role and p.perm ~ '^[1-6]$'))
+      or exists (select 1 from public.ifs_rows r
+                  where r.sheet = 'Project Admin'
+                    and substring(trim(coalesce(r.data->>'Admin', '')) from '^(\d+)') = public.my_emp_id())
+$$;
+revoke all on function public.can_see_short_name() from public, anon;
+grant execute on function public.can_see_short_name() to authenticated;
+
+-- v201: เมื่อสมาชิกใหม่ได้รับการอนุมัติ ให้ผูก "รหัสฝ่าย" ของสมาชิกกับตารางชีต Project Admin (นำเข้า IFS)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub45.sql) — รันซ้ำได้
+-- กติกา: เมื่อ employees.approved เปลี่ยนเป็น true (หรือเพิ่มสมาชิกที่ approved อยู่แล้ว) ระบบ assign ทุกรหัสโครงการ/สัญญา
+--        ในชีต Project Admin ที่คอลัมน์ Department ตรงกับรหัสฝ่ายของสมาชิกให้อัตโนมัติ
+--        เพิ่มเฉพาะคู่ (พนักงาน, รหัส) ที่ยังไม่มี · ข้ามรหัสที่ไม่มีในระบบ · ไม่ลบ/ไม่แก้ assign เดิม
+
+create or replace function public.ifs_assign_dept(p_emp text) returns int
+language plpgsql security definer set search_path = public as $$
+declare v_dept text; v_n int := 0;
+begin
+  select trim(coalesce(dept, '')) into v_dept from public.employees where id = p_emp;
+  if v_dept is null or v_dept = '' then return 0; end if;
+  insert into public.assignments (emp_id, code)
+  select distinct p_emp, trim(r.data->>'Project ID')
+    from public.ifs_rows r
+   where r.sheet = 'Project Admin'
+     and trim(coalesce(r.data->>'Department', '')) = v_dept
+     and trim(coalesce(r.data->>'Project ID', '')) <> ''
+     and (exists (select 1 from public.projects p where p.id = trim(r.data->>'Project ID'))
+          or exists (select 1 from public.contracts c where c.id = trim(r.data->>'Project ID')))
+  on conflict do nothing;
+  get diagnostics v_n = row_count;
+  return v_n;
+end $$;
+revoke all on function public.ifs_assign_dept(text) from public, anon;
+grant execute on function public.ifs_assign_dept(text) to service_role;
+
+create or replace function public.trg_emp_approved_assign() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.approved is true and (tg_op = 'INSERT' or old.approved is distinct from true) then
+    perform public.ifs_assign_dept(new.id);
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists emp_approved_assign on public.employees;
+create trigger emp_approved_assign after insert or update of approved on public.employees
+  for each row execute function public.trg_emp_approved_assign();
+
+-- v204: โครงการ/สัญญาที่มี Short Name หลายค่า (เช่น CSP2601 มี .80010 / .80020 / .80030) — เก็บทุกค่าไว้ให้ "ธุรการ" เลือกตอนอนุมัติ
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub46.sql) — รันซ้ำได้
+-- ตารางใหม่ ifs_short_name_opts (code, short_name) มองเห็นเฉพาะผู้อนุมัติ/ผู้ดูแลระบบ เหมือน ifs_short_names · ค่าที่ธุรการเลือกเก็บไว้กับรายการอนุมัติ (ไม่ต้องเพิ่มคอลัมน์)
+
+create table if not exists public.ifs_short_name_opts (
+  code text not null, short_name text not null, primary key (code, short_name)
+);
+alter table public.ifs_short_name_opts enable row level security;
+drop policy if exists ifs_sno_sel on public.ifs_short_name_opts;
+create policy ifs_sno_sel on public.ifs_short_name_opts for select to authenticated using (public.can_see_short_name());
+
+create or replace function public.ifs_apply_short_name_opts_int() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int := 0;
+begin
+  delete from public.ifs_short_name_opts where true;
+  insert into public.ifs_short_name_opts (code, short_name)
+  select distinct code, short_name from (
+    select trim(coalesce(data->>'PROJECT_ID/CONTRACT', '')) as code, trim(coalesce(data->>'Short Name', '')) as short_name
+      from public.ifs_rows where sheet = 'Sale & Project'
+    union all
+    select trim(coalesce(data->>'Project ID', '')), trim(coalesce(data->>'Short Name', ''))
+      from public.ifs_rows where sheet = 'Project Admin') u
+   where code <> '' and short_name <> '';
+  get diagnostics n = row_count;
+  return n;
+end $$;
+revoke all on function public.ifs_apply_short_name_opts_int() from public, anon, authenticated;
+
+-- ทุกครั้งที่นำเข้า IFS ให้อัปเดตตัวเลือก Short Name ด้วย (ต่อจาก ifs_apply_short_names_int ของ hub44)
+create or replace function public.ifs_apply_short_names_int() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int := 0;
+begin
+  insert into public.ifs_short_names (code, short_name, updated_at)
+  select code, short_name, now() from (
+    select distinct on (code) code, short_name from (
+      select trim(coalesce(data->>'PROJECT_ID/CONTRACT', '')) as code, trim(coalesce(data->>'Short Name', '')) as short_name, 1 as pr
+        from public.ifs_rows where sheet = 'Sale & Project'
+      union all
+      select trim(coalesce(data->>'Project ID', '')), trim(coalesce(data->>'Short Name', '')), 2
+        from public.ifs_rows where sheet = 'Project Admin') u
+     where code <> '' and short_name <> ''
+     order by code, pr, short_name) x
+  on conflict (code) do update set short_name = excluded.short_name, updated_at = now() where public.ifs_short_names.short_name is distinct from excluded.short_name;
+  get diagnostics n = row_count;
+  perform public.ifs_apply_short_name_opts_int();
+  return n;
+end $$;
+revoke all on function public.ifs_apply_short_names_int() from public, anon, authenticated;
+
+select public.ifs_apply_short_name_opts_int() as short_name_options;   -- เติมจากข้อมูลที่นำเข้าไว้แล้วทันที
+select count(*) as codes_with_multiple from (select code from public.ifs_short_name_opts group by code having count(*) > 1) q;
+
+-- v206: ตารางกำหนดสิทธิ์การเข้าถึงโมดูล (เช่น Promotion) รายพนักงาน
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub47.sql) — รันซ้ำได้
+-- กติกา: Super Admin เข้าได้ทุกโมดูลเสมอ · คนอื่นเข้าได้เมื่อมีแถวในตารางนี้ (perm: view = ดู, manage = จัดการ/เสนอชื่อ)
+--        อ่านได้เฉพาะแถวของตัวเอง (Super Admin อ่านได้ทั้งหมด) · เพิ่ม/แก้/ลบ ได้เฉพาะ Super Admin
+
+create table if not exists public.module_access (
+  module     text not null,
+  emp_id     text not null,
+  perm       text not null default 'view' check (perm in ('view', 'manage')),
+  granted_by text not null default '',
+  granted_at timestamptz not null default now(),
+  primary key (module, emp_id)
+);
+alter table public.module_access enable row level security;
+
+drop policy if exists ma_sel on public.module_access;
+create policy ma_sel on public.module_access for select to authenticated
+  using (public.is_super_admin() or emp_id = public.my_emp_id());
+drop policy if exists ma_ins on public.module_access;
+create policy ma_ins on public.module_access for insert to authenticated with check (public.is_super_admin());
+drop policy if exists ma_upd on public.module_access;
+create policy ma_upd on public.module_access for update to authenticated using (public.is_super_admin()) with check (public.is_super_admin());
+drop policy if exists ma_del on public.module_access;
+create policy ma_del on public.module_access for delete to authenticated using (public.is_super_admin());
+revoke all on public.module_access from anon;
+grant select, insert, update, delete on public.module_access to authenticated;
+
+-- v207: ย้ายข้อมูลโมดูล Promotion (เสนอชื่อปรับตำแหน่ง) ขึ้น Supabase พร้อมคุมสิทธิ์ด้วยตาราง module_access
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub48.sql) — รันซ้ำได้
+-- สิทธิ์: Super Admin หรือผู้ที่มีแถว module='promo' ใน module_access · view = อ่านอย่างเดียว · manage = นำเข้า/เสนอชื่อ/แก้ไข/ลบ
+-- ข้อมูลพนักงาน (เกรด การศึกษา ประวัติ) อยู่ในตาราง promo_employees — คนที่ไม่มีสิทธิ์อ่านไม่ได้ (RLS) แม้จะรู้ที่อยู่ฐานข้อมูล
+
+create or replace function public.can_promo(p_need text default 'view') returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_super_admin() or exists (
+    select 1 from public.module_access m
+     where m.module = 'promo' and m.emp_id = public.my_emp_id() and (p_need = 'view' or m.perm = 'manage'))
+$$;
+revoke all on function public.can_promo(text) from public, anon;
+grant execute on function public.can_promo(text) to authenticated;
+
+create table if not exists public.promo_employees (
+  emp_id text primary key, level int not null default 0, dept text not null default '',
+  data jsonb not null, updated_at timestamptz not null default now()
+);
+create table if not exists public.promo_reqs (
+  level int primary key, data jsonb not null, updated_at timestamptz not null default now()
+);
+create table if not exists public.promo_nominations (
+  id text primary key, emp_id text not null, status text not null default 'ร่าง', data jsonb not null,
+  created_by text not null default '', created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create unique index if not exists promo_nom_one_active on public.promo_nominations (emp_id) where status not in ('ยกเลิก', 'ไม่ผ่านการพิจารณา');
+create table if not exists public.promo_config (
+  k text primary key, data jsonb not null, updated_at timestamptz not null default now()
+);
+
+do $$ declare t text; begin
+  foreach t in array array['promo_employees', 'promo_reqs', 'promo_nominations', 'promo_config'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists %I on public.%I', t || '_sel', t);
+    execute format('create policy %I on public.%I for select to authenticated using (public.can_promo(''view''))', t || '_sel', t);
+    execute format('drop policy if exists %I on public.%I', t || '_ins', t);
+    execute format('create policy %I on public.%I for insert to authenticated with check (public.can_promo(''manage''))', t || '_ins', t);
+    execute format('drop policy if exists %I on public.%I', t || '_upd', t);
+    execute format('create policy %I on public.%I for update to authenticated using (public.can_promo(''manage'')) with check (public.can_promo(''manage''))', t || '_upd', t);
+    execute format('drop policy if exists %I on public.%I', t || '_del', t);
+    execute format('create policy %I on public.%I for delete to authenticated using (public.can_promo(''manage''))', t || '_del', t);
+    execute format('revoke all on public.%I from anon', t);
+    execute format('grant select, insert, update, delete on public.%I to authenticated', t);
+  end loop;
+end $$;
+
+-- นำเข้าจาก Excel ทีเดียว: แทนที่รายชื่อพนักงานทั้งหมด (+ข้อกำหนดตำแหน่งถ้ามี) — รายการเสนอชื่อเดิมไม่ถูกแตะ
+create or replace function public.promo_import(p_emps jsonb, p_reqs jsonb default '[]'::jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n int := 0; m int := 0;
+begin
+  if not public.can_promo('manage') then raise exception 'FORBIDDEN:ไม่มีสิทธิ์จัดการโมดูล Promotion'; end if;
+  if jsonb_typeof(p_emps) <> 'array' or jsonb_array_length(p_emps) = 0 then raise exception 'EMPTY:ไม่มีข้อมูลพนักงาน'; end if;
+  delete from public.promo_employees where true;   -- ต้องมี WHERE (Supabase เปิด safe-update)
+  insert into public.promo_employees (emp_id, level, dept, data)
+  select e->>'id', coalesce((e->>'level')::int, 0), coalesce(e->>'dept', ''), e from jsonb_array_elements(p_emps) e where coalesce(e->>'id', '') <> ''
+  on conflict (emp_id) do update set level = excluded.level, dept = excluded.dept, data = excluded.data, updated_at = now();
+  get diagnostics n = row_count;
+  if jsonb_typeof(p_reqs) = 'array' and jsonb_array_length(p_reqs) > 0 then
+    delete from public.promo_reqs where true;
+    insert into public.promo_reqs (level, data) select (r->>'level')::int, r from jsonb_array_elements(p_reqs) r
+    on conflict (level) do update set data = excluded.data, updated_at = now();
+    get diagnostics m = row_count;
+  end if;
+  return jsonb_build_object('employees', n, 'reqs', m);
+end $$;
+revoke all on function public.promo_import(jsonb, jsonb) from public, anon;
+grant execute on function public.promo_import(jsonb, jsonb) to authenticated;
+
+-- v216: กำหนดขอบเขตการเข้าถึงฐานข้อมูลพนักงานของโมดูล Promotion รายผู้ใช้ (ทั้งหมด / รายกลุ่มงาน / รายสายงาน / รายฝ่าย)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub49.sql + hub49_fix) — รันซ้ำได้
+-- กติกา: Super Admin และผู้ที่ขอบเขต = ทั้งหมด เห็น/จัดการได้ทุกคน · ขอบเขตจำกัด = เห็นเฉพาะพนักงานในกลุ่มงาน/สายงาน/ฝ่ายที่กำหนด (รวมรายการเสนอชื่อและประวัติจากประกาศของคนเหล่านั้น)
+--        นำเข้า Excel/ประกาศ และแก้เกณฑ์ ทำได้เฉพาะผู้ที่ขอบเขต = ทั้งหมด (สิทธิ์จัดการ)
+
+alter table public.module_access add column if not exists scope jsonb not null default '{"type":"all"}'::jsonb;   -- {"type":"all"} | {"type":"group|line|dept","keys":["60000",...]}
+alter table public.promo_employees add column if not exists group_code text not null default '';
+alter table public.promo_employees add column if not exists line_code text not null default '';
+alter table public.promo_employees add column if not exists dept_code text not null default '';
+update public.promo_employees set group_code = coalesce(data->>'groupCode', ''), line_code = coalesce(data->>'lineCode', ''), dept_code = coalesce(data->>'deptCode', '') where true;
+
+create or replace function public.promo_scope_all() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_super_admin() or exists (select 1 from public.module_access m
+    where m.module = 'promo' and m.emp_id = public.my_emp_id() and coalesce(m.scope->>'type', 'all') = 'all')
+$$;
+create or replace function public.promo_in_scope(g text, l text, d text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_super_admin() or exists (select 1 from public.module_access m
+    where m.module = 'promo' and m.emp_id = public.my_emp_id() and (
+      coalesce(m.scope->>'type', 'all') = 'all'
+      or (m.scope->>'type' = 'group' and jsonb_exists(m.scope->'keys', coalesce(g, '')))
+      or (m.scope->>'type' = 'line'  and jsonb_exists(m.scope->'keys', coalesce(l, '')))
+      or (m.scope->>'type' = 'dept'  and jsonb_exists(m.scope->'keys', coalesce(d, '')))))
+$$;
+create or replace function public.promo_emp_in_scope(p_emp text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.promo_scope_all() or exists (select 1 from public.promo_employees e
+    where e.emp_id = p_emp and public.promo_in_scope(e.group_code, e.line_code, e.dept_code))
+$$;
+revoke all on function public.promo_scope_all() from public, anon;
+revoke all on function public.promo_in_scope(text, text, text) from public, anon;
+revoke all on function public.promo_emp_in_scope(text) from public, anon;
+grant execute on function public.promo_scope_all() to authenticated;
+grant execute on function public.promo_in_scope(text, text, text) to authenticated;
+grant execute on function public.promo_emp_in_scope(text) to authenticated;
+
+-- นโยบายใหม่ (แทนของ hub49)
+drop policy if exists promo_employees_sel on public.promo_employees;
+create policy promo_employees_sel on public.promo_employees for select to authenticated
+  using (public.can_promo('view') and public.promo_in_scope(group_code, line_code, dept_code));
+drop policy if exists promo_nominations_sel on public.promo_nominations;
+create policy promo_nominations_sel on public.promo_nominations for select to authenticated
+  using (public.can_promo('view') and public.promo_emp_in_scope(emp_id));
+drop policy if exists promo_nominations_ins on public.promo_nominations;
+create policy promo_nominations_ins on public.promo_nominations for insert to authenticated
+  with check (public.can_promo('manage') and public.promo_emp_in_scope(emp_id));
+drop policy if exists promo_nominations_upd on public.promo_nominations;
+create policy promo_nominations_upd on public.promo_nominations for update to authenticated
+  using (public.can_promo('manage') and public.promo_emp_in_scope(emp_id)) with check (public.can_promo('manage') and public.promo_emp_in_scope(emp_id));
+drop policy if exists promo_nominations_del on public.promo_nominations;
+create policy promo_nominations_del on public.promo_nominations for delete to authenticated
+  using (public.can_promo('manage') and public.promo_emp_in_scope(emp_id));
+do $$ declare t text; begin
+  foreach t in array array['promo_employees', 'promo_reqs', 'promo_config'] loop
+    execute format('drop policy if exists %I on public.%I', t || '_ins', t);
+    execute format('create policy %I on public.%I for insert to authenticated with check (public.can_promo(''manage'') and public.promo_scope_all())', t || '_ins', t);
+    execute format('drop policy if exists %I on public.%I', t || '_upd', t);
+    execute format('create policy %I on public.%I for update to authenticated using (public.can_promo(''manage'') and public.promo_scope_all()) with check (public.can_promo(''manage'') and public.promo_scope_all())', t || '_upd', t);
+    execute format('drop policy if exists %I on public.%I', t || '_del', t);
+    execute format('create policy %I on public.%I for delete to authenticated using (public.can_promo(''manage'') and public.promo_scope_all())', t || '_del', t);
+  end loop;
+end $$;
+drop policy if exists promo_config_sel on public.promo_config;
+create policy promo_config_sel on public.promo_config for select to authenticated
+  using (public.can_promo('view') and (k not like 'order:%' or public.promo_scope_all()));
+
+-- ประวัติจากประกาศแต่งตั้ง: ส่งเฉพาะรายการของพนักงานที่อยู่ในขอบเขตของผู้เรียก
+create or replace function public.promo_orders_for_me() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when not public.can_promo('view') then '[]'::jsonb else coalesce((
+    select jsonb_agg(jsonb_build_object('no', c.data->>'no', 'date', c.data->>'date', 'at', c.data->>'at',
+      'entries', (select coalesce(jsonb_agg(en), '[]'::jsonb) from jsonb_array_elements(coalesce(c.data->'entries', '[]'::jsonb)) en where public.promo_emp_in_scope(en->>'empId'))))
+    from public.promo_config c where c.k like 'order:%'), '[]'::jsonb) end
+$$;
+revoke all on function public.promo_orders_for_me() from public, anon;
+grant execute on function public.promo_orders_for_me() to authenticated;
+
+-- นำเข้าจาก Excel: ผู้ที่ขอบเขต = ทั้งหมดเท่านั้น · บันทึกรหัสกลุ่มงาน/สายงาน/ฝ่ายไว้ใช้กรองสิทธิ์
+create or replace function public.promo_import(p_emps jsonb, p_reqs jsonb default '[]'::jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n int := 0; m int := 0;
+begin
+  if not (public.can_promo('manage') and public.promo_scope_all()) then raise exception 'FORBIDDEN:นำเข้าได้เฉพาะผู้ที่มีสิทธิ์จัดการและขอบเขตข้อมูลทั้งหมด'; end if;
+  if jsonb_typeof(p_emps) <> 'array' or jsonb_array_length(p_emps) = 0 then raise exception 'EMPTY:ไม่มีข้อมูลพนักงาน'; end if;
+  delete from public.promo_employees where true;
+  insert into public.promo_employees (emp_id, level, dept, group_code, line_code, dept_code, data)
+  select e->>'id', coalesce((e->>'level')::int, 0), coalesce(e->>'dept', ''), coalesce(e->>'groupCode', ''), coalesce(e->>'lineCode', ''), coalesce(e->>'deptCode', ''), e
+    from jsonb_array_elements(p_emps) e where coalesce(e->>'id', '') <> ''
+  on conflict (emp_id) do update set level = excluded.level, dept = excluded.dept, group_code = excluded.group_code, line_code = excluded.line_code, dept_code = excluded.dept_code, data = excluded.data, updated_at = now();
+  get diagnostics n = row_count;
+  if jsonb_typeof(p_reqs) = 'array' and jsonb_array_length(p_reqs) > 0 then
+    delete from public.promo_reqs where true;
+    insert into public.promo_reqs (level, data) select (r->>'level')::int, r from jsonb_array_elements(p_reqs) r
+    on conflict (level) do update set data = excluded.data, updated_at = now();
+    get diagnostics m = row_count;
+  end if;
+  return jsonb_build_object('employees', n, 'reqs', m);
+end $$;
+revoke all on function public.promo_import(jsonb, jsonb) from public, anon;
+grant execute on function public.promo_import(jsonb, jsonb) to authenticated;
+
+select count(*) filter (where group_code <> '') as with_group, count(*) filter (where dept_code <> '') as with_dept, count(*) as total from public.promo_employees;
+
+-- v217: Flow การอนุมัติการเสนอชื่อปรับตำแหน่ง (Promotion) — ขั้นตามลำดับ + กำหนดผู้อนุมัติแต่ละขั้น (พร้อมขอบเขตกลุ่มงาน/สายงาน/ฝ่าย)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub50.sql) — รันซ้ำได้
+-- กติกา: ผู้มีสิทธิ์จัดการ "ส่งขออนุมัติ" รายการสถานะ ร่าง → ผ่านทีละขั้นตามลำดับ (ผู้อนุมัติขั้นนั้นในขอบเขตของพนักงานที่ถูกเสนอ) → ครบทุกขั้น = ผ่านการพิจารณา
+--        ไม่อนุมัติ = ไม่ผ่านการพิจารณา (ต้องใส่เหตุผล) · ส่งกลับ = กลับเป็นร่างให้ผู้เสนอแก้ไข (ต้องใส่เหตุผล) · อนุมัติรายการของตัวเองไม่ได้ · Super Admin อนุมัติแทนได้ทุกขั้น
+--        เปลี่ยนสถานะ/ขั้นโดยตรงไม่ได้ (มี trigger กัน) ต้องผ่านปุ่มในแอป · ทุกการดำเนินการบันทึกประวัติไว้
+
+alter table public.promo_nominations add column if not exists step int not null default 0;   -- ขั้นที่รออนุมัติอยู่ (0 = ไม่อยู่ระหว่างอนุมัติ)
+
+create table if not exists public.promo_flow_steps (
+  step_no int primary key, name text not null, active boolean not null default true
+);
+insert into public.promo_flow_steps (step_no, name) values (1, 'ผู้บริหารฝ่าย / ผอ.'), (2, 'HR'), (3, 'COO'), (4, 'CEO') on conflict (step_no) do nothing;
+create table if not exists public.promo_flow_approvers (
+  step_no int not null references public.promo_flow_steps(step_no) on delete cascade, emp_id text not null, name text not null default '',
+  scope jsonb not null default '{"type":"all"}'::jsonb, primary key (step_no, emp_id)
+);
+create table if not exists public.promo_nom_log (
+  id bigserial primary key, nom_id text not null, step_no int, step_name text not null default '', action text not null,
+  by_emp text not null default '', by_name text not null default '', note text not null default '', at timestamptz not null default now()
+);
+create index if not exists promo_nom_log_nom on public.promo_nom_log (nom_id, id);
+
+create or replace function public.promo_scope_match(s jsonb, g text, l text, d text) returns boolean
+language sql immutable as $$
+  select coalesce(s->>'type', 'all') = 'all'
+      or (s->>'type' = 'group' and jsonb_exists(s->'keys', coalesce(g, '')))
+      or (s->>'type' = 'line'  and jsonb_exists(s->'keys', coalesce(l, '')))
+      or (s->>'type' = 'dept'  and jsonb_exists(s->'keys', coalesce(d, '')))
+$$;
+create or replace function public.promo_nom_visible(p_id text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.can_promo('view') and exists (select 1 from public.promo_nominations n where n.id = p_id and public.promo_emp_in_scope(n.emp_id))
+$$;
+revoke all on function public.promo_nom_visible(text) from public, anon;
+grant execute on function public.promo_nom_visible(text) to authenticated;
+
+alter table public.promo_flow_steps enable row level security;
+alter table public.promo_flow_approvers enable row level security;
+alter table public.promo_nom_log enable row level security;
+do $$ declare t text; begin
+  foreach t in array array['promo_flow_steps', 'promo_flow_approvers'] loop
+    execute format('drop policy if exists %I on public.%I', t || '_sel', t);
+    execute format('create policy %I on public.%I for select to authenticated using (public.can_promo(''view''))', t || '_sel', t);
+    execute format('drop policy if exists %I on public.%I', t || '_ins', t);
+    execute format('create policy %I on public.%I for insert to authenticated with check (public.is_super_admin())', t || '_ins', t);
+    execute format('drop policy if exists %I on public.%I', t || '_upd', t);
+    execute format('create policy %I on public.%I for update to authenticated using (public.is_super_admin()) with check (public.is_super_admin())', t || '_upd', t);
+    execute format('drop policy if exists %I on public.%I', t || '_del', t);
+    execute format('create policy %I on public.%I for delete to authenticated using (public.is_super_admin())', t || '_del', t);
+    execute format('revoke all on public.%I from anon', t);
+    execute format('grant select, insert, update, delete on public.%I to authenticated', t);
+  end loop;
+end $$;
+drop policy if exists promo_nom_log_sel on public.promo_nom_log;
+create policy promo_nom_log_sel on public.promo_nom_log for select to authenticated using (public.promo_nom_visible(nom_id));
+revoke all on public.promo_nom_log from anon;
+grant select on public.promo_nom_log to authenticated;
+
+-- กันเปลี่ยนสถานะ/ขั้นโดยตรง (ยกเว้นผ่านฟังก์ชันด้านล่าง หรือ Super Admin) · ยกเลิกได้เมื่อสถานะ ร่าง/เสนอแล้ว · แก้เนื้อหาได้เฉพาะตอน ร่าง
+create or replace function public.promo_nom_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if coalesce(current_setting('promo.rpc', true), '') = '1' or public.is_super_admin() then return new; end if;
+  if tg_op = 'INSERT' then new.status := 'ร่าง'; new.step := 0; return new; end if;
+  if new.step is distinct from old.step then raise exception 'FORBIDDEN:เปลี่ยนขั้นอนุมัติโดยตรงไม่ได้'; end if;
+  if new.status is distinct from old.status and not (new.status = 'ยกเลิก' and old.status in ('ร่าง', 'เสนอแล้ว')) then
+    raise exception 'FORBIDDEN:เปลี่ยนสถานะโดยตรงไม่ได้ — ใช้ปุ่ม ส่งขออนุมัติ / อนุมัติ / ส่งกลับ';
+  end if;
+  if old.status <> 'ร่าง' and new.status = old.status and new.data is distinct from old.data then
+    raise exception 'FORBIDDEN:แก้ไขได้เฉพาะรายการสถานะ ร่าง (ส่งกลับเพื่อแก้ไขก่อน)';
+  end if;
+  return new;
+end $$;
+drop trigger if exists promo_nom_guard_trg on public.promo_nominations;
+create trigger promo_nom_guard_trg before insert or update on public.promo_nominations for each row execute function public.promo_nom_guard();
+
+create or replace function public.promo_nom_log_add(p_id text, p_step int, p_sname text, p_action text, p_note text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.promo_nom_log (nom_id, step_no, step_name, action, by_emp, by_name, note)
+  values (p_id, p_step, coalesce(p_sname, ''), p_action, coalesce(public.my_emp_id(), ''), coalesce((select e.name from public.employees e where e.id = public.my_emp_id()), ''), coalesce(p_note, ''));
+end $$;
+revoke all on function public.promo_nom_log_add(text, int, text, text, text) from public, anon, authenticated;
+
+-- ส่งขออนุมัติ (ร่าง → ขั้นแรก)
+create or replace function public.promo_nom_submit(p_id text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n public.promo_nominations%rowtype; s public.promo_flow_steps%rowtype;
+begin
+  select * into n from public.promo_nominations where id = p_id;
+  if not found then raise exception 'NOT_FOUND:ไม่พบรายการ'; end if;
+  if not (public.can_promo('manage') and public.promo_emp_in_scope(n.emp_id)) then raise exception 'FORBIDDEN:ไม่มีสิทธิ์'; end if;
+  if n.status <> 'ร่าง' then raise exception 'BAD_STATE:ส่งขออนุมัติได้เฉพาะรายการสถานะ ร่าง'; end if;
+  select * into s from public.promo_flow_steps where active order by step_no limit 1;
+  if not found then raise exception 'NO_FLOW:ยังไม่ได้กำหนดขั้นตอนอนุมัติ'; end if;
+  if not exists (select 1 from public.promo_flow_approvers where step_no = s.step_no) then raise exception 'NO_APPROVER:ขั้นแรก (%) ยังไม่มีผู้อนุมัติ — ให้ Super Admin กำหนดก่อน', s.name; end if;
+  perform set_config('promo.rpc', '1', true);
+  update public.promo_nominations set status = 'เสนอแล้ว', step = s.step_no, updated_at = now() where id = p_id;
+  perform public.promo_nom_log_add(p_id, s.step_no, s.name, 'submit', '');
+  return jsonb_build_object('status', 'เสนอแล้ว', 'step', s.step_no);
+end $$;
+revoke all on function public.promo_nom_submit(text) from public, anon;
+grant execute on function public.promo_nom_submit(text) to authenticated;
+
+-- ตัดสินใจ: approve | reject | return
+create or replace function public.promo_nom_decide(p_id text, p_action text, p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n public.promo_nominations%rowtype; cur public.promo_flow_steps%rowtype; nx int; v_emp text := public.my_emp_id(); ok boolean;
+begin
+  select * into n from public.promo_nominations where id = p_id;
+  if not found then raise exception 'NOT_FOUND:ไม่พบรายการ'; end if;
+  if n.status <> 'เสนอแล้ว' or n.step <= 0 then raise exception 'BAD_STATE:รายการนี้ไม่ได้อยู่ระหว่างรออนุมัติ'; end if;
+  if p_action not in ('approve', 'reject', 'return') then raise exception 'BAD_ACTION'; end if;
+  if p_action in ('reject', 'return') and coalesce(trim(p_note), '') = '' then raise exception 'NOTE_REQUIRED:ต้องระบุเหตุผล'; end if;
+  if v_emp is not null and v_emp = n.emp_id and not public.is_super_admin() then raise exception 'SELF:อนุมัติรายการของตัวเองไม่ได้'; end if;
+  select * into cur from public.promo_flow_steps where step_no = n.step;
+  ok := public.is_super_admin() or exists (select 1 from public.promo_flow_approvers a join public.promo_employees e on e.emp_id = n.emp_id
+        where a.step_no = n.step and a.emp_id = v_emp and public.promo_scope_match(a.scope, e.group_code, e.line_code, e.dept_code));
+  if not ok then raise exception 'FORBIDDEN:ไม่ใช่ผู้อนุมัติขั้นนี้ของพนักงานคนนี้'; end if;
+  perform set_config('promo.rpc', '1', true);
+  if p_action = 'approve' then
+    select min(step_no) into nx from public.promo_flow_steps where active and step_no > n.step;
+    if nx is null then update public.promo_nominations set status = 'ผ่านการพิจารณา', step = 0, updated_at = now() where id = p_id;
+    else update public.promo_nominations set step = nx, updated_at = now() where id = p_id; end if;
+  elsif p_action = 'reject' then
+    update public.promo_nominations set status = 'ไม่ผ่านการพิจารณา', step = 0, updated_at = now() where id = p_id;
+  else
+    update public.promo_nominations set status = 'ร่าง', step = 0, updated_at = now() where id = p_id;
+  end if;
+  perform public.promo_nom_log_add(p_id, n.step, cur.name, p_action, p_note);
+  return (select jsonb_build_object('status', status, 'step', step) from public.promo_nominations where id = p_id);
+end $$;
+revoke all on function public.promo_nom_decide(text, text, text) from public, anon;
+grant execute on function public.promo_nom_decide(text, text, text) to authenticated;
+
+-- ขั้นที่ผู้เรียกเป็นผู้อนุมัติ (ไว้แสดงปุ่มอนุมัติในแอป)
+create or replace function public.promo_my_approver_rows() returns table (step_no int, scope jsonb)
+language sql stable security definer set search_path = public as $$
+  select a.step_no, a.scope from public.promo_flow_approvers a where a.emp_id = public.my_emp_id()
+$$;
+revoke all on function public.promo_my_approver_rows() from public, anon;
+grant execute on function public.promo_my_approver_rows() to authenticated;
+
+select (select count(*) from public.promo_flow_steps) as steps, (select count(*) from public.promo_flow_approvers) as approvers;
+
+-- v218: เพิ่มขอบเขต "แผนก" (ตามชื่อแผนก) ให้ขอบเขตข้อมูลและผู้อนุมัติของ Promotion (เดิมมี ทั้งหมด / กลุ่มงาน / สายงาน / ฝ่าย)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub51.sql) — รันซ้ำได้
+-- scope = {"type":"all|group|line|dept|section","keys":[...]} · group/line/dept ใช้รหัส · section ใช้ชื่อแผนกตรงตามข้อมูลพนักงาน
+
+alter table public.promo_employees add column if not exists section_name text not null default '';
+update public.promo_employees set section_name = coalesce(data->>'section', '') where true;
+
+create or replace function public.promo_scope_match(s jsonb, g text, l text, d text, sec text) returns boolean
+language sql immutable as $$
+  select coalesce(s->>'type', 'all') = 'all'
+      or (s->>'type' = 'group'   and jsonb_exists(s->'keys', coalesce(g, '')))
+      or (s->>'type' = 'line'    and jsonb_exists(s->'keys', coalesce(l, '')))
+      or (s->>'type' = 'dept'    and jsonb_exists(s->'keys', coalesce(d, '')))
+      or (s->>'type' = 'section' and jsonb_exists(s->'keys', coalesce(sec, '')))
+$$;
+create or replace function public.promo_in_scope(g text, l text, d text, sec text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_super_admin() or exists (select 1 from public.module_access m
+    where m.module = 'promo' and m.emp_id = public.my_emp_id() and public.promo_scope_match(m.scope, g, l, d, sec))
+$$;
+revoke all on function public.promo_in_scope(text, text, text, text) from public, anon;
+grant execute on function public.promo_in_scope(text, text, text, text) to authenticated;
+
+create or replace function public.promo_emp_in_scope(p_emp text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.promo_scope_all() or exists (select 1 from public.promo_employees e
+    where e.emp_id = p_emp and public.promo_in_scope(e.group_code, e.line_code, e.dept_code, e.section_name))
+$$;
+
+drop policy if exists promo_employees_sel on public.promo_employees;
+create policy promo_employees_sel on public.promo_employees for select to authenticated
+  using (public.can_promo('view') and public.promo_in_scope(group_code, line_code, dept_code, section_name));
+
+create or replace function public.promo_nom_decide(p_id text, p_action text, p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n public.promo_nominations%rowtype; cur public.promo_flow_steps%rowtype; nx int; v_emp text := public.my_emp_id(); ok boolean;
+begin
+  select * into n from public.promo_nominations where id = p_id;
+  if not found then raise exception 'NOT_FOUND:ไม่พบรายการ'; end if;
+  if n.status <> 'เสนอแล้ว' or n.step <= 0 then raise exception 'BAD_STATE:รายการนี้ไม่ได้อยู่ระหว่างรออนุมัติ'; end if;
+  if p_action not in ('approve', 'reject', 'return') then raise exception 'BAD_ACTION'; end if;
+  if p_action in ('reject', 'return') and coalesce(trim(p_note), '') = '' then raise exception 'NOTE_REQUIRED:ต้องระบุเหตุผล'; end if;
+  if v_emp is not null and v_emp = n.emp_id and not public.is_super_admin() then raise exception 'SELF:อนุมัติรายการของตัวเองไม่ได้'; end if;
+  select * into cur from public.promo_flow_steps where step_no = n.step;
+  ok := public.is_super_admin() or exists (select 1 from public.promo_flow_approvers a join public.promo_employees e on e.emp_id = n.emp_id
+        where a.step_no = n.step and a.emp_id = v_emp and public.promo_scope_match(a.scope, e.group_code, e.line_code, e.dept_code, e.section_name));
+  if not ok then raise exception 'FORBIDDEN:ไม่ใช่ผู้อนุมัติขั้นนี้ของพนักงานคนนี้'; end if;
+  perform set_config('promo.rpc', '1', true);
+  if p_action = 'approve' then
+    select min(step_no) into nx from public.promo_flow_steps where active and step_no > n.step;
+    if nx is null then update public.promo_nominations set status = 'ผ่านการพิจารณา', step = 0, updated_at = now() where id = p_id;
+    else update public.promo_nominations set step = nx, updated_at = now() where id = p_id; end if;
+  elsif p_action = 'reject' then
+    update public.promo_nominations set status = 'ไม่ผ่านการพิจารณา', step = 0, updated_at = now() where id = p_id;
+  else
+    update public.promo_nominations set status = 'ร่าง', step = 0, updated_at = now() where id = p_id;
+  end if;
+  perform public.promo_nom_log_add(p_id, n.step, cur.name, p_action, p_note);
+  return (select jsonb_build_object('status', status, 'step', step) from public.promo_nominations where id = p_id);
+end $$;
+revoke all on function public.promo_nom_decide(text, text, text) from public, anon;
+grant execute on function public.promo_nom_decide(text, text, text) to authenticated;
+
+create or replace function public.promo_import(p_emps jsonb, p_reqs jsonb default '[]'::jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n int := 0; m int := 0;
+begin
+  if not (public.can_promo('manage') and public.promo_scope_all()) then raise exception 'FORBIDDEN:นำเข้าได้เฉพาะผู้ที่มีสิทธิ์จัดการและขอบเขตข้อมูลทั้งหมด'; end if;
+  if jsonb_typeof(p_emps) <> 'array' or jsonb_array_length(p_emps) = 0 then raise exception 'EMPTY:ไม่มีข้อมูลพนักงาน'; end if;
+  delete from public.promo_employees where true;
+  insert into public.promo_employees (emp_id, level, dept, group_code, line_code, dept_code, section_name, data)
+  select e->>'id', coalesce((e->>'level')::int, 0), coalesce(e->>'dept', ''), coalesce(e->>'groupCode', ''), coalesce(e->>'lineCode', ''), coalesce(e->>'deptCode', ''), coalesce(e->>'section', ''), e
+    from jsonb_array_elements(p_emps) e where coalesce(e->>'id', '') <> ''
+  on conflict (emp_id) do update set level = excluded.level, dept = excluded.dept, group_code = excluded.group_code, line_code = excluded.line_code, dept_code = excluded.dept_code, section_name = excluded.section_name, data = excluded.data, updated_at = now();
+  get diagnostics n = row_count;
+  if jsonb_typeof(p_reqs) = 'array' and jsonb_array_length(p_reqs) > 0 then
+    delete from public.promo_reqs where true;
+    insert into public.promo_reqs (level, data) select (r->>'level')::int, r from jsonb_array_elements(p_reqs) r
+    on conflict (level) do update set data = excluded.data, updated_at = now();
+    get diagnostics m = row_count;
+  end if;
+  return jsonb_build_object('employees', n, 'reqs', m);
+end $$;
+revoke all on function public.promo_import(jsonb, jsonb) from public, anon;
+grant execute on function public.promo_import(jsonb, jsonb) to authenticated;
+
+select count(*) filter (where section_name <> '') as with_section, count(*) as total from public.promo_employees;
+
+-- v219: ขอบเขตแบบ "หน่วยงานตามโครงสร้างองค์กร" (type = unit) — เลือกกลุ่มงาน/สายงาน/ฝ่าย จากโครงสร้างอัตรากำลังของ HR แล้วครอบคลุมทุกหน่วยย่อยภายใต้
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub52.sql) — รันซ้ำได้
+-- scope = {"type":"unit","keys":["30000","31000","31001",...],"labels":["กลุ่มงานปฏิบัติการ"]} · พนักงานอยู่ในขอบเขตเมื่อรหัสกลุ่มงาน/สายงาน/ฝ่ายอย่างใดอย่างหนึ่งอยู่ใน keys
+
+create or replace function public.promo_scope_match(s jsonb, g text, l text, d text, sec text) returns boolean
+language sql immutable as $$
+  select coalesce(s->>'type', 'all') = 'all'
+      or (s->>'type' = 'unit'    and (jsonb_exists(s->'keys', coalesce(g, '')) or jsonb_exists(s->'keys', coalesce(l, '')) or jsonb_exists(s->'keys', coalesce(d, ''))))
+      or (s->>'type' = 'group'   and jsonb_exists(s->'keys', coalesce(g, '')))
+      or (s->>'type' = 'line'    and jsonb_exists(s->'keys', coalesce(l, '')))
+      or (s->>'type' = 'dept'    and jsonb_exists(s->'keys', coalesce(d, '')))
+      or (s->>'type' = 'section' and jsonb_exists(s->'keys', coalesce(sec, '')))
+$$;
+select public.promo_scope_match('{"type":"unit","keys":["30000","31001"]}'::jsonb, '30000', '', '', '') as unit_ok_expected_true,
+       public.promo_scope_match('{"type":"unit","keys":["30000"]}'::jsonb, '60000', '', '', '') as unit_other_expected_false;
+
+-- v221: ให้ผู้อนุมัติคนเดียวถือได้หลายขอบเขตในขั้นเดียวกัน (เช่น CFO ดูแลหลายกลุ่มงาน) — เพิ่มคอลัมน์ scope_key เข้าคีย์หลักของ promo_flow_approvers
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub53.sql) — รันซ้ำได้
+
+alter table public.promo_flow_approvers add column if not exists scope_key text not null default 'all';
+update public.promo_flow_approvers
+   set scope_key = case coalesce(scope->>'type', 'all') when 'all' then 'all' else (scope->>'type') || ':' || coalesce(scope->'keys'->>0, '') end
+ where true;
+alter table public.promo_flow_approvers drop constraint if exists promo_flow_approvers_pkey;
+alter table public.promo_flow_approvers add primary key (step_no, emp_id, scope_key);
+
+select count(*) as approvers, count(distinct scope_key) as distinct_scopes from public.promo_flow_approvers;
+
+-- v221: Flow อนุมัติแบบเดียวกับ Role and permission ของระบบบันทึกงาน — แต่ละ Role (ขั้น) กำหนด "ขั้นที่ n / ไม่เกี่ยวข้อง" ได้ในตารางเดียว
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub54.sql) — รันซ้ำได้
+-- เพิ่มคอลัมน์ ord (ลำดับอนุมัติ) ให้ promo_flow_steps · active=false = ไม่เกี่ยวข้อง · ถ้าหลาย Role ลำดับเท่ากัน เรียงตามเลข Role
+
+alter table public.promo_flow_steps add column if not exists ord int not null default 0;
+update public.promo_flow_steps set ord = step_no where ord = 0;
+
+create or replace function public.promo_nom_submit(p_id text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n public.promo_nominations%rowtype; s public.promo_flow_steps%rowtype;
+begin
+  select * into n from public.promo_nominations where id = p_id;
+  if not found then raise exception 'NOT_FOUND:ไม่พบรายการ'; end if;
+  if not (public.can_promo('manage') and public.promo_emp_in_scope(n.emp_id)) then raise exception 'FORBIDDEN:ไม่มีสิทธิ์'; end if;
+  if n.status <> 'ร่าง' then raise exception 'BAD_STATE:ส่งขออนุมัติได้เฉพาะรายการสถานะ ร่าง'; end if;
+  select * into s from public.promo_flow_steps where active order by ord, step_no limit 1;
+  if not found then raise exception 'NO_FLOW:ยังไม่ได้กำหนดขั้นตอนอนุมัติ'; end if;
+  if not exists (select 1 from public.promo_flow_approvers where step_no = s.step_no) then raise exception 'NO_APPROVER:ขั้นแรก (%) ยังไม่มีผู้อนุมัติ — ให้ Super Admin กำหนดก่อน', s.name; end if;
+  perform set_config('promo.rpc', '1', true);
+  update public.promo_nominations set status = 'เสนอแล้ว', step = s.step_no, updated_at = now() where id = p_id;
+  perform public.promo_nom_log_add(p_id, s.step_no, s.name, 'submit', '');
+  return jsonb_build_object('status', 'เสนอแล้ว', 'step', s.step_no);
+end $$;
+revoke all on function public.promo_nom_submit(text) from public, anon;
+grant execute on function public.promo_nom_submit(text) to authenticated;
+
+create or replace function public.promo_nom_decide(p_id text, p_action text, p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n public.promo_nominations%rowtype; cur public.promo_flow_steps%rowtype; nx int; v_emp text := public.my_emp_id(); ok boolean;
+begin
+  select * into n from public.promo_nominations where id = p_id;
+  if not found then raise exception 'NOT_FOUND:ไม่พบรายการ'; end if;
+  if n.status <> 'เสนอแล้ว' or n.step <= 0 then raise exception 'BAD_STATE:รายการนี้ไม่ได้อยู่ระหว่างรออนุมัติ'; end if;
+  if p_action not in ('approve', 'reject', 'return') then raise exception 'BAD_ACTION'; end if;
+  if p_action in ('reject', 'return') and coalesce(trim(p_note), '') = '' then raise exception 'NOTE_REQUIRED:ต้องระบุเหตุผล'; end if;
+  if v_emp is not null and v_emp = n.emp_id and not public.is_super_admin() then raise exception 'SELF:อนุมัติรายการของตัวเองไม่ได้'; end if;
+  select * into cur from public.promo_flow_steps where step_no = n.step;
+  ok := public.is_super_admin() or exists (select 1 from public.promo_flow_approvers a join public.promo_employees e on e.emp_id = n.emp_id
+        where a.step_no = n.step and a.emp_id = v_emp and public.promo_scope_match(a.scope, e.group_code, e.line_code, e.dept_code, e.section_name));
+  if not ok then raise exception 'FORBIDDEN:ไม่ใช่ผู้อนุมัติขั้นนี้ของพนักงานคนนี้'; end if;
+  perform set_config('promo.rpc', '1', true);
+  if p_action = 'approve' then
+    select s.step_no into nx from public.promo_flow_steps s where s.active and (s.ord, s.step_no) > (cur.ord, cur.step_no) order by s.ord, s.step_no limit 1;
+    if nx is null then update public.promo_nominations set status = 'ผ่านการพิจารณา', step = 0, updated_at = now() where id = p_id;
+    else update public.promo_nominations set step = nx, updated_at = now() where id = p_id; end if;
+  elsif p_action = 'reject' then
+    update public.promo_nominations set status = 'ไม่ผ่านการพิจารณา', step = 0, updated_at = now() where id = p_id;
+  else
+    update public.promo_nominations set status = 'ร่าง', step = 0, updated_at = now() where id = p_id;
+  end if;
+  perform public.promo_nom_log_add(p_id, n.step, cur.name, p_action, p_note);
+  return (select jsonb_build_object('status', status, 'step', step) from public.promo_nominations where id = p_id);
+end $$;
+revoke all on function public.promo_nom_decide(text, text, text) from public, anon;
+grant execute on function public.promo_nom_decide(text, text, text) to authenticated;
+
+select step_no, name, ord, active from public.promo_flow_steps order by ord, step_no;
+
+-- v223: ขอบเขตระดับแผนก ใช้ "รหัสฝ่าย|ชื่อแผนก" เพื่อไม่ให้ชื่อแผนกซ้ำข้ามฝ่ายถูกนับรวมกัน (รองรับค่าเดิมที่เป็นชื่อแผนกอย่างเดียว)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub55.sql) — รันซ้ำได้
+
+create or replace function public.promo_scope_match(s jsonb, g text, l text, d text, sec text) returns boolean
+language sql immutable as $$
+  select coalesce(s->>'type', 'all') = 'all'
+      or (s->>'type' = 'unit'    and (jsonb_exists(s->'keys', coalesce(g, '')) or jsonb_exists(s->'keys', coalesce(l, '')) or jsonb_exists(s->'keys', coalesce(d, ''))))
+      or (s->>'type' = 'group'   and jsonb_exists(s->'keys', coalesce(g, '')))
+      or (s->>'type' = 'line'    and jsonb_exists(s->'keys', coalesce(l, '')))
+      or (s->>'type' = 'dept'    and jsonb_exists(s->'keys', coalesce(d, '')))
+      or (s->>'type' = 'section' and (jsonb_exists(s->'keys', coalesce(d, '') || '|' || coalesce(sec, '')) or jsonb_exists(s->'keys', coalesce(sec, ''))))
+$$;
+select public.promo_scope_match('{"type":"section","keys":["20002|กำกับและควบคุม"]}'::jsonb, '', '', '20002', 'กำกับและควบคุม') as same_dept_expected_true,
+       public.promo_scope_match('{"type":"section","keys":["20002|กำกับและควบคุม"]}'::jsonb, '', '', '43001', 'กำกับและควบคุม') as other_dept_expected_false;
+
+
+-- v225: ขอบเขต "ไม่นับรวมแผนก" — ผู้อนุมัติระดับกลุ่มงาน/สายงาน/ฝ่าย ยกเว้นแผนกที่ระบุได้ (scope.exclude = ["รหัสฝ่าย|ชื่อแผนก", ...])
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub56.sql) — รันซ้ำได้
+
+create or replace function public.promo_scope_match(s jsonb, g text, l text, d text, sec text) returns boolean
+language sql immutable as $$
+  select (   coalesce(s->>'type', 'all') = 'all'
+          or (s->>'type' = 'unit'    and (jsonb_exists(s->'keys', coalesce(g, '')) or jsonb_exists(s->'keys', coalesce(l, '')) or jsonb_exists(s->'keys', coalesce(d, ''))))
+          or (s->>'type' = 'group'   and jsonb_exists(s->'keys', coalesce(g, '')))
+          or (s->>'type' = 'line'    and jsonb_exists(s->'keys', coalesce(l, '')))
+          or (s->>'type' = 'dept'    and jsonb_exists(s->'keys', coalesce(d, '')))
+          or (s->>'type' = 'section' and (jsonb_exists(s->'keys', coalesce(d, '') || '|' || coalesce(sec, '')) or jsonb_exists(s->'keys', coalesce(sec, '')))))
+     and not (jsonb_typeof(s->'exclude') = 'array' and jsonb_exists(s->'exclude', coalesce(d, '') || '|' || coalesce(sec, '')))
+$$;
+select public.promo_scope_match('{"type":"unit","keys":["43001"],"exclude":["43001|ธุรการโครงการ 2"]}'::jsonb, '30000', '43000', '43001', 'งานอื่น') as other_section_expected_true,
+       public.promo_scope_match('{"type":"unit","keys":["43001"],"exclude":["43001|ธุรการโครงการ 2"]}'::jsonb, '30000', '43000', '43001', 'ธุรการโครงการ 2') as excluded_expected_false;
+
+-- v226: หน้า login แยกของ Promotion — เข้าด้วยอีเมลบริษัท: พบอีเมลในสมาชิก → ยืนยันอีเมลผ่านลิงก์ → ตั้งรหัสผ่าน → ใช้งานตามสิทธิ์ใน module_access
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub57.sql) — รันซ้ำได้
+-- ความปลอดภัย: โปรเจกต์นี้เปิด "ยืนยันอีเมลอัตโนมัติ" (mailer_autoconfirm) จึงให้ผูกบัญชีได้เฉพาะเมื่อเข้าสู่ระบบด้วยลิงก์ที่ส่งไปที่กล่องอีเมลนั้นจริง (เช็ก amr = otp)
+--        บัญชีที่ผูกใหม่จะถูกสุ่มรหัสผ่านเดิมทิ้ง (กันคนที่สมัครดักด้วยอีเมลของผู้อื่น) แล้วให้เจ้าของตั้งรหัสผ่านใหม่
+
+alter table public.employees add column if not exists promo_verified boolean not null default false;   -- ยืนยันอีเมลผ่านหน้า login Promotion แล้ว
+
+-- รหัสพนักงานของผู้ใช้ปัจจุบันสำหรับ Promotion: บัญชีที่ Admin อนุมัติแล้ว หรือยืนยันอีเมลผ่านหน้า login Promotion แล้ว
+create or replace function public.promo_emp_id() returns text
+language sql stable security definer set search_path = public as $$
+  select id from public.employees where user_id = auth.uid() and active and (approved or promo_verified) limit 1
+$$;
+revoke all on function public.promo_emp_id() from public, anon;
+grant execute on function public.promo_emp_id() to authenticated;
+
+-- ฟังก์ชันสิทธิ์ของ Promotion เปลี่ยนมาใช้ promo_emp_id()
+create or replace function public.can_promo(p_need text default 'view') returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_super_admin() or exists (
+    select 1 from public.module_access m
+     where m.module = 'promo' and m.emp_id = public.promo_emp_id() and (p_need = 'view' or m.perm = 'manage'))
+$$;
+create or replace function public.promo_scope_all() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_super_admin() or exists (select 1 from public.module_access m
+    where m.module = 'promo' and m.emp_id = public.promo_emp_id() and coalesce(m.scope->>'type', 'all') = 'all')
+$$;
+create or replace function public.promo_in_scope(g text, l text, d text, sec text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_super_admin() or exists (select 1 from public.module_access m
+    where m.module = 'promo' and m.emp_id = public.promo_emp_id() and public.promo_scope_match(m.scope, g, l, d, sec))
+$$;
+create or replace function public.promo_my_approver_rows() returns table (step_no int, scope jsonb)
+language sql stable security definer set search_path = public as $$
+  select a.step_no, a.scope from public.promo_flow_approvers a where a.emp_id = public.promo_emp_id()
+$$;
+create or replace function public.promo_nom_log_add(p_id text, p_step int, p_sname text, p_action text, p_note text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.promo_nom_log (nom_id, step_no, step_name, action, by_emp, by_name, note)
+  values (p_id, p_step, coalesce(p_sname, ''), p_action, coalesce(public.promo_emp_id(), ''), coalesce((select e.name from public.employees e where e.id = public.promo_emp_id()), ''), coalesce(p_note, ''));
+end $$;
+revoke all on function public.promo_nom_log_add(text, int, text, text, text) from public, anon, authenticated;
+
+create or replace function public.promo_nom_decide(p_id text, p_action text, p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n public.promo_nominations%rowtype; cur public.promo_flow_steps%rowtype; nx int; v_emp text := public.promo_emp_id(); ok boolean;
+begin
+  select * into n from public.promo_nominations where id = p_id;
+  if not found then raise exception 'NOT_FOUND:ไม่พบรายการ'; end if;
+  if n.status <> 'เสนอแล้ว' or n.step <= 0 then raise exception 'BAD_STATE:รายการนี้ไม่ได้อยู่ระหว่างรออนุมัติ'; end if;
+  if p_action not in ('approve', 'reject', 'return') then raise exception 'BAD_ACTION'; end if;
+  if p_action in ('reject', 'return') and coalesce(trim(p_note), '') = '' then raise exception 'NOTE_REQUIRED:ต้องระบุเหตุผล'; end if;
+  if v_emp is not null and v_emp = n.emp_id and not public.is_super_admin() then raise exception 'SELF:อนุมัติรายการของตัวเองไม่ได้'; end if;
+  select * into cur from public.promo_flow_steps where step_no = n.step;
+  ok := public.is_super_admin() or exists (select 1 from public.promo_flow_approvers a join public.promo_employees e on e.emp_id = n.emp_id
+        where a.step_no = n.step and a.emp_id = v_emp and public.promo_scope_match(a.scope, e.group_code, e.line_code, e.dept_code, e.section_name));
+  if not ok then raise exception 'FORBIDDEN:ไม่ใช่ผู้อนุมัติขั้นนี้ของพนักงานคนนี้'; end if;
+  perform set_config('promo.rpc', '1', true);
+  if p_action = 'approve' then
+    select s.step_no into nx from public.promo_flow_steps s where s.active and (s.ord, s.step_no) > (cur.ord, cur.step_no) order by s.ord, s.step_no limit 1;
+    if nx is null then update public.promo_nominations set status = 'ผ่านการพิจารณา', step = 0, updated_at = now() where id = p_id;
+    else update public.promo_nominations set step = nx, updated_at = now() where id = p_id; end if;
+  elsif p_action = 'reject' then
+    update public.promo_nominations set status = 'ไม่ผ่านการพิจารณา', step = 0, updated_at = now() where id = p_id;
+  else
+    update public.promo_nominations set status = 'ร่าง', step = 0, updated_at = now() where id = p_id;
+  end if;
+  perform public.promo_nom_log_add(p_id, n.step, cur.name, p_action, p_note);
+  return (select jsonb_build_object('status', status, 'step', step) from public.promo_nominations where id = p_id);
+end $$;
+revoke all on function public.promo_nom_decide(text, text, text) from public, anon;
+grant execute on function public.promo_nom_decide(text, text, text) to authenticated;
+
+drop policy if exists ma_sel on public.module_access;
+create policy ma_sel on public.module_access for select to authenticated
+  using (public.is_super_admin() or emp_id = public.my_emp_id() or emp_id = public.promo_emp_id());
+
+-- ตรวจอีเมลก่อนเข้าสู่ระบบ (เรียกได้ก่อน login): NOT_FOUND | NEEDS_PASSWORD (มีในสมาชิก ยังไม่มีบัญชี) | HAS_ACCOUNT
+create or replace function public.promo_login_check(p_email text) returns text
+language plpgsql stable security definer set search_path = public as $$
+declare e public.employees%rowtype;
+begin
+  select * into e from public.employees where lower(trim(email)) = lower(trim(coalesce(p_email, ''))) and active limit 1;
+  if not found then return 'NOT_FOUND'; end if;
+  if e.user_id is not null then return 'HAS_ACCOUNT'; end if;
+  return 'NEEDS_PASSWORD';
+end $$;
+revoke all on function public.promo_login_check(text) from public;
+grant execute on function public.promo_login_check(text) to anon, authenticated;
+
+-- ผูกบัญชีที่เพิ่งเข้าด้วยลิงก์อีเมลกับสมาชิก (ต้องเข้าด้วยลิงก์/รหัสที่ส่งทางอีเมลเท่านั้น ห้ามใช้ session จากรหัสผ่าน)
+create or replace function public.promo_claim_account() returns jsonb
+language plpgsql security definer set search_path = public, auth, extensions as $$
+declare v_uid uuid := auth.uid(); v_email text := lower(trim(coalesce(auth.jwt()->>'email', ''))); e public.employees%rowtype; via_mail boolean;
+begin
+  if v_uid is null or v_email = '' then raise exception 'NOT_LOGGED_IN:ยังไม่ได้เข้าสู่ระบบ'; end if;
+  select exists (select 1 from jsonb_array_elements(coalesce(auth.jwt()->'amr', '[]'::jsonb)) a where a->>'method' in ('otp', 'magiclink', 'recovery')) into via_mail;
+  if not via_mail then raise exception 'NOT_VERIFIED:ต้องยืนยันด้วยลิงก์ที่ส่งไปทางอีเมลก่อน'; end if;
+  select * into e from public.employees where lower(trim(email)) = v_email and active limit 1;
+  if not found then raise exception 'NOT_FOUND:ไม่พบอีเมลนี้ในสมาชิก'; end if;
+  if e.user_id is not null and e.user_id <> v_uid then raise exception 'TAKEN:อีเมลนี้ผูกกับบัญชีอื่นแล้ว — ติดต่อ Super Admin'; end if;
+  if e.user_id is null and exists (select 1 from public.employees x where x.user_id = v_uid and x.id <> e.id) then raise exception 'TAKEN:บัญชีนี้ผูกกับสมาชิกอื่นแล้ว'; end if;
+  if not e.approved and not e.promo_verified then
+    update auth.users set encrypted_password = crypt(gen_random_uuid()::text, gen_salt('bf')), updated_at = now() where id = v_uid;   -- ทิ้งรหัสผ่านที่อาจถูกตั้งดักไว้ก่อน
+  end if;
+  update public.employees set user_id = v_uid, promo_verified = true where id = e.id;
+  return jsonb_build_object('emp_id', e.id, 'name', e.name, 'fresh', not (e.approved or e.promo_verified));
+end $$;
+revoke all on function public.promo_claim_account() from public, anon;
+grant execute on function public.promo_claim_account() to authenticated;
+
+-- ให้สร้างบัญชีล็อกอินได้เมื่ออีเมลอยู่ในสมาชิก (หน้า login Promotion ส่งลิงก์แบบไม่มีรหัสพนักงาน) — ยังไม่ผูกอัตโนมัติ ผูกเมื่อยืนยันลิงก์ด้วย promo_claim_account เท่านั้น
+create or replace function public.handle_new_user() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_emp text := nullif(trim(new.raw_user_meta_data->>'emp_id'), '');
+begin
+  if v_emp is null then
+    if exists (select 1 from public.employees where lower(trim(coalesce(email, ''))) = lower(trim(new.email)) and active) then return new; end if;
+    raise exception 'SIGNUP_MISMATCH: อีเมลนี้ไม่มีในข้อมูลสมาชิก';
+  end if;
+  update public.employees set user_id = new.id, approved = false
+   where lower(trim(id)) = lower(v_emp) and lower(trim(coalesce(email, ''))) = lower(trim(new.email))
+     and user_id is null and active;
+  if found then return new; end if;
+  raise exception 'SIGNUP_MISMATCH: รหัสพนักงานและอีเมลไม่ตรงกับข้อมูลในระบบ';
+end $$;
+
+select (select count(*) from public.employees where email is not null) as members_with_email,
+       (select count(*) from public.employees where user_id is not null) as with_account;
+
+-- v227: Super Admin จัดการสมาชิก Promotion ในหน้าเดียว — ตั้ง/รีเซ็ตรหัสผ่านให้เอง (ไม่ต้องส่งอีเมล), ยืนยันสมาชิก, ระงับ/เปิดสิทธิ์
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub58.sql) — รันซ้ำได้
+
+alter table public.employees add column if not exists promo_suspended boolean not null default false;   -- ระงับการใช้ Promotion (เก็บสิทธิ์ที่ตั้งไว้ แต่เข้าไม่ได้)
+
+-- บัญชีที่ถูกระงับใช้ Promotion ไม่ได้
+create or replace function public.promo_emp_id() returns text
+language sql stable security definer set search_path = public as $$
+  select id from public.employees where user_id = auth.uid() and active and not promo_suspended and (approved or promo_verified) limit 1
+$$;
+
+-- สถานะของผู้ใช้ปัจจุบัน (ไว้แสดงข้อความตอน login): OK | SUSPENDED | UNVERIFIED | NO_MEMBER
+create or replace function public.promo_status() returns text
+language sql stable security definer set search_path = public as $$
+  select coalesce((select case when not e.active then 'NO_MEMBER' when e.promo_suspended then 'SUSPENDED' when e.approved or e.promo_verified then 'OK' else 'UNVERIFIED' end
+                     from public.employees e where e.user_id = auth.uid() limit 1), 'NO_MEMBER')
+$$;
+revoke all on function public.promo_status() from public, anon;
+grant execute on function public.promo_status() to authenticated;
+
+-- ตั้ง/รีเซ็ตรหัสผ่านให้สมาชิก (Super Admin) · ถ้ายังไม่มีบัญชีล็อกอิน ตอบ NEEDS_CREATE ให้หน้าเว็บสร้างบัญชีแล้วเรียกซ้ำ
+create or replace function public.promo_admin_set_password(p_emp text, p_password text) returns text
+language plpgsql security definer set search_path = public, auth, extensions as $$
+declare e public.employees%rowtype; v_uid uuid;
+begin
+  if not public.is_super_admin() then raise exception 'FORBIDDEN:เฉพาะ Super Admin'; end if;
+  if coalesce(length(p_password), 0) < 8 or p_password !~ '[A-Za-z]' or p_password !~ '[0-9]' then raise exception 'WEAK_PASSWORD:รหัสผ่านต้องยาวอย่างน้อย 8 ตัว และมีทั้งตัวอักษรและตัวเลข'; end if;
+  select * into e from public.employees where id = p_emp;
+  if not found then raise exception 'NOT_FOUND:ไม่พบสมาชิก'; end if;
+  if coalesce(trim(e.email), '') = '' then raise exception 'NO_EMAIL:สมาชิกยังไม่มีอีเมล'; end if;
+  v_uid := e.user_id;
+  if v_uid is null then select id into v_uid from auth.users where lower(email) = lower(trim(e.email)) limit 1; end if;
+  if v_uid is null then return 'NEEDS_CREATE'; end if;
+  if exists (select 1 from public.employees x where x.user_id = v_uid and x.id <> e.id) then raise exception 'TAKEN:บัญชีนี้ผูกกับสมาชิกอื่นอยู่'; end if;
+  update auth.users set encrypted_password = crypt(p_password, gen_salt('bf')), email_confirmed_at = coalesce(email_confirmed_at, now()), updated_at = now() where id = v_uid;
+  update public.employees set user_id = v_uid, promo_verified = true where id = e.id;
+  return 'OK';
+end $$;
+revoke all on function public.promo_admin_set_password(text, text) from public, anon;
+grant execute on function public.promo_admin_set_password(text, text) to authenticated;
+
+-- ยืนยัน / ยกเลิกยืนยันสมาชิก
+create or replace function public.promo_admin_verify(p_emp text, p_on boolean) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_super_admin() then raise exception 'FORBIDDEN:เฉพาะ Super Admin'; end if;
+  update public.employees set promo_verified = p_on where id = p_emp and (user_id is not null or not p_on);
+  if not found then raise exception 'NO_ACCOUNT:สมาชิกยังไม่มีบัญชี — ตั้งรหัสผ่านให้ก่อน'; end if;
+end $$;
+revoke all on function public.promo_admin_verify(text, boolean) from public, anon;
+grant execute on function public.promo_admin_verify(text, boolean) to authenticated;
+
+-- ระงับ / เปิดสิทธิ์ใช้ Promotion (ระงับตัวเองไม่ได้)
+create or replace function public.promo_admin_suspend(p_emp text, p_on boolean) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_super_admin() then raise exception 'FORBIDDEN:เฉพาะ Super Admin'; end if;
+  if p_on and exists (select 1 from public.employees where id = p_emp and user_id = auth.uid()) then raise exception 'SELF:ระงับสิทธิ์ตัวเองไม่ได้'; end if;
+  update public.employees set promo_suspended = p_on where id = p_emp;
+end $$;
+revoke all on function public.promo_admin_suspend(text, boolean) from public, anon;
+grant execute on function public.promo_admin_suspend(text, boolean) to authenticated;
+
+select count(*) filter (where promo_suspended) as suspended, count(*) as members from public.employees;
+
+-- v229: สิทธิ์การเห็นข้อมูลตาม Flow อนุมัติ — ผู้ที่เป็นผู้อนุมัติ (ขั้นที่ใช้งาน) เห็นข้อมูลพนักงานและรายการเสนอชื่อ "เฉพาะในขอบเขตที่ได้รับมอบ" อัตโนมัติ ไม่ต้องตั้งสิทธิ์ซ้ำ
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub59.sql) — รันซ้ำได้
+-- กติกา: เห็นได้ = Super Admin / มีสิทธิ์ใน module_access ตามขอบเขต / เป็นผู้อนุมัติใน Flow ตามขอบเขตที่กำหนด (ดูอย่างเดียว) · สิทธิ์จัดการ (เสนอชื่อ/นำเข้า) ยังกำหนดที่ module_access
+
+create or replace function public.promo_is_approver() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.promo_flow_approvers a join public.promo_flow_steps s on s.step_no = a.step_no
+                  where a.emp_id = public.promo_emp_id() and s.active)
+$$;
+revoke all on function public.promo_is_approver() from public, anon;
+grant execute on function public.promo_is_approver() to authenticated;
+
+create or replace function public.can_promo(p_need text default 'view') returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_super_admin()
+      or exists (select 1 from public.module_access m
+                  where m.module = 'promo' and m.emp_id = public.promo_emp_id() and (p_need = 'view' or m.perm = 'manage'))
+      or (p_need = 'view' and public.promo_is_approver())
+$$;
+
+create or replace function public.promo_scope_all() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_super_admin()
+      or exists (select 1 from public.module_access m where m.module = 'promo' and m.emp_id = public.promo_emp_id() and coalesce(m.scope->>'type', 'all') = 'all')
+      or exists (select 1 from public.promo_flow_approvers a join public.promo_flow_steps s on s.step_no = a.step_no
+                  where a.emp_id = public.promo_emp_id() and s.active and coalesce(a.scope->>'type', 'all') = 'all')
+$$;
+
+create or replace function public.promo_in_scope(g text, l text, d text, sec text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_super_admin()
+      or exists (select 1 from public.module_access m where m.module = 'promo' and m.emp_id = public.promo_emp_id() and public.promo_scope_match(m.scope, g, l, d, sec))
+      or exists (select 1 from public.promo_flow_approvers a join public.promo_flow_steps s on s.step_no = a.step_no
+                  where a.emp_id = public.promo_emp_id() and s.active and public.promo_scope_match(a.scope, g, l, d, sec))
+$$;
+
+select count(distinct emp_id) as approvers_who_gain_view_access from public.promo_flow_approvers;
+
+-- v230 (แก้บั๊กสำคัญ): promo_scope_match ใน hub57 คืนค่า NULL เมื่อขอบเขตไม่มีคีย์ exclude ทำให้ทุกขอบเขต (ทั้งหมด/หน่วยงาน/แผนก) ถูกมองเป็น "ไม่อยู่ในขอบเขต"
+--   ผล: ผู้ใช้ที่ไม่ใช่ Super Admin มองไม่เห็นข้อมูลพนักงาน (หน้า "ยังไม่มีข้อมูลพนักงาน") — แก้ด้วย coalesce
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub60.sql) — รันซ้ำได้
+
+create or replace function public.promo_scope_match(s jsonb, g text, l text, d text, sec text) returns boolean
+language sql immutable as $$
+  select (   coalesce(s->>'type', 'all') = 'all'
+          or (s->>'type' = 'unit'    and (jsonb_exists(s->'keys', coalesce(g, '')) or jsonb_exists(s->'keys', coalesce(l, '')) or jsonb_exists(s->'keys', coalesce(d, ''))))
+          or (s->>'type' = 'group'   and jsonb_exists(s->'keys', coalesce(g, '')))
+          or (s->>'type' = 'line'    and jsonb_exists(s->'keys', coalesce(l, '')))
+          or (s->>'type' = 'dept'    and jsonb_exists(s->'keys', coalesce(d, '')))
+          or (s->>'type' = 'section' and (jsonb_exists(s->'keys', coalesce(d, '') || '|' || coalesce(sec, '')) or jsonb_exists(s->'keys', coalesce(sec, '')))))
+     and not coalesce(jsonb_typeof(s->'exclude') = 'array' and jsonb_exists(s->'exclude', coalesce(d, '') || '|' || coalesce(sec, '')), false)
+$$;
+select public.promo_scope_match('{"type":"unit","keys":["31001"]}'::jsonb, '30000', '31000', '31001', '') as unit_no_exclude_expected_true,
+       public.promo_scope_match('{"type":"all"}'::jsonb, '', '', '', '') as all_expected_true,
+       public.promo_scope_match('{"type":"unit","keys":["31001"]}'::jsonb, '60000', '62000', '62002', '') as other_unit_expected_false,
+       public.promo_scope_match('{"type":"unit","keys":["31001"],"exclude":["31001|x"]}'::jsonb, '30000', '31000', '31001', 'x') as excluded_expected_false;
+
+-- v231: ข้อมูลผลประเมิน Competency (Core + Managerial) รายพนักงาน — แยกตารางจากข้อมูลพนักงาน เก็บเป็นรายปี
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub61.sql) — รันซ้ำได้
+-- สิทธิ์: อ่านได้เฉพาะพนักงานในขอบเขตของผู้ใช้ (เหมือนข้อมูลพนักงาน) · นำเข้า/แก้ไขได้เฉพาะผู้มีสิทธิ์จัดการและขอบเขตทั้งหมด
+
+create table if not exists public.promo_competency (
+  emp_id text not null, year int not null, data jsonb not null, updated_at timestamptz not null default now(),
+  primary key (emp_id, year)
+);
+alter table public.promo_competency enable row level security;
+drop policy if exists promo_competency_sel on public.promo_competency;
+create policy promo_competency_sel on public.promo_competency for select to authenticated
+  using (public.can_promo('view') and public.promo_emp_in_scope(emp_id));
+drop policy if exists promo_competency_ins on public.promo_competency;
+create policy promo_competency_ins on public.promo_competency for insert to authenticated
+  with check (public.can_promo('manage') and public.promo_scope_all());
+drop policy if exists promo_competency_upd on public.promo_competency;
+create policy promo_competency_upd on public.promo_competency for update to authenticated
+  using (public.can_promo('manage') and public.promo_scope_all()) with check (public.can_promo('manage') and public.promo_scope_all());
+drop policy if exists promo_competency_del on public.promo_competency;
+create policy promo_competency_del on public.promo_competency for delete to authenticated
+  using (public.can_promo('manage') and public.promo_scope_all());
+revoke all on public.promo_competency from anon;
+grant select, insert, update, delete on public.promo_competency to authenticated;
+
+select count(*) as competency_rows from public.promo_competency;
+
+-- v232: แฟ้ม Promotion Portfolio รายการเสนอชื่อ (แบบฟอร์ม + ประเมิน Competency + Checklist หลักฐาน) และที่เก็บไฟล์เอกสารแนบ
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub62.sql) — รันซ้ำได้
+-- สิทธิ์: ดูได้ตามขอบเขตเหมือนรายการเสนอชื่อ · แก้ไข/อัปโหลดได้เฉพาะผู้มีสิทธิ์ "จัดการ" ที่พนักงานนั้นอยู่ในขอบเขต
+
+create or replace function public.promo_nom_manage(p_id text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.can_promo('manage') and exists (select 1 from public.promo_nominations n where n.id = p_id and public.promo_emp_in_scope(n.emp_id))
+$$;
+revoke all on function public.promo_nom_manage(text) from public, anon;
+grant execute on function public.promo_nom_manage(text) to authenticated;
+
+create table if not exists public.promo_portfolio (
+  nom_id text primary key references public.promo_nominations(id) on delete cascade,
+  data jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now(), updated_by text not null default ''
+);
+alter table public.promo_portfolio enable row level security;
+drop policy if exists promo_pf_sel on public.promo_portfolio;
+create policy promo_pf_sel on public.promo_portfolio for select to authenticated using (public.promo_nom_visible(nom_id));
+drop policy if exists promo_pf_ins on public.promo_portfolio;
+create policy promo_pf_ins on public.promo_portfolio for insert to authenticated with check (public.promo_nom_manage(nom_id));
+drop policy if exists promo_pf_upd on public.promo_portfolio;
+create policy promo_pf_upd on public.promo_portfolio for update to authenticated using (public.promo_nom_manage(nom_id)) with check (public.promo_nom_manage(nom_id));
+drop policy if exists promo_pf_del on public.promo_portfolio;
+create policy promo_pf_del on public.promo_portfolio for delete to authenticated using (public.promo_nom_manage(nom_id));
+revoke all on public.promo_portfolio from anon;
+grant select, insert, update, delete on public.promo_portfolio to authenticated;
+
+-- ที่เก็บไฟล์เอกสารแนบ (ส่วนตัว ไม่เปิดสาธารณะ) · พาธไฟล์ = รหัสรายการเสนอชื่อ/ลำดับเอกสาร/ชื่อไฟล์ที่สร้างให้
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('promo-docs', 'promo-docs', false, 10485760)
+on conflict (id) do update set public = false, file_size_limit = 10485760;
+drop policy if exists promo_docs_sel on storage.objects;
+create policy promo_docs_sel on storage.objects for select to authenticated
+  using (bucket_id = 'promo-docs' and public.promo_nom_visible((storage.foldername(name))[1]));
+drop policy if exists promo_docs_ins on storage.objects;
+create policy promo_docs_ins on storage.objects for insert to authenticated
+  with check (bucket_id = 'promo-docs' and public.promo_nom_manage((storage.foldername(name))[1]));
+drop policy if exists promo_docs_upd on storage.objects;
+create policy promo_docs_upd on storage.objects for update to authenticated
+  using (bucket_id = 'promo-docs' and public.promo_nom_manage((storage.foldername(name))[1]));
+drop policy if exists promo_docs_del on storage.objects;
+create policy promo_docs_del on storage.objects for delete to authenticated
+  using (bucket_id = 'promo-docs' and public.promo_nom_manage((storage.foldername(name))[1]));
+
+select (select count(*) from public.promo_portfolio) as portfolios, (select count(*) from storage.buckets where id = 'promo-docs') as bucket_ready;
+
+-- v234: ผู้อนุมัติ "ขั้นแรก" ใน Flow (เช่น ผจก.ฝ่าย / ผู้บังคับบัญชาต้นสังกัด) เสนอชื่อพนักงานในขอบเขตของตนได้ — ตาม template ที่ให้ผู้บังคับบัญชาต้นสังกัดเป็นผู้เสนอ
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub63.sql) — รันซ้ำได้
+-- สิทธิ์เสนอชื่อ = (สิทธิ์จัดการ + พนักงานอยู่ในขอบเขต) หรือ (ผู้อนุมัติขั้นแรกที่ใช้งานอยู่ และพนักงานอยู่ในขอบเขตของผู้อนุมัติ) · ครอบคลุมรายการเสนอชื่อ แฟ้ม Portfolio และไฟล์แนบ
+
+create or replace function public.promo_first_step() returns int
+language sql stable security definer set search_path = public as $$
+  select step_no from public.promo_flow_steps where active order by ord, step_no limit 1
+$$;
+revoke all on function public.promo_first_step() from public, anon;
+grant execute on function public.promo_first_step() to authenticated;
+
+create or replace function public.promo_can_nominate(p_emp text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_super_admin()
+      or (public.can_promo('manage') and public.promo_emp_in_scope(p_emp))
+      or exists (select 1 from public.promo_flow_approvers a
+                   join public.promo_employees e on e.emp_id = p_emp
+                  where a.emp_id = public.promo_emp_id() and a.step_no = public.promo_first_step()
+                    and public.promo_scope_match(a.scope, e.group_code, e.line_code, e.dept_code, e.section_name))
+$$;
+revoke all on function public.promo_can_nominate(text) from public, anon;
+grant execute on function public.promo_can_nominate(text) to authenticated;
+
+-- ผู้ใช้นี้เสนอชื่อได้หรือไม่ (ไว้แสดงปุ่มในแอป)
+create or replace function public.promo_is_nominator() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.can_promo('manage')
+      or exists (select 1 from public.promo_flow_approvers a where a.emp_id = public.promo_emp_id() and a.step_no = public.promo_first_step())
+$$;
+revoke all on function public.promo_is_nominator() from public, anon;
+grant execute on function public.promo_is_nominator() to authenticated;
+
+-- รายการเสนอชื่อ: เพิ่ม/แก้/ลบ ใช้สิทธิ์เสนอชื่อ
+drop policy if exists promo_nominations_ins on public.promo_nominations;
+create policy promo_nominations_ins on public.promo_nominations for insert to authenticated with check (public.promo_can_nominate(emp_id));
+drop policy if exists promo_nominations_upd on public.promo_nominations;
+create policy promo_nominations_upd on public.promo_nominations for update to authenticated
+  using (public.promo_can_nominate(emp_id)) with check (public.promo_can_nominate(emp_id));
+drop policy if exists promo_nominations_del on public.promo_nominations;
+create policy promo_nominations_del on public.promo_nominations for delete to authenticated using (public.promo_can_nominate(emp_id));
+
+-- แฟ้ม Portfolio / ไฟล์แนบ
+create or replace function public.promo_nom_manage(p_id text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.promo_nominations n where n.id = p_id and public.promo_can_nominate(n.emp_id))
+$$;
+
+-- ส่งขออนุมัติ
+create or replace function public.promo_nom_submit(p_id text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n public.promo_nominations%rowtype; s public.promo_flow_steps%rowtype;
+begin
+  select * into n from public.promo_nominations where id = p_id;
+  if not found then raise exception 'NOT_FOUND:ไม่พบรายการ'; end if;
+  if not public.promo_can_nominate(n.emp_id) then raise exception 'FORBIDDEN:ไม่มีสิทธิ์'; end if;
+  if n.status <> 'ร่าง' then raise exception 'BAD_STATE:ส่งขออนุมัติได้เฉพาะรายการสถานะ ร่าง'; end if;
+  select * into s from public.promo_flow_steps where active order by ord, step_no limit 1;
+  if not found then raise exception 'NO_FLOW:ยังไม่ได้กำหนดขั้นตอนอนุมัติ'; end if;
+  if not exists (select 1 from public.promo_flow_approvers where step_no = s.step_no) then raise exception 'NO_APPROVER:ขั้นแรก (%) ยังไม่มีผู้อนุมัติ — ให้ Super Admin กำหนดก่อน', s.name; end if;
+  perform set_config('promo.rpc', '1', true);
+  update public.promo_nominations set status = 'เสนอแล้ว', step = s.step_no, updated_at = now() where id = p_id;
+  perform public.promo_nom_log_add(p_id, s.step_no, s.name, 'submit', '');
+  return jsonb_build_object('status', 'เสนอแล้ว', 'step', s.step_no);
+end $$;
+revoke all on function public.promo_nom_submit(text) from public, anon;
+grant execute on function public.promo_nom_submit(text) to authenticated;
+
+select public.promo_first_step() as first_step_no;
+
+-- v236: ผู้อนุมัติ "ทุกขั้น" ที่ใช้งานอยู่ใน Flow เสนอชื่อพนักงานในขอบเขตของตนได้ (เดิม hub64 ให้เฉพาะขั้นแรก)
+-- รันใน Supabase > SQL Editor หนึ่งครั้ง (หลัง supabase_update_hub64.sql) — รันซ้ำได้
+
+create or replace function public.promo_can_nominate(p_emp text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_super_admin()
+      or (public.can_promo('manage') and public.promo_emp_in_scope(p_emp))
+      or exists (select 1 from public.promo_flow_approvers a
+                   join public.promo_flow_steps s on s.step_no = a.step_no and s.active
+                   join public.promo_employees e on e.emp_id = p_emp
+                  where a.emp_id = public.promo_emp_id()
+                    and public.promo_scope_match(a.scope, e.group_code, e.line_code, e.dept_code, e.section_name))
+$$;
+revoke all on function public.promo_can_nominate(text) from public, anon;
+grant execute on function public.promo_can_nominate(text) to authenticated;
+
+create or replace function public.promo_is_nominator() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.can_promo('manage') or public.promo_is_approver()
+$$;
+revoke all on function public.promo_is_nominator() from public, anon;
+grant execute on function public.promo_is_nominator() to authenticated;
+
+select count(distinct emp_id) as approvers_who_can_nominate from public.promo_flow_approvers;
