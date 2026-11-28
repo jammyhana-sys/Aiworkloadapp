@@ -103,7 +103,7 @@ let db={emps:[],reqs:[],noms:[],orders:[],cfg:{...DEF},imported:null};
 const SB_URL='https://vhhekmpkcqlgesojvlws.supabase.co',SB_KEY='sb_publishable_I5aGYPaJKemi6HP8Liijeg_Hb_M7-SQ';
 let sb=null,CAN={view:false,manage:false,nom:false,all:true},READY=false;
 try{sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}})}catch(_){}
-const errTxt=e=>{const m=((e&&e.message)||String(e)).replace(/^[A-Z_]{3,}:/,'');return /promo_|can_promo|module_access/.test(m)&&/does not exist|schema cache|Could not find/.test(m)?m+' (ยังไม่ได้รัน supabase_update_hub49.sql)':/promo_nom_one_active|duplicate key/.test(m)?'พนักงานคนนี้มีรายการเสนอชื่อที่ยังดำเนินอยู่แล้ว':m};
+const errTxt=e=>{const m=((e&&e.message)||String(e)).replace(/^[A-Z_]{3,}:/,'');return /promo_|can_promo|module_access/.test(m)&&/does not exist|schema cache|Could not find/.test(m)?m+' (ยังไม่ได้รัน supabase_update_hub49.sql)':/promo_nom_one_active|promo_nom_one_per_emp|duplicate key/.test(m)?'พนักงานแต่ละคนมีรายการเสนอชื่อได้รายการเดียว — พนักงานคนนี้มีรายการอยู่แล้ว':m};
 function gate(h){$('#nav').classList.add('hide');$$('main>section').forEach(s=>s.classList.add('hide'));let g=$('#gate');if(!g){g=document.createElement('section');g.id='gate';$('main').appendChild(g)}g.innerHTML=`<div class="card" style="text-align:center;padding:34px 18px">${h}</div>`}
 /* ============ ผลประเมิน Competency (Core / Managerial) ============ */
 db.comp={};db.compYear=0;db.compItems=null;
@@ -373,10 +373,15 @@ function evalEmp(e){
 }
 const gcls=g=>g?('g'+g[0]):'';
 const gradeChips=e=>GRADE_YEARS.map(y=>`<span class="gr ${gcls(e.grades[y])}" title="ปี ${y}">${esc(e.grades[y]||'–')}</span>`).join('');
+const anyNom=id=>db.noms.find(n=>n.empId===id);
+const nomClosed=n=>!!n&&(n.status==='ยกเลิก'||n.status==='ไม่ผ่านการพิจารณา');
+async function reopenNom(id){if(!CAN.nom)return;if(!confirm('เปิดรายการเดิมของพนักงานคนนี้อีกครั้งเป็น "ร่าง"? (พนักงานมีรายการเสนอชื่อได้รายการเดียว — ข้อมูลแฟ้มเดิมยังอยู่)'))return;
+  const r=await sb.rpc('promo_nom_reopen',{p_id:id});if(r.error)return alert('เปิดรายการไม่สำเร็จ: '+errTxt(r.error)+(/promo_nom_reopen/.test(r.error.message||'')?' (ยังไม่ได้รัน supabase_update_hub67.sql)':''));
+  const n=db.noms.find(x=>x.id===id);if(n){n.status='ร่าง';n.step=0}show('noms')}
 const activeNom=id=>db.noms.find(n=>n.empId===id&&n.status!=='ยกเลิก'&&n.status!=='ไม่ผ่านการพิจารณา');
 /* เสนอผลงาน (Portfolio) — เข้าแฟ้ม 5 ขั้นโดยตรง ไม่ระบุตำแหน่งที่ขอปรับ (แสดง -ไม่มี-) */
 async function newPortfolioNom(empId){
-  const e=empOf(empId);if(!e||!CAN.nom)return;if(activeNom(empId))return alert('พนักงานคนนี้มีรายการเสนอชื่อที่ยังดำเนินอยู่แล้ว');
+  const e=empOf(empId);if(!e||!CAN.nom)return;if(anyNom(empId))return alert('พนักงานแต่ละคนมีรายการเสนอชื่อได้รายการเดียว — พนักงานคนนี้มีรายการอยู่แล้ว (ถ้าถูกยกเลิก ให้ใช้ปุ่ม เปิดรายการเดิมอีกครั้ง)');
   const x=evalEmp(e),by=((empOf(FLOW.me)||{}).name)||'',now=new Date().toISOString();
   const rec={id:'N'+Date.now().toString(36),empId:e.id,fromLevel:e.level,fromPos:e.pos,toLevel:'',toPos:'-ไม่มี-',checks:[],why:'',by,date:now.slice(0,10),status:'ร่าง',note:'',special:false,exc:'',portfolioOnly:true,snap:{avg:x.avg,ten:x.ten,pass:x.pass,grades:{...e.grades}},at:now};
   const r=await sb.from('promo_nominations').insert({id:rec.id,emp_id:rec.empId,status:'ร่าง',step:0,data:rec,created_by:by,updated_at:now});
@@ -441,15 +446,16 @@ function rEmps(){
   $$('#fhead th[data-s]').forEach(t=>t.onclick=()=>{if(f.sort===t.dataset.s)f.dir*=-1;else{f.sort=t.dataset.s;f.dir=1}rEmps()});
   const{a,ev}=filteredEmps();
   $('#fcount').textContent=`พบ ${a.length} จาก ${db.emps.length} คน`;
-  $('#fbody').innerHTML=a.slice(0,f.lim).map(e=>{const x=ev.get(e.id),n=activeNom(e.id);
+  $('#fbody').innerHTML=a.slice(0,f.lim).map(e=>{const x=ev.get(e.id),n=anyNom(e.id);
     return `<tr><td>${esc(e.id)}</td><td><a href="#" data-d="${esc(e.id)}" style="color:var(--pri);font-weight:600;text-decoration:none">${esc(e.name)}</a>${e.nick?`<div class="hint">${esc(e.nick)}</div>`:''}</td><td>${esc(e.pos)}</td><td><span class="tag">L${e.level}</span></td>
     <td style="white-space:nowrap">${gradeChips(e)}</td><td><b>${fmt1(x.avg)}</b></td><td style="white-space:nowrap">${compCell((db.comp[e.id]||{}).core)}</td><td style="white-space:nowrap">${compCell((db.comp[e.id]||{}).managerial)}</td><td style="white-space:nowrap">${ymd(e.start)}</td><td style="white-space:nowrap" title="${posSince(e).src==='start'?'ไม่มีประวัติปรับตำแหน่ง — นับจากวันเริ่มงาน':'นับจากวันที่มีผลล่าสุด '+esc(effDate((e.hist.slice().sort((a,b)=>beToISO(a.date).localeCompare(beToISO(b.date))).pop()||{}).date))}">${posTen(e)}</td><td style="white-space:nowrap">${ymd(e.birth,1)}</td><td>${esc(e.edu.lvl||'-')}</td><td style="min-width:260px;font-size:12.5px">${orgLine(e,'<br>')||'-'}</td><td style="min-width:170px;font-size:12.5px">${e.hist.length?`<b>${e.hist.length} ครั้ง</b><div class="hint">ล่าสุด: ${esc(e.hist[e.hist.length-1].to)} · มีผล ${esc(effDate(e.hist[e.hist.length-1].date))}</div>`:'<span class="hint">-</span>'}</td>
     <td>${x.pass?'<span class="tag ok">ผ่าน</span>':`<span class="tag bad" title="${esc(x.why.join(' · '))}">ไม่ผ่าน</span>`}${n?` <span class="tag ${STCLS[n.status]||'pri'}">${esc(n.status)}</span>`:''}</td>
-    <td style="white-space:nowrap">${n?`<button class="btn sm" data-n="${esc(n.id)}">ดูรายการ</button>`:(CAN.nom?(x.pass?`<button class="btn sm pri" data-nom="${esc(e.id)}" title="เลือกตำแหน่งที่ขอปรับ ตรวจคุณสมบัติ แล้วเข้าแฟ้ม Portfolio">＋ เสนอปรับ</button>`:`<button class="btn sm" data-nom="${esc(e.id)}" style="border-color:var(--warn);color:var(--warn)" title="ไม่ผ่านเกณฑ์เบื้องต้น — เสนอเป็นกรณีพิเศษได้ (ต้องระบุเหตุผล)">＋ เสนอปรับ (กรณีพิเศษ)</button>`)+` <button class="btn sm" data-pfn="${esc(e.id)}" title="ไปที่แฟ้มประวัติ Portfolio 5 ขั้นโดยตรง ไม่ต้องเลือกตำแหน่งที่ขอปรับ">📁 เสนอผลงาน (Portfolio)</button>`:'')}</td></tr>`}).join('')||'<tr><td colspan="16" class="hint">ไม่พบข้อมูล</td></tr>';
+    <td style="white-space:nowrap">${n?`${nomClosed(n)&&CAN.nom?`<button class="btn sm pri" data-reopen="${esc(n.id)}" title="พนักงานมีรายการเสนอชื่อได้รายการเดียว — เปิดรายการเดิมอีกครั้งเป็น ร่าง">↻ เปิดรายการเดิมอีกครั้ง</button> `:''}<button class="btn sm" data-n="${esc(n.id)}">ดูรายการ</button>`:(CAN.nom?(x.pass?`<button class="btn sm pri" data-nom="${esc(e.id)}" title="เลือกตำแหน่งที่ขอปรับ ตรวจคุณสมบัติ แล้วเข้าแฟ้ม Portfolio">＋ เสนอปรับ</button>`:`<button class="btn sm" data-nom="${esc(e.id)}" style="border-color:var(--warn);color:var(--warn)" title="ไม่ผ่านเกณฑ์เบื้องต้น — เสนอเป็นกรณีพิเศษได้ (ต้องระบุเหตุผล)">＋ เสนอปรับ (กรณีพิเศษ)</button>`)+` <button class="btn sm" data-pfn="${esc(e.id)}" title="ไปที่แฟ้มประวัติ Portfolio 5 ขั้นโดยตรง ไม่ต้องเลือกตำแหน่งที่ขอปรับ">📁 เสนอผลงาน (Portfolio)</button>`:'')}</td></tr>`}).join('')||'<tr><td colspan="16" class="hint">ไม่พบข้อมูล</td></tr>';
   $('#fmore').innerHTML=a.length>f.lim?`<button class="btn" id="fm">แสดงเพิ่ม (${a.length-f.lim} คน)</button>`:'';
   if($('#fm'))$('#fm').onclick=()=>{f.lim+=200;rEmps()};
   $$('#fbody [data-d]').forEach(x=>x.onclick=ev=>{ev.preventDefault();openEmp(x.dataset.d)});
   $$('#fbody [data-nom]').forEach(x=>x.onclick=()=>openNom(x.dataset.nom));
+  $$('#fbody [data-reopen]').forEach(x=>x.onclick=()=>reopenNom(x.dataset.reopen));
   $$('#fbody [data-pfn]').forEach(x=>x.onclick=()=>newPortfolioNom(x.dataset.pfn));
   $$('#fbody [data-n]').forEach(x=>x.onclick=()=>{V.nom.q=db.noms.find(n=>n.id===x.dataset.n).empId;show('noms')});
 }
@@ -537,7 +543,7 @@ function openNom(id,editId){
     updNmPf()};
   renderNmPf();
   $('#nmSave').onclick=()=>{const toL=+$('#nmLv').value;
-    if(!ed&&activeNom(e.id))return alert('พนักงานคนนี้มีรายการเสนอชื่อที่ยังดำเนินอยู่แล้ว');
+    if(!ed&&anyNom(e.id))return alert('พนักงานแต่ละคนมีรายการเสนอชื่อได้รายการเดียว — พนักงานคนนี้มีรายการอยู่แล้ว (ถ้าถูกยกเลิก ให้ใช้ปุ่ม เปิดรายการเดิมอีกครั้ง)');
     if(!x.pass&&!($('#nmExc')&&$('#nmExc').value.trim()))return alert('พนักงานคนนี้ไม่ผ่านเกณฑ์เบื้องต้น — ระบุเหตุผลขอพิจารณาเป็นกรณีพิเศษก่อน');
     const rec={id:ed?ed.id:'N'+Date.now().toString(36),empId:e.id,fromLevel:e.level,fromPos:e.pos,toLevel:toL,toPos:$('#nmPos').value,checks:$$('#nmQual [data-q]').map(c=>c.checked),
       why:ed?ed.why:'',by:nmBy0,date:nmDate0,status:ed?ed.status:'ร่าง',note:ed?ed.note:'',special:!x.pass,exc:!x.pass?$('#nmExc').value.trim():'',snap:{avg:x.avg,ten:x.ten,pass:x.pass,grades:{...e.grades}},at:ed?ed.at:new Date().toISOString()};
@@ -624,7 +630,7 @@ async function nomRpc(id,action,note){
   const r=action==='submit'?await sb.rpc('promo_nom_submit',{p_id:id}):await sb.rpc('promo_nom_decide',{p_id:id,p_action:action,p_note:note||''});
   if(r.error)throw r.error;const n=db.noms.find(x=>x.id===id);if(n&&r.data){n.status=r.data.status;n.step=r.data.step}
 }
-const ACT_TH={submit:'ส่งขออนุมัติ',approve:'อนุมัติ',reject:'ไม่อนุมัติ',return:'ส่งกลับแก้ไข'};
+const ACT_TH={reopen:'เปิดรายการอีกครั้ง',submit:'ส่งขออนุมัติ',approve:'อนุมัติ',reject:'ไม่อนุมัติ',return:'ส่งกลับแก้ไข'};
 async function openNomLog(id){
   const n=db.noms.find(x=>x.id===id),e=empOf(n.empId)||{};
   const r=await sb.from('promo_nom_log').select('*').eq('nom_id',id).order('id');
@@ -652,7 +658,7 @@ function rNoms(){
       <td class="noprint" style="white-space:nowrap">
         ${n.status==='ร่าง'&&CAN.nom?`<button class="btn sm pri" data-sub="${esc(n.id)}">ส่งขออนุมัติ</button> ${n.portfolioOnly?'':`<button class="btn sm" data-e="${esc(n.id)}">แก้ไข</button>`} <button class="btn sm bad" data-x="${esc(n.id)}">ลบ</button> `:''}
         ${act?`<button class="btn sm ok" data-ap="${esc(n.id)}">✓ อนุมัติ</button> <button class="btn sm" data-rt="${esc(n.id)}">↩ ส่งกลับ</button> <button class="btn sm bad" data-rj="${esc(n.id)}">✕ ไม่อนุมัติ</button> `:''}
-        ${(n.status==='เสนอแล้ว'||n.status==='ร่าง')&&CAN.nom?`<button class="btn sm" data-cx="${esc(n.id)}">ยกเลิก</button> `:''}
+        ${nomClosed(n)&&CAN.nom?`<button class="btn sm pri" data-reopen="${esc(n.id)}">↻ เปิดใหม่</button> <button class="btn sm bad" data-x="${esc(n.id)}" title="ลบรายการนี้ถาวร">ลบ</button> `:''}${(n.status==='เสนอแล้ว'||n.status==='ร่าง')&&CAN.nom?`<button class="btn sm" data-cx="${esc(n.id)}">ยกเลิก</button> `:''}
         <button class="btn sm" data-pfo="${esc(n.id)}" title="แฟ้ม Promotion Portfolio: แบบฟอร์ม · Competency · Checklist หลักฐาน">📁 แฟ้ม</button> <button class="btn sm" data-lg="${esc(n.id)}">ประวัติ</button></td></tr>`}).join('')||'<tr><td colspan="11" class="hint">ยังไม่มีรายการ</td></tr>'}</tbody></table></div></div>`;
   $('#nq').oninput=e=>{f.q=e.target.value;rNoms();$('#nq').focus();$('#nq').setSelectionRange(f.q.length,f.q.length)};$('#nst').onchange=e=>{f.st=e.target.value;rNoms()};
   $('#nx').onclick=exportNoms;
@@ -665,6 +671,7 @@ function rNoms(){
   $$('#v-noms [data-cx]').forEach(b=>b.onclick=async()=>{if(!confirm('ยกเลิกการเสนอชื่อรายการนี้?'))return;const r=await sb.from('promo_nominations').update({status:'ยกเลิก',updated_at:new Date().toISOString()}).eq('id',b.dataset.cx);if(r.error)return alert('ยกเลิกไม่สำเร็จ: '+errTxt(r.error));const n=db.noms.find(x=>x.id===b.dataset.cx);n.status='ยกเลิก';n.step=0;rNoms()});
   $$('#v-noms [data-lg]').forEach(b=>b.onclick=()=>openNomLog(b.dataset.lg));
   $$('#v-noms [data-pfo]').forEach(b=>b.onclick=ev=>{ev.preventDefault();openPf(b.dataset.pfo)});
+  $$('#v-noms [data-reopen]').forEach(b=>b.onclick=()=>reopenNom(b.dataset.reopen));
   $$('#v-noms [data-x]').forEach(b=>b.onclick=async()=>{if(!confirm('ลบรายการเสนอชื่อนี้? (ลบแล้วกู้คืนไม่ได้)'))return;
     const r=await sb.from('promo_nominations').delete().eq('id',b.dataset.x);if(r.error)return alert('ลบไม่สำเร็จ: '+errTxt(r.error));db.noms=db.noms.filter(x=>x.id!==b.dataset.x);rNoms()});
 }
