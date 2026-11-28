@@ -37,7 +37,7 @@ tr:hover td{background:#fafbff}
 .tag{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;background:#eceefb;color:#454b7a;white-space:nowrap}
 .tag.ok{background:#d9f3ea;color:#087a5e}.tag.warn{background:#fdebd0;color:#a8620a}.tag.bad{background:#fadde3;color:#a8283f}.tag.pri{background:#e1e7ff;color:#3347c0}
 .gr{display:inline-block;min-width:30px;text-align:center;border-radius:8px;padding:1px 5px;margin-right:3px;font-size:12px;font-weight:700;background:#eceefb}
-.gA{background:#d9f3ea;color:#087a5e}.gB{background:#e1e7ff;color:#3347c0}.gC{background:#fdebd0;color:#a8620a}.gD{background:#fadde3;color:#a8283f}
+.gA{background:#d9f3ea;color:#087a5e}.gB{background:#e1e7ff;color:#3347c0}.gC{background:#fdebd0;color:#a8620a}.gD,.gE{background:#fadde3;color:#a8283f}
 .hint{color:var(--mut);font-size:12.5px}.hide{display:none!important}
 .bar{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:13px}.bar i{display:block;height:14px;border-radius:7px;background:linear-gradient(90deg,var(--pri),var(--pri2));min-width:2px}
 .bar .n{min-width:78px;color:var(--mut)}.bar i.b2{background:linear-gradient(90deg,#e6416b,#c2339a)}
@@ -95,10 +95,49 @@ let sb=null,CAN={view:false,manage:false,all:true},READY=false;
 try{sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}})}catch(_){}
 const errTxt=e=>{const m=((e&&e.message)||String(e)).replace(/^[A-Z_]{3,}:/,'');return /promo_|can_promo|module_access/.test(m)&&/does not exist|schema cache|Could not find/.test(m)?m+' (ยังไม่ได้รัน supabase_update_hub49.sql)':/promo_nom_one_active|duplicate key/.test(m)?'พนักงานคนนี้มีรายการเสนอชื่อที่ยังดำเนินอยู่แล้ว':m};
 function gate(h){$('#nav').classList.add('hide');$$('main>section').forEach(s=>s.classList.add('hide'));let g=$('#gate');if(!g){g=document.createElement('section');g.id='gate';$('main').appendChild(g)}g.innerHTML=`<div class="card" style="text-align:center;padding:34px 18px">${h}</div>`}
+/* ============ ผลประเมิน Competency (Core / Managerial) ============ */
+db.comp={};db.compYear=0;db.compItems=null;
+async function loadComp(){db.comp={};db.compYear=0;db.compItems=null;
+  try{const r=await sb.from('promo_competency').select('*').range(0,9999);if(r.error)return;const yrs=(r.data||[]).map(x=>x.year),y=yrs.length?Math.max(...yrs):0;db.compYear=y;(r.data||[]).filter(x=>x.year===y).forEach(x=>{db.comp[x.emp_id]=x.data});
+    const c=await sb.from('promo_config').select('*').eq('k','competency_items');if(!c.error&&c.data&&c.data[0])db.compItems=c.data[0].data}catch(_){}}
+const cTrunc=(s,n)=>{s=String(s||'');return s.length>n?s.slice(0,n-1)+'…':s};
+const compCell=d=>d?`<b>${fmt1(d.score)}</b> <span class="gr ${gcls(d.grade)}">${esc(d.grade)}</span>`:'<span class="hint">-</span>';
+function compBlock(e){
+  const c=db.comp[e.id];
+  if(!c)return `<h3 style="margin:16px 0 6px;font-size:15px">ผลประเมิน Competency</h3><div class="hint">${db.compYear?'ไม่มีผลประเมินของพนักงานคนนี้':'ยังไม่ได้นำเข้าผลประเมิน Competency'}</div>`;
+  const blk=(k,title)=>{const d=c[k];if(!d)return `<div class="card" style="box-shadow:none;border:1px solid var(--line);margin:0"><b>${title}</b><div class="hint">ไม่มีผลประเมิน</div></div>`;
+    const items=(db.compItems&&db.compItems[k])||[],avg=d.items.length?d.items.reduce((a,b)=>a+b,0)/d.items.length:null;
+    return `<div class="card" style="box-shadow:none;border:1px solid var(--line);margin:0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>${title}</b><span><b style="font-size:22px">${fmt1(d.score)}</b> <span class="gr ${gcls(d.grade)}" style="font-size:14px">${esc(d.grade)}</span></span></div>
+      <div class="hint">ผู้ประเมิน: ${esc(d.by.name)} · ${esc(d.by.pos)} (${esc(d.by.level)})</div>
+      <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--pri);font-weight:600">คะแนนรายข้อ (${d.items.length} ข้อ · เฉลี่ย ${fmt1(avg)} จาก 5)</summary>
+        ${d.items.map((s,i)=>`<div class="bar" style="align-items:flex-start"><span style="flex:1;font-size:12px;line-height:1.4">${i+1}. ${esc(cTrunc(items[i]||'ข้อ '+(i+1),90))}</span><i style="width:${(s||0)/5*60}px;margin-top:4px"></i><b>${s??'-'}</b></div>`).join('')}</details></div>`};
+  return `<h3 style="margin:16px 0 6px;font-size:15px">ผลประเมิน Competency ปี ${db.compYear}</h3><div class="grid g2">${blk('core','Core Competency')}${blk('managerial','Managerial Competency')}</div>`}
+function parseCompetency(buf){
+  if(!window.XLSX)throw new Error('โหลดไลบรารี Excel ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');
+  const wb=XLSX.read(buf,{type:'array'}),map={core:'Core',managerial:'Managerial'},out={},heads={};
+  const num=v=>{const m=String(v??'').match(/(\d+(?:\.\d+)?)/);return m?+m[1]:null},idOf=v=>{const s=String(v??'').trim();return /^\d+$/.test(s)&&s.length<5?s.padStart(5,'0'):s};
+  const cols=['K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y'];let found=0;
+  Object.entries(map).forEach(([k,nm])=>{const name=wb.SheetNames.find(s=>s.trim().toLowerCase()===nm.toLowerCase());if(!name)return;found++;
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:'A',defval:'',raw:true,blankrows:false});if(!rows.length)return;
+    heads[k]=cols.map(c=>String(rows[0][c]||'').trim());
+    rows.slice(1).forEach(r=>{const id=idOf(r.E);if(!id)return;const sc=+r.I;(out[id]=out[id]||{})[k]={score:isNaN(sc)?null:sc,grade:String(r.J||'').trim(),by:{id:idOf(r.A),name:String(r.B||'').trim(),pos:String(r.C||'').trim(),level:String(r.D||'').trim()},items:cols.map(c=>num(r[c]))}})});
+  if(!found)throw new Error('ไม่พบชีต Core / Managerial');
+  return{byEmp:out,heads};
+}
+async function compImport(buf,name,year){
+  if(!(CAN.manage&&CAN.all))throw new Error('ต้องมีสิทธิ์จัดการและขอบเขตข้อมูลทั้งหมด');
+  const r=parseCompetency(buf),ids=Object.keys(r.byEmp);if(!ids.length)throw new Error('ไม่พบข้อมูลผู้ถูกประเมิน');
+  const known=new Set(db.emps.map(e=>e.id)),rows=ids.map(id=>({emp_id:id,year,data:r.byEmp[id],updated_at:new Date().toISOString()}));
+  const d=await sb.from('promo_competency').delete().eq('year',year);if(d.error)throw d.error;
+  for(let i=0;i<rows.length;i+=60){const ins=await sb.from('promo_competency').insert(rows.slice(i,i+60));if(ins.error)throw ins.error}
+  const c1=await sb.from('promo_config').upsert({k:'competency_items',data:r.heads,updated_at:new Date().toISOString()});if(c1.error)throw c1.error;
+  const c2=await sb.from('promo_config').upsert({k:'competency_meta',data:{file:name,year,at:new Date().toISOString(),n:ids.length},updated_at:new Date().toISOString()});if(c2.error)throw c2.error;
+  await loadComp();return{n:ids.length,core:ids.filter(i=>r.byEmp[i].core).length,man:ids.filter(i=>r.byEmp[i].managerial).length,unmatched:ids.filter(i=>!known.has(i)).length};
+}
 async function loadAll(){
   const all=async t=>{const r=await sb.from(t).select('*').range(0,9999);if(r.error)throw r.error;return r.data||[]};
   const [E,R,N,C]=await Promise.all([all('promo_employees'),all('promo_reqs'),all('promo_nominations'),all('promo_config')]);
-  db.emps=E.map(r=>r.data);db.reqs=R.map(r=>r.data);db.noms=N.map(r=>({...r.data,id:r.id,empId:r.emp_id,status:r.status,step:r.step||0}));await loadFlow();
+  db.emps=E.map(r=>r.data);db.reqs=R.map(r=>r.data);db.noms=N.map(r=>({...r.data,id:r.id,empId:r.emp_id,status:r.status,step:r.step||0}));await loadFlow();await loadComp();
   {const od=await sb.rpc('promo_orders_for_me');db.orders=od.error?C.filter(x=>/^order:/.test(x.k)).map(x=>x.data):(od.data||[]);db.orders.forEach(applyOrder)}const cf=C.find(x=>x.k==='cfg'),im=C.find(x=>x.k==='imported');db.cfg={...DEF,...(cf?cf.data:{})};db.imported=im?im.data:null;
 }
 async function boot(){
@@ -253,7 +292,7 @@ function filteredEmps(){
   const f=V.emp,ev=new Map(db.emps.map(e=>[e.id,evalEmp(e)]));
   let a=db.emps.filter(e=>(!f.lv||e.level===+f.lv)&&(!f.dept||e.dept===f.dept)&&(!f.q||[e.id,e.name,e.nick,e.pos,e.dept].join(' ').toLowerCase().includes(f.q.toLowerCase()))
     &&(f.only===''||(f.only==='pass'?ev.get(e.id).pass:f.only==='fail'?!ev.get(e.id).pass:f.only==='nom'?!!activeNom(e.id):!activeNom(e.id))));
-  const key={id:e=>e.id,name:e=>e.name,level:e=>e.level,avg:e=>ev.get(e.id).avg??-1,ten:e=>ev.get(e.id).ten??-1,dept:e=>e.dept,age:e=>yearsBetween(e.birth)??-1,pten:e=>yearsBetween(posSince(e).iso)??-1}[f.sort]||(e=>e.id);
+  const key={id:e=>e.id,name:e=>e.name,level:e=>e.level,avg:e=>ev.get(e.id).avg??-1,core:e=>((db.comp[e.id]||{}).core||{}).score??-1,man:e=>((db.comp[e.id]||{}).managerial||{}).score??-1,ten:e=>ev.get(e.id).ten??-1,dept:e=>e.dept,age:e=>yearsBetween(e.birth)??-1,pten:e=>yearsBetween(posSince(e).iso)??-1}[f.sort]||(e=>e.id);
   a.sort((x,y)=>{const p=key(x),q=key(y);return (typeof p==='number'?p-q:String(p).localeCompare(String(q),'th'))*f.dir});
   return{a,ev};
 }
@@ -269,20 +308,20 @@ function rEmps(){
     $('#fq').oninput=e=>{f.q=e.target.value;f.lim=100;rEmps()};$('#flv').onchange=e=>{f.lv=e.target.value;f.lim=100;rEmps()};$('#fdept').onchange=e=>{f.dept=e.target.value;f.lim=100;rEmps()};$('#fonly').onchange=e=>{f.only=e.target.value;f.lim=100;rEmps()}}
   $('#fexp').onclick=()=>{const{a,ev}=filteredEmps();if(!window.XLSX)return alert('โหลดไลบรารี Excel ไม่สำเร็จ');
     const rows=a.map(e=>{const x=ev.get(e.id),h=e.hist;return{รหัส:e.id,'ชื่อ-สกุล':e.name,ชื่อเล่น:e.nick,ตำแหน่ง:e.pos,Level:e.level,'รหัสกลุ่มงาน':e.groupCode,กลุ่มงาน:e.group,'รหัสสายงาน':e.lineCode,สายงาน:e.line,'รหัสฝ่าย':e.deptCode,ฝ่าย:e.dept,แผนก:e.section,
-      วันเริ่มงาน:e.start,อายุงาน:ymd(e.start),อายุงานในตำแหน่งปัจจุบัน:posTen(e).replace(' *',''),วันเกิด:e.birth,อายุตัว:ymd(e.birth,1),วุฒิ:e.edu.lvl,สาขา:e.edu.major,สถาบัน:e.edu.inst,...Object.fromEntries(GRADE_YEARS.map(y=>['เกรด '+y,e.grades[y]||''])),เกรดเฉลี่ย:x.avg==null?'':Math.round(x.avg*100)/100,ผ่านเกณฑ์เบื้องต้น:x.pass?'ผ่าน':'ไม่ผ่าน',
+      วันเริ่มงาน:e.start,อายุงาน:ymd(e.start),อายุงานในตำแหน่งปัจจุบัน:posTen(e).replace(' *',''),วันเกิด:e.birth,อายุตัว:ymd(e.birth,1),วุฒิ:e.edu.lvl,สาขา:e.edu.major,สถาบัน:e.edu.inst,...Object.fromEntries(GRADE_YEARS.map(y=>['เกรด '+y,e.grades[y]||''])),เกรดเฉลี่ย:x.avg==null?'':Math.round(x.avg*100)/100,'Core คะแนน':((db.comp[e.id]||{}).core||{}).score??'','Core เกรด':((db.comp[e.id]||{}).core||{}).grade||'','Managerial คะแนน':((db.comp[e.id]||{}).managerial||{}).score??'','Managerial เกรด':((db.comp[e.id]||{}).managerial||{}).grade||'',ผ่านเกณฑ์เบื้องต้น:x.pass?'ผ่าน':'ไม่ผ่าน',
       จำนวนครั้งที่ปรับตำแหน่ง:h.length,ประวัติปรับตำแหน่ง:h.map((q,i)=>`${i+1}) ${q.from} → ${q.to} (${q.order} มีผล ${effDate(q.date)})`).join(' | ')}});
     const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'พนักงาน');XLSX.writeFile(wb,'Promotion_Employees_'+new Date().toISOString().slice(0,10)+'.xlsx')};
   $('#flv').value=f.lv;$('#fdept').value=f.dept;$('#fonly').value=f.only;
   const th=(k,t)=>`<th data-s="${k}">${t}${f.sort===k?(f.dir>0?' ▲':' ▼'):''}</th>`;
-  $('#fhead').innerHTML=th('id','รหัส')+th('name','ชื่อ-สกุล')+'<th>ตำแหน่ง</th>'+th('level','Level')+'<th>เกรด ปี '+GRADE_YEARS.map(y=>y.slice(2)).join('·')+'</th>'+th('avg',`เฉลี่ย ${db.cfg.gradeYears} ปี`)+th('ten','อายุงาน')+th('pten','อายุงานในตำแหน่งปัจจุบัน')+th('age','อายุตัว')+'<th>วุฒิ</th>'+th('dept','สังกัด (กลุ่มงาน › สายงาน › ฝ่าย › แผนก)')+'<th>ประวัติปรับตำแหน่ง</th><th>เกณฑ์เบื้องต้น</th><th></th>';
+  $('#fhead').innerHTML=th('id','รหัส')+th('name','ชื่อ-สกุล')+'<th>ตำแหน่ง</th>'+th('level','Level')+'<th>เกรด ปี '+GRADE_YEARS.map(y=>y.slice(2)).join('·')+'</th>'+th('avg',`เฉลี่ย ${db.cfg.gradeYears} ปี`)+th('core','Core')+th('man','Managerial')+th('ten','อายุงาน')+th('pten','อายุงานในตำแหน่งปัจจุบัน')+th('age','อายุตัว')+'<th>วุฒิ</th>'+th('dept','สังกัด (กลุ่มงาน › สายงาน › ฝ่าย › แผนก)')+'<th>ประวัติปรับตำแหน่ง</th><th>เกณฑ์เบื้องต้น</th><th></th>';
   $$('#fhead th[data-s]').forEach(t=>t.onclick=()=>{if(f.sort===t.dataset.s)f.dir*=-1;else{f.sort=t.dataset.s;f.dir=1}rEmps()});
   const{a,ev}=filteredEmps();
   $('#fcount').textContent=`พบ ${a.length} จาก ${db.emps.length} คน`;
   $('#fbody').innerHTML=a.slice(0,f.lim).map(e=>{const x=ev.get(e.id),n=activeNom(e.id);
     return `<tr><td>${esc(e.id)}</td><td><a href="#" data-d="${esc(e.id)}" style="color:var(--pri);font-weight:600;text-decoration:none">${esc(e.name)}</a>${e.nick?`<div class="hint">${esc(e.nick)}</div>`:''}</td><td>${esc(e.pos)}</td><td><span class="tag">L${e.level}</span></td>
-    <td style="white-space:nowrap">${gradeChips(e)}</td><td><b>${fmt1(x.avg)}</b></td><td style="white-space:nowrap">${ymd(e.start)}</td><td style="white-space:nowrap" title="${posSince(e).src==='start'?'ไม่มีประวัติปรับตำแหน่ง — นับจากวันเริ่มงาน':'นับจากวันที่มีผลล่าสุด '+esc(effDate((e.hist.slice().sort((a,b)=>beToISO(a.date).localeCompare(beToISO(b.date))).pop()||{}).date))}">${posTen(e)}</td><td style="white-space:nowrap">${ymd(e.birth,1)}</td><td>${esc(e.edu.lvl||'-')}</td><td style="min-width:260px;font-size:12.5px">${orgLine(e,'<br>')||'-'}</td><td style="min-width:170px;font-size:12.5px">${e.hist.length?`<b>${e.hist.length} ครั้ง</b><div class="hint">ล่าสุด: ${esc(e.hist[e.hist.length-1].to)} · มีผล ${esc(effDate(e.hist[e.hist.length-1].date))}</div>`:'<span class="hint">-</span>'}</td>
+    <td style="white-space:nowrap">${gradeChips(e)}</td><td><b>${fmt1(x.avg)}</b></td><td style="white-space:nowrap">${compCell((db.comp[e.id]||{}).core)}</td><td style="white-space:nowrap">${compCell((db.comp[e.id]||{}).managerial)}</td><td style="white-space:nowrap">${ymd(e.start)}</td><td style="white-space:nowrap" title="${posSince(e).src==='start'?'ไม่มีประวัติปรับตำแหน่ง — นับจากวันเริ่มงาน':'นับจากวันที่มีผลล่าสุด '+esc(effDate((e.hist.slice().sort((a,b)=>beToISO(a.date).localeCompare(beToISO(b.date))).pop()||{}).date))}">${posTen(e)}</td><td style="white-space:nowrap">${ymd(e.birth,1)}</td><td>${esc(e.edu.lvl||'-')}</td><td style="min-width:260px;font-size:12.5px">${orgLine(e,'<br>')||'-'}</td><td style="min-width:170px;font-size:12.5px">${e.hist.length?`<b>${e.hist.length} ครั้ง</b><div class="hint">ล่าสุด: ${esc(e.hist[e.hist.length-1].to)} · มีผล ${esc(effDate(e.hist[e.hist.length-1].date))}</div>`:'<span class="hint">-</span>'}</td>
     <td>${x.pass?'<span class="tag ok">ผ่าน</span>':`<span class="tag bad" title="${esc(x.why.join(' · '))}">ไม่ผ่าน</span>`}${n?` <span class="tag ${STCLS[n.status]||'pri'}">${esc(n.status)}</span>`:''}</td>
-    <td style="white-space:nowrap">${n?`<button class="btn sm" data-n="${esc(n.id)}">ดูรายการ</button>`:(CAN.manage?`<button class="btn sm pri" data-nom="${esc(e.id)}">＋ เสนอชื่อ</button>`:'')}</td></tr>`}).join('')||'<tr><td colspan="14" class="hint">ไม่พบข้อมูล</td></tr>';
+    <td style="white-space:nowrap">${n?`<button class="btn sm" data-n="${esc(n.id)}">ดูรายการ</button>`:(CAN.manage?`<button class="btn sm pri" data-nom="${esc(e.id)}">＋ เสนอชื่อ</button>`:'')}</td></tr>`}).join('')||'<tr><td colspan="16" class="hint">ไม่พบข้อมูล</td></tr>';
   $('#fmore').innerHTML=a.length>f.lim?`<button class="btn" id="fm">แสดงเพิ่ม (${a.length-f.lim} คน)</button>`:'';
   if($('#fm'))$('#fm').onclick=()=>{f.lim+=200;rEmps()};
   $$('#fbody [data-d]').forEach(x=>x.onclick=ev=>{ev.preventDefault();openEmp(x.dataset.d)});
@@ -304,6 +343,7 @@ function openEmp(id){
     <dt>การศึกษาปัจจุบัน</dt><dd>${esc([e.edu.lvl,e.edu.major,e.edu.inst,e.edu.year].filter(Boolean).join(' · ')||'-')}</dd>
     <dt>วุฒิเดิม</dt><dd>${esc([e.edu.lvl0,e.edu.major0,e.edu.inst0,e.edu.year0].filter(Boolean).join(' · ')||'-')}</dd></dl></div>
     <div><h3 style="margin:0 0 6px;font-size:15px">เกรดประเมิน</h3>${bars}<div style="margin-top:8px">เฉลี่ย ${db.cfg.gradeYears} ปีล่าสุด <b>${fmt1(x.avg)}</b> · ${x.pass?'<span class="tag ok">ผ่านเกณฑ์เบื้องต้น</span>':'<span class="tag bad">ไม่ผ่านเกณฑ์</span>'}</div>${x.why.length?`<ul class="hint" style="margin:6px 0 0 18px;padding:0">${x.why.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>`:''}</div></div>
+  ${compBlock(e)}
   <h3 style="margin:16px 0 6px;font-size:15px">ประวัติการปรับตำแหน่ง</h3>${e.hist.length?`<div class="scroll"><table><thead><tr><th>ครั้งที่</th><th>ตำแหน่งเดิม</th><th>ตำแหน่งใหม่</th><th>สังกัดเดิม</th><th>สังกัดใหม่</th><th>เลขคำสั่ง</th><th>วันที่มีผล</th></tr></thead><tbody>${e.hist.map((h,i)=>`<tr><td>${i+1}</td><td>${esc(h.from)}</td><td>${esc(h.to)}</td><td>${esc(h.orgFrom)}</td><td>${esc(h.orgTo)}</td><td>${esc(h.order)}</td><td style="white-space:nowrap"><b>${esc(effDate(h.date))}</b></td></tr>`).join('')}</tbody></table></div>`:'<div class="hint">ไม่มีประวัติในไฟล์</div>'}
   <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">${n?`<span class="tag ${STCLS[n.status]||'pri'}">ถูกเสนอชื่อ: ${esc(n.status)}</span>`:(nx&&CAN.manage?`<button class="btn pri" onclick="openNom('${esc(e.id)}')">＋ เสนอชื่อปรับเป็น Level ${e.level+1}</button>`:'')}</div>`);
 }
@@ -539,7 +579,7 @@ function rFlow(){
       if(!allNodes.some(x=>x.key===bk))return alert('ไม่พบหน่วยงานนี้ในโครงสร้าง');drafts.add(key);rFlow();setTimeout(()=>{const r=[...document.querySelectorAll('#v-flow tbody tr')].find(t=>t.querySelector(`[data-pick$="|${key.includes('!')?'x:'+key:(allNodes.find(x=>x.key===key)||{}).v}"]`));if(r)r.scrollIntoView({behavior:'smooth',block:'center'})},50)};
     $$('#v-flow [data-rmrow]').forEach(a=>a.onclick=ev=>{ev.preventDefault();drafts.delete(a.dataset.rmrow);rFlow()})}
   if(!sup)return;
-  const reload=async()=>{await loadFlow();rFlow()},fail=er=>alert('บันทึกไม่สำเร็จ: '+errTxt(er)+(/scope_key/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub54.sql)':/ord/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub55.sql)':''));
+  const reload=async()=>{await loadFlow();await loadComp();rFlow()},fail=er=>alert('บันทึกไม่สำเร็จ: '+errTxt(er)+(/scope_key/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub54.sql)':/ord/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub55.sql)':''));
   $('#fAddRole').onclick=async()=>{const nm=prompt('ชื่อขั้นอนุมัติใหม่ (เช่น Committee)');if(!nm||!nm.trim())return;const nx=(steps.length?Math.max(...steps.map(s=>s.step_no)):0)+1,mo=(steps.length?Math.max(...steps.map(s=>s.ord||s.step_no)):0)+1;const r=await sb.from('promo_flow_steps').insert({step_no:nx,name:nm.trim(),active:true,ord:mo});if(r.error)return fail(r.error);reload()};
   $$('#v-flow [data-sn]').forEach(i=>i.onchange=async()=>{const v=i.value.trim();if(!v)return;const r=await sb.from('promo_flow_steps').update({name:v}).eq('step_no',+i.dataset.sn);if(r.error)return fail(r.error);reload()});
   $$('#v-flow [data-sa]').forEach(i=>i.onchange=async()=>{const r=await sb.from('promo_flow_steps').update({active:i.checked}).eq('step_no',+i.dataset.sa);if(r.error)return fail(r.error);reload()});
@@ -685,7 +725,12 @@ function rData(){
     <div class="hint" style="margin-bottom:10px">อ่านตารางในประกาศ (ชื่อ · ตำแหน่งเดิม → ตำแหน่งใหม่ · สังกัด) จับคู่กับพนักงานด้วยชื่อ แล้วเพิ่มเป็นรายการในประวัติของทุกคนที่อยู่ในประกาศ ด้วยวันที่มีผลที่ระบุ · เก็บแยกจากไฟล์ Excel จึงไม่หายเมื่อนำเข้า Excel ใหม่</div>
     <div class="row"><div style="flex:2"><label>ไฟล์ประกาศ (.docx)</label><input type="file" id="odx" accept=".docx"></div><div><label>เลขที่ประกาศ</label><input id="ono" placeholder="เช่น ป.002/2569"></div><div><label>วันที่มีผล (ใช้กับทุกคน)</label><input id="odt" type="date" value="2026-01-01"></div></div>
     <div id="oprev" class="hint" style="margin-top:10px"></div>
-    ${db.orders.length?`<div style="margin-top:12px"><b>ประกาศที่นำเข้าแล้ว</b>${db.orders.map(o=>`<div class="bar"><span class="n" style="min-width:140px">${esc(o.no)}</span><span>${o.entries.length} คน · มีผล ${esc(o.date)}</span><button class="btn sm bad" data-odel="${esc(o.no)}">ลบ</button></div>`).join('')}</div>`:''}</div>`:''}  <div class="card"><h2>เกณฑ์พิจารณาเบื้องต้น (ปรับตามนโยบายบริษัท)</h2><div class="row">
+    ${db.orders.length?`<div style="margin-top:12px"><b>ประกาศที่นำเข้าแล้ว</b>${db.orders.map(o=>`<div class="bar"><span class="n" style="min-width:140px">${esc(o.no)}</span><span>${o.entries.length} คน · มีผล ${esc(o.date)}</span><button class="btn sm bad" data-odel="${esc(o.no)}">ลบ</button></div>`).join('')}</div>`:''}</div>`:''}
+  ${CAN.manage&&CAN.all?`<div class="card"><h2>นำเข้าผลประเมิน Competency (.xlsx)</h2>
+    <div class="hint" style="margin-bottom:10px">ไฟล์ "รายงานสรุปผลการประเมิน Competency" (ชีต <b>Core</b> และ <b>Managerial</b>) — จับคู่กับพนักงานด้วยรหัสผู้ถูกประเมิน เก็บคะแนนรวม เกรด ผู้ประเมิน และคะแนนรายข้อ · นำเข้าซ้ำในปีเดียวกันจะแทนที่ข้อมูลปีนั้น</div>
+    <div class="row" style="align-items:end"><div style="flex:2"><label>ไฟล์ Excel</label><input type="file" id="cpx" accept=".xlsx,.xls"></div><div><label>ปีที่ประเมิน (พ.ศ.)</label><input id="cpy" type="number" value="2568"></div></div>
+    <div id="cpmsg" class="hint" style="margin-top:10px">${db.compYear?`ข้อมูลปัจจุบัน: ปี ${db.compYear} · ${Object.keys(db.comp).length} คน`:'ยังไม่เคยนำเข้า'}</div></div>`:''}
+  <div class="card"><h2>เกณฑ์พิจารณาเบื้องต้น (ปรับตามนโยบายบริษัท)</h2><div class="row">
     <div><label>เกรดเฉลี่ยขั้นต่ำ (4.0 = A)</label><input id="cAvg" type="number" step="0.1" value="${c.minAvg}"></div>
     <div><label>เกรดต่ำสุดที่ยอมรับ</label><select id="cMin">${Object.entries(GP).map(([g,p])=>`<option value="${p}" ${p===c.minGrade?'selected':''}>${g} (${p})</option>`).join('')}</select></div>
     <div><label>จำนวนปีล่าสุดที่นับเกรด</label><select id="cYrs">${[1,2,3,4,5].map(n=>`<option ${n===c.gradeYears?'selected':''}>${n}</option>`).join('')}</select></div>
@@ -695,6 +740,10 @@ function rData(){
   <div class="card"><h2>สำรองข้อมูล</h2><div class="row"><div style="flex:0"><button class="btn" id="bk">⬇ สำรองทั้งหมด (JSON)</button></div></div>
     <div class="hint" style="margin-top:8px">ข้อมูลอยู่ในระบบกลาง (Supabase) และคุมสิทธิ์ตามตาราง module_access — ไฟล์สำรองมีข้อมูลเกรดรายบุคคล เก็บรักษาและลบทิ้งเมื่อไม่ใช้</div></div>
   ${legacyCard}`;
+  if($('#cpx'))$('#cpx').onchange=async e=>{const f=e.target.files[0];if(!f)return;const m=$('#cpmsg');m.textContent='กำลังอ่านไฟล์และบันทึกขึ้นระบบกลาง…';
+    try{const y=+$('#cpy').value||2568;const r=await compImport(await f.arrayBuffer(),f.name,y);
+      m.innerHTML=`<span style="color:var(--ok)">✓ นำเข้าสำเร็จ ปี ${y}: ผู้ถูกประเมิน ${r.n} คน (Core ${r.core} · Managerial ${r.man})${r.unmatched?` · <span style="color:var(--warn)">ไม่พบในรายชื่อพนักงาน ${r.unmatched} คน</span>`:''}</span>`}
+    catch(er){m.innerHTML=`<span style="color:var(--bad)">นำเข้าไม่สำเร็จ: ${esc(errTxt(er))}${/promo_competency/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub62.sql)':''}</span>`}};
   $('#fx').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('#fmsg').textContent='กำลังอ่านไฟล์และบันทึกขึ้นระบบกลาง…';
     try{if(!window.XLSX)throw new Error('โหลดไลบรารี Excel ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');const r=await doImport(await f.arrayBuffer(),f.name);
       $('#fmsg').innerHTML=`<span style="color:var(--ok)">✓ นำเข้าสำเร็จ: พนักงาน ${r.emps} คน (ใหม่ ${r.added}) · ข้อกำหนดตำแหน่ง ${r.reqs} ระดับ</span>`}catch(er){$('#fmsg').innerHTML=`<span style="color:var(--bad)">นำเข้าไม่สำเร็จ: ${esc(errTxt(er))}</span>`}};
