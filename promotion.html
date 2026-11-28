@@ -62,8 +62,8 @@ tr:hover td{background:#fafbff}
 .sigp{display:block;width:100%;max-width:440px;height:130px;border:1.5px dashed #aab0e0;border-radius:12px;background:#fff;touch-action:none;cursor:crosshair;margin:4px 0}
 .pf-card{border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px;background:#fff}.g4{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 /* ===== Hero ทิวทัศน์ (ภาพเคลื่อนไหว: นกบิน กังหันหมุน หญ้าไหว หมอกเคลื่อน พระอาทิตย์เป็นวงกลมตัวย่อชื่อ) ===== */
-header#hero{position:relative;padding:0;overflow:hidden;background:#243a63;color:#fff;--hh:clamp(330px,44vw,720px);height:var(--hh);transition:height .75s cubic-bezier(.4,0,.2,1)}
-header#hero.mini{--hh:182px}
+header#hero{position:relative;padding:0;overflow:hidden;background:#243a63;color:#fff;--hh:clamp(250px,30vw,430px);height:var(--hh);transition:height .75s cubic-bezier(.4,0,.2,1)}
+header#hero.mini{--hh:150px}
 .hero-stage{position:absolute;z-index:0;overflow:hidden;--u:1;left:0;top:0;width:100%}
 .hero-bg{position:absolute;left:0;top:0;width:100%;height:100%;display:block}
 .hero-svg{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
@@ -141,7 +141,7 @@ header#hero nav{margin-top:auto}
   <div class="hero-ui">
   <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px"><a href="./" style="color:#fff;opacity:.85;font-size:13px;text-decoration:none">‹ กลับหน้าหลัก Dynamic Work Sync</a><span style="font-size:13px"><a href="#" id="heroTog" title="ย่อ / ขยายภาพทิวทัศน์" style="color:#fff;font-weight:700;margin-right:14px;text-decoration:none;text-shadow:0 1px 5px rgba(0,0,0,.6);font-size:13px">⛰ ย่อ/ขยาย</a><a href="#" id="bell" title="Inbox ผู้อนุมัติ — รายการที่รออนุมัติของคุณ" style="position:relative;color:#fff;text-decoration:none;font-size:18px;margin-right:14px">🔔<span id="bellN" class="hide" style="position:absolute;top:-7px;right:-11px;background:#ef4444;color:#fff;border-radius:10px;font-size:11px;font-weight:700;padding:1px 6px;min-width:18px;text-align:center;line-height:1.4"></span></a><span id="meTxt" style="opacity:.9"></span> <a href="#" id="lgOut" style="color:#fff;font-weight:700;margin-left:10px;text-decoration:underline">ออกจากระบบ</a></span></div>
   <h1>🚀 Promotion <span style="font-weight:400;opacity:.9">· เสนอชื่อปรับตำแหน่ง</span></h1>
-  <div class="sub">พิจารณาคุณสมบัติเบื้องต้นจากเกรด การศึกษา อายุงาน เทียบกับข้อกำหนดของตำแหน่งที่จะปรับ · ข้อมูลอยู่ในระบบกลาง คุมสิทธิ์ด้วย Supabase · <span id="who"></span></div>
+  <span id="who" style="display:none"></span>
   <div style="flex:1;min-height:6px"></div>
   <nav id="nav">
     <button data-v="dash" class="on">📊 ภาพรวม</button>
