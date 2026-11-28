@@ -496,7 +496,7 @@ function rFlow(){
   const grpOpts=orgTree().filter(u=>u.t==='group').map(g=>`<option value="${esc(g.c)}" ${FLOW_VIEW.group===g.c?'selected':''}>${esc(g.n)}</option>`).join('');
   const flowTxt=act.length?act.map(s=>`<b>${esc(s.name)}</b>`).join(' → '):'<span class="hint">ยังไม่ได้เปิดใช้ขั้นใด</span>';
   el.innerHTML=`<div class="card"><h2>Flow การอนุมัติการเสนอชื่อปรับตำแหน่ง</h2>
-    <p class="hint">แต่ละแถวคือ <b>หน่วยงานตามโครงสร้างองค์กร</b> (กลุ่มงาน › สายงาน › ฝ่าย › แผนก) แต่ละคอลัมน์คือ <b>ขั้นอนุมัติ</b> เรียงจากซ้ายไปขวา — ใส่ <b>ชื่อพนักงานที่มีอำนาจอนุมัติ</b> ในช่องของหน่วยงานนั้น (กด ＋) · ผู้อนุมัติที่กำหนดที่กลุ่มงาน/สายงานครอบคลุมทุกหน่วยย่อย (แสดงเป็น ↑ สีเทา) · แต่ละรายการต้องผ่านครบทุกขั้นจึง "ผ่านการพิจารณา" · อนุมัติรายการของตัวเองไม่ได้ · Super Admin อนุมัติแทนได้ทุกขั้น${sup?'':' · <b>แก้ไขได้เฉพาะ Super Admin</b>'}</p>
+    <p class="hint">แต่ละแถวคือ <b>หน่วยงานตามโครงสร้างองค์กร</b> (กลุ่มงาน › สายงาน › ฝ่าย › แผนก) แต่ละคอลัมน์คือ <b>ขั้นอนุมัติ</b> เรียงจากซ้ายไปขวา — ใส่ <b>ชื่อพนักงานที่มีอำนาจอนุมัติ</b> ในช่องของหน่วยงานนั้น (กด ＋) · <b>ผู้อนุมัติเห็นข้อมูลพนักงานและรายการเสนอชื่อ "เฉพาะในขอบเขตของตน" อัตโนมัติ (ดูอย่างเดียว)</b> ไม่ต้องกำหนดสิทธิ์ซ้ำที่แท็บสมาชิก · ผู้อนุมัติที่กำหนดที่กลุ่มงาน/สายงานครอบคลุมทุกหน่วยย่อย (แสดงเป็น ↑ สีเทา) · แต่ละรายการต้องผ่านครบทุกขั้นจึง "ผ่านการพิจารณา" · อนุมัติรายการของตัวเองไม่ได้ · Super Admin อนุมัติแทนได้ทุกขั้น${sup?'':' · <b>แก้ไขได้เฉพาะ Super Admin</b>'}</p>
     ${sup?`<div class="card noprint" style="box-shadow:none;border:1px solid var(--line);background:#f8f9ff;margin-bottom:12px"><b>＋ เลือกหน่วยงานเพิ่มในตาราง</b> <span class="hint">เลือกลงลึกได้ถึงระดับที่ต้องการ — กลุ่มงาน / สายงาน / ฝ่าย / แผนก (ตัวเลขคือจำนวนพนักงานสังกัด)</span>
       <div class="row" style="margin-top:8px;align-items:end"><div><label>กลุ่มงาน</label><select data-ar="group"></select></div><div><label>สายงาน / สำนัก</label><select data-ar="line"></select></div><div><label>ฝ่าย</label><select data-ar="dept"></select></div><div><label>แผนก</label><select data-ar="section"></select><label class="chk" style="margin:6px 0 0"><input type="checkbox" id="arEx"><span>ไม่นับรวมแผนกที่เลือก <span class="hint">(เลือกได้หลายแผนก)</span></span></label></div>
         <div style="flex:0"><button class="btn pri" id="arAdd">＋ เพิ่มแถว</button></div></div><div class="hint" id="arHd" style="margin-top:6px"></div></div>`:''}
@@ -562,8 +562,6 @@ function rFlow(){
       $$('#pkL [data-ch]').forEach(c=>c.onclick=async()=>{const emp=c.dataset.ch,e=empOf(emp);
         const scope=x.v==='__all'?{type:'all'}:x.sec?{type:'section',keys:[x.sec.d+'|'+x.sec.n]}:{type:'unit',keys:[...orgUnder(x.excl?x.unit.c:x.v)],labels:[x.label],...(x.excl?{exclude:x.excl}:{})};
         c.disabled=true;const r=await sb.from('promo_flow_approvers').upsert({step_no:s.step_no,emp_id:emp,name:e?e.name:'',scope,scope_key:x.key});if(r.error){c.disabled=false;return fail(r.error)}
-        const m=await sb.from('module_access').select('emp_id').eq('module','promo').eq('emp_id',emp);
-        if(!m.error&&!(m.data||[]).length){const r2=await sb.from('module_access').insert({module:'promo',emp_id:emp,perm:'view',scope,granted_by:'Flow อนุมัติ'});if(r2.error)alert('เพิ่มผู้อนุมัติแล้ว แต่เพิ่มสิทธิ์เข้าโมดูลไม่สำเร็จ — กำหนดที่เมนู สมาชิก › สิทธิ์การเข้าถึงโมดูล')}
         closeModal();reload()})};
     $('#pkQ').oninput=draw;$('#pkLv').onchange=draw;draw()});
 }
@@ -575,6 +573,7 @@ async function loadMem(){
   const [E,M]=await Promise.all([sb.from('employees').select('id,name,email,dept,active,user_id,approved,promo_verified,promo_suspended,role').order('id').range(0,4999),sb.from('module_access').select('*').eq('module','promo')]);
   if(E.error)throw E.error;MEM.rows=E.data||[];MEM.access=new Map((M.data||[]).map(a=>[a.emp_id,a]));
 }
+const flowAp=id=>(db.approvers||[]).filter(a=>a.emp_id===id&&((db.steps||[]).find(s=>s.step_no===a.step_no)||{}).active);
 const accOf=r=>r.promo_suspended?['ระงับ','bad']:!r.user_id?['ยังไม่ได้ตั้งรหัสผ่าน','warn']:(r.approved||r.promo_verified)?['ใช้งานได้','ok']:['รอยืนยัน','pri'];
 const PERM_TH={none:'ไม่มีสิทธิ์',view:'ดูอย่างเดียว',manage:'จัดการ'};
 async function rMem(){
@@ -584,7 +583,7 @@ async function rMem(){
   const list=MEM.rows.filter(r=>(!q||(r.id+' '+r.name+' '+(r.email||'')+' '+(r.dept||'')).toLowerCase().includes(q))&&(!MEM.acc||accOf(r)[0]===MEM.acc)&&(!MEM.perm||((MEM.access.get(r.id)||{}).perm||'none')===MEM.perm));
   const cnt=(k)=>MEM.rows.filter(r=>accOf(r)[0]===k).length,withPerm=[...MEM.access.keys()].length;
   el.innerHTML=`<div class="card"><h2>สมาชิก & สิทธิ์การใช้งาน Promotion</h2>
-    <div class="hint" style="margin-bottom:12px">สมาชิกเข้าสู่ระบบที่หน้า <b>promotion-login.html</b> ด้วยอีเมลบริษัท — ถ้าอีเมลอยู่ในรายชื่อนี้ ระบบส่งลิงก์ยืนยันไปที่อีเมล แล้วให้ตั้งรหัสผ่าน จากนั้นใช้งานได้ตามสิทธิ์ที่กำหนดในตารางนี้ (ไม่มีสิทธิ์ = เข้าไม่ได้) · ขอบเขตข้อมูลจำกัดได้ตามโครงสร้างองค์กร</div>
+    <div class="hint" style="margin-bottom:12px">สมาชิกเข้าสู่ระบบที่หน้า <b>promotion-login.html</b> ด้วยอีเมลบริษัท — เข้าครั้งแรกกำหนดรหัสผ่านเอง (อีเมล + รหัสพนักงาน) แล้วรอ Super Admin กด <b>✓ ยืนยัน</b> ที่นี่ จากนั้นเข้าใช้งานได้ · <b>ผู้อนุมัติใน Flow เห็นข้อมูลตามขอบเขตของตนอัตโนมัติ</b> ส่วนสิทธิ์ "ดูอย่างเดียว/จัดการ" ในตารางนี้ใช้กับคนที่ไม่ได้เป็นผู้อนุมัติ หรือต้องการสิทธิ์เสนอชื่อ/นำเข้า · ขอบเขตข้อมูลจำกัดได้ตามโครงสร้างองค์กร</div>
     <div class="grid g4" style="margin-bottom:12px"><div class="kpi"><span>สมาชิกทั้งหมด</span><b>${MEM.rows.length}</b></div><div class="kpi"><span>ใช้งานได้ (ตั้งรหัสผ่านแล้ว)</span><b style="color:var(--ok)">${cnt('ใช้งานได้')}</b></div><div class="kpi"><span>ยังไม่ได้ตั้งรหัสผ่าน</span><b style="color:var(--warn)">${cnt('ยังไม่ได้ตั้งรหัสผ่าน')}</b></div><div class="kpi"><span>ได้รับสิทธิ์ Promotion</span><b style="color:var(--pri)">${withPerm}</b></div></div>
     <div class="row noprint"><div style="flex:2"><label>ค้นหา (รหัส / ชื่อ / อีเมล / ฝ่าย)</label><input id="mq" type="search" value="${esc(MEM.q)}"></div>
       <div><label>บัญชี</label><select id="macc"><option value="">ทั้งหมด</option>${['ใช้งานได้','รอยืนยัน','ยังไม่ได้ตั้งรหัสผ่าน','ระงับ'].map(s=>`<option ${MEM.acc===s?'selected':''}>${s}</option>`).join('')}</select></div>
@@ -596,8 +595,8 @@ async function rMem(){
       return `<tr><td>${esc(r.id)}</td><td>${esc(r.name)}${r.role==='super_admin'?' <span class="tag pri">Super Admin</span>':''}${r.active===false?' <span class="tag bad">ปิดใช้งาน</span>':''}</td>
       <td style="font-size:13px">${esc(r.email||'')} <a href="#" data-me="${esc(r.id)}" title="แก้ไขอีเมล" style="text-decoration:none">✎</a></td><td class="hint">${esc(r.dept||'')}</td>
       <td><span class="tag ${a[1]}">${a[0]}</span></td>
-      <td><select data-mp="${esc(r.id)}" style="min-height:0;padding:5px 8px">${Object.entries(PERM_TH).map(([k,v])=>`<option value="${k}" ${pm===k?'selected':''}>${v}</option>`).join('')}</select></td>
-      <td style="font-size:12.5px">${ac?`${esc(scopeTxt(ac.scope))} <a href="#" data-ms="${esc(r.id)}" style="color:var(--pri);text-decoration:none">กำหนด</a>`:'<span class="hint">—</span>'}</td>
+      <td><select data-mp="${esc(r.id)}" style="min-height:0;padding:5px 8px">${Object.entries(PERM_TH).map(([k,v])=>`<option value="${k}" ${pm===k?'selected':''}>${v}</option>`).join('')}</select>${flowAp(r.id).length?`<div class="hint" style="margin-top:4px">+ เห็นข้อมูลตาม Flow (ผู้อนุมัติ)</div>`:''}</td>
+      <td style="font-size:12.5px">${ac?`${esc(scopeTxt(ac.scope))} <a href="#" data-ms="${esc(r.id)}" style="color:var(--pri);text-decoration:none">กำหนด</a>`:'<span class="hint">—</span>'}${flowAp(r.id).map(a=>`<div class="hint" style="font-size:12px">ผู้อนุมัติ ${esc(((db.steps||[]).find(s=>s.step_no===a.step_no)||{}).name||'ขั้น '+a.step_no)}: ${esc(scopeTxt(a.scope))}</div>`).join('')}</td>
       <td style="white-space:nowrap">${memBtns(r,a[0])}</td></tr>`}).join('')||'<tr><td colspan="8" class="hint">ไม่พบสมาชิก</td></tr>'}</tbody></table></div></div>`;
   const rerender=()=>rMem();
   $('#mq').oninput=e=>{MEM.q=e.target.value;rerender();const i=$('#mq');i.focus();i.setSelectionRange(MEM.q.length,MEM.q.length)};$('#macc').onchange=e=>{MEM.acc=e.target.value;rerender()};$('#mperm').onchange=e=>{MEM.perm=e.target.value;rerender()};
