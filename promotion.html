@@ -880,7 +880,7 @@ const PF={nomId:'',tab:'form',data:{},timer:null,state:''};
 const pfGet=(o,path)=>path.split('.').reduce((a,k)=>a==null?undefined:a[k],o);
 function pfSet(o,path,v){const ks=path.split('.');let a=o;ks.slice(0,-1).forEach((k,i)=>{if(a[k]==null)a[k]=/^\d+$/.test(ks[i+1])?[]:{};a=a[k]});a[ks[ks.length-1]]=v}
 const pfDocDone=d=>(d&&d.docs?PF_DOCS.map((_,i)=>d.docs[i]||{}):PF_DOCS.map(()=>({}))).filter(x=>x.status==='ครบถ้วน'||x.status==='ไม่เกี่ยวข้อง').length;
-function openPf(nomId,tab){PF.nomId=nomId;PF.step=({form:'1',comp:'3',docs:'6'})[tab]||(/^[1-6]$/.test(String(tab))?String(tab):'1');PF.data=JSON.parse(JSON.stringify(db.pf[nomId]||{}));PF.state='';show('pf')}
+function openPf(nomId,tab){PF.nomId=nomId;PF.trSel=null;PF.step=({form:'1',comp:'3',docs:'6'})[tab]||(/^[1-6]$/.test(String(tab))?String(tab):'1');PF.data=JSON.parse(JSON.stringify(db.pf[nomId]||{}));PF.state='';show('pf')}
 function pfSchedule(){PF.state='กำลังบันทึก…';const el=$('#pfState');if(el)el.textContent=PF.state;clearTimeout(PF.timer);PF.timer=setTimeout(pfSave,900)}
 const mgrMode=n=>!!n&&n.status==='เสนอแล้ว'&&canAct(n)&&(activeSteps()[0]||{}).step_no===n.step;
 const pfCanSave=()=>CAN.nom||mgrMode(db.noms.find(x=>x.id===PF.nomId));
@@ -890,6 +890,29 @@ async function pfSave(){
   PF.state=r.error?'บันทึกไม่สำเร็จ: '+errTxt(r.error)+(/promo_portfolio/.test(r.error.message||'')?' (ยังไม่ได้รัน supabase_update_hub63.sql)':''):'บันทึกแล้ว ✓';if(!r.error)db.pf[id]=JSON.parse(JSON.stringify(PF.data));
   const el=$('#pfState');if(el){el.textContent=PF.state;el.style.color=r.error?'var(--bad)':'var(--ok)'}
 }
+/* แนะนำ 4 หลักสูตรที่เกี่ยวข้องกับตำแหน่งที่เสนอ: ดูจากตำแหน่งใหม่/ตำแหน่งปัจจุบัน/สังกัด → น้ำหนักหมวดทักษะ + คำที่ตรงกับชื่อหลักสูตร + ชั่วโมง + ความใหม่ */
+const TR_AFF=[
+ [/ผู้จัดการ|ผู้อำนวยการ|หัวหน้า|ผู้บริหาร|ผู้ช่วย|manager|director|head/i,{'Soft skill':3,'Functional':2}],
+ [/วิศวกร|ไฟฟ้า|โครงการ|ก่อสร้าง|ออกแบบ|\bepc\b|engineer|project/i,{'EPC':3,'สายส่ง':2,'Hard skill':2,'ความปลอดภัย (Safety)':1}],
+ [/สายส่ง|สถานี|substation|ระบบส่ง/i,{'สายส่ง':4,'Hard skill':1}],
+ [/บัญชี|การเงิน|ภาษี|งบประมาณ|finance|account/i,{'Functional':4}],
+ [/บุคคล|สรรหา|ฝึกอบรม|พัฒนาองค์กร|\bhr\b/i,{'Functional':3,'Soft skill':2}],
+ [/จัดซื้อ|พัสดุ|สัญญา|กฎหมาย|ประกัน|legal|กำกับ/i,{'Functional':4,'Compliance / ESG':1}],
+ [/ความปลอดภัย|จป|safety|อาชีวอนามัย/i,{'ความปลอดภัย (Safety)':4}],
+ [/สารสนเทศ|\bit\b|ดิจิทัล|digital|ข้อมูล|data/i,{'Digital':4}],
+ [/ขาย|การตลาด|พัฒนาธุรกิจ|ลงทุน|sales|marketing/i,{'Functional':3,'Soft skill':2,'EPC':1}]];
+function pfRelevant(TH,n,e){
+  const ctx=[n.toPos,e.pos,e.dept,e.section,e.line].filter(Boolean).join(' '),aff={};
+  TR_AFF.forEach(([re,w])=>{if(re.test(ctx))Object.entries(w).forEach(([k,v])=>aff[k]=(aff[k]||0)+v)});
+  const grams=new Set();String(n.toPos+' '+(e.dept||'')+' '+(e.section||'')).replace(/[^฀-๿A-Za-z]+/g,' ').split(' ').forEach(w=>{for(let i=0;i+4<=w.length;i++)grams.add(w.slice(i,i+4).toLowerCase())});
+  const newest=TH.reduce((m,r)=>Math.max(m,+String(r.sort||'').slice(0,4)||0),0);
+  const sc=TH.map((r,i)=>{const cat=trCat(r).k,name=String(r.course||'').toLowerCase(),yr=+String(r.sort||'').slice(0,4)||0;
+    let s=(aff[cat]||0)*2;let g=0;grams.forEach(x=>{if(name.includes(x))g++});s+=Math.min(g,4)*1.5;
+    s+=Math.min(+r.hrs||0,12)/6;if(newest&&yr>=newest-2)s+=1;if(/Compliance/.test(cat)&&(+r.hrs||0)<=1.5)s-=3;
+    return{i,s,key:name.replace(/\s+/g,'').slice(0,12)}});
+  sc.sort((a,b)=>b.s-a.s||a.i-b.i);const out=[],seen=new Set();
+  for(const x of sc){if(seen.has(x.key))continue;seen.add(x.key);out.push(x.i);if(out.length>=4)break}
+  return out}
 function pfEvalDefaults(e){const rows=GRADE_YEARS.slice().reverse().slice(0,4).map(y=>({year:y,kpi:e.grades[y]?('เกรดประเมิน '+e.grades[y]):'',comp:'',note:''}));
   const c=db.comp[e.id];if(c&&rows.length){const r=rows.find(x=>x.year===String(db.compYear))||rows[0];r.year=String(db.compYear);r.comp=[c.core?`Core ${fmt1(c.core.score)} (${c.core.grade})`:'',c.managerial?`Managerial ${fmt1(c.managerial.score)} (${c.managerial.grade})`:''].filter(Boolean).join(' / ')}return rows}
 const PF_STEPS=[['1','ข้อมูลและเหตุผล','🧾'],['2','ผลงานเด่น','🏆'],['3','ผลประเมิน & Competency','📊'],['4','การพัฒนา & ความพร้อม','🌱'],['5','ความเห็นและอนุมัติ','✍️']];
@@ -962,8 +985,9 @@ function rPf(){
   }else if(step==='4'){
     const tr=arr('train'),rows=tr.length?tr:[{}];
     const TH=(db.train[e.id]||[]).slice().sort((a,b)=>(b.sort||'').localeCompare(a.sort||''));
+    if(PF.trSel==null)PF.trSel=(ro||arr('train').some(r=>r&&r.course))?[]:pfRelevant(TH,n,e);
     body=(TH.length?card('วิเคราะห์ทักษะจากหลักสูตรฝึกอบรม (สัดส่วนตามชั่วโมง รวม 100%)',trChartHtml(TH,190)+`<div style="margin-top:10px"><div class="hint" style="margin-bottom:2px">ดูหลักสูตรในแต่ละหมวด (จัดหมวดอัตโนมัติจากคำในชื่อหลักสูตร)</div>${trCatDetails(TH)}</div>`):'')
-     +card(`ประวัติการฝึกอบรมจากระบบ${TH.length?` · ${TH.length} หลักสูตร · ${fmt1(trHours(TH))} ชม.`:''}`,TH.length?`<div class="scroll" style="max-height:340px"><table><thead><tr><th style="cursor:default;width:40px">#</th><th style="cursor:default">หลักสูตร</th><th style="cursor:default;white-space:nowrap">วันที่</th><th style="cursor:default">ชม.</th><th style="cursor:default">สถาบัน / สถานที่</th></tr></thead><tbody>${TH.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.course)}</td><td style="white-space:nowrap">${esc(r.date)}</td><td>${r.hrs||''}</td><td>${esc([r.inst,r.place].filter(Boolean).join(' · '))}</td></tr>`).join('')}</tbody></table></div>`+(ro?'':`<button type="button" class="btn sm" id="pfFillTrain" style="margin-top:8px">⤓ ดึง 4 หลักสูตรล่าสุดเข้าแบบฟอร์มด้านล่าง</button>`)+'<div class="hint" style="margin-top:6px">ประวัติทั้งหมดนี้จะพิมพ์ลงใน PDF โดยอัตโนมัติ</div>':'<div class="hint">ยังไม่มีประวัติการฝึกอบรมของพนักงานคนนี้ในระบบ (ผู้ดูแลนำเข้าได้ที่เมนู นำเข้า / ตั้งค่า) — กรอกเองด้านล่างได้</div>')
+     +card(`ประวัติการฝึกอบรมจากระบบ${TH.length?` · ${TH.length} หลักสูตร · ${fmt1(trHours(TH))} ชม.`:''}`,TH.length?`<div class="scroll" style="max-height:340px"><table><thead><tr>${ro?'':'<th style="cursor:default;width:34px">เลือก</th>'}<th style="cursor:default;width:40px">#</th><th style="cursor:default">หลักสูตร</th><th style="cursor:default;white-space:nowrap">วันที่</th><th style="cursor:default">ชม.</th><th style="cursor:default">สถาบัน / สถานที่</th></tr></thead><tbody>${TH.map((r,i)=>`<tr>${ro?'':`<td><input type="checkbox" data-trp="${i}" ${(PF.trSel||[]).includes(i)?'checked':''} style="width:18px;min-height:18px"></td>`}<td>${i+1}</td><td>${esc(r.course)}</td><td style="white-space:nowrap">${esc(r.date)}</td><td>${r.hrs||''}</td><td>${esc([r.inst,r.place].filter(Boolean).join(' · '))}</td></tr>`).join('')}</tbody></table></div>`+(ro?'':`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px"><select id="pfTrPre" style="width:auto;min-width:200px"><option value="">— เลือกอัตโนมัติ —</option><option value="rel">4 หลักสูตรที่เกี่ยวข้องกับตำแหน่งงาน (แนะนำ)</option><option value="latest">4 หลักสูตรล่าสุด</option><option value="hours">4 หลักสูตรชั่วโมงมากสุด</option><option value="clear">ล้างที่เลือก</option></select><span class="hint" id="pfTrCnt">เลือก ${(PF.trSel||[]).length}/4</span><button type="button" class="btn sm pri" id="pfFillTrain" ${(PF.trSel||[]).length?'':'disabled'}>⤓ ดึงที่เลือกเข้าแบบฟอร์มด้านล่าง</button></div><div class="hint" style="margin-top:4px">ระบบเลือก 4 หลักสูตรที่เกี่ยวข้องกับตำแหน่ง "${esc(n.toPos)}" ให้ล่วงหน้า (ดูจากตำแหน่ง สังกัด หมวดทักษะ ชั่วโมง และความใหม่) — ติ๊กเพิ่ม/เอาออกได้สูงสุด 4 รายการ แล้วกดดึงเข้าแบบฟอร์ม</div>`)+'<div class="hint" style="margin-top:6px">ประวัติทั้งหมดนี้จะพิมพ์ลงใน PDF โดยอัตโนมัติ</div>':'<div class="hint">ยังไม่มีประวัติการฝึกอบรมของพนักงานคนนี้ในระบบ (ผู้ดูแลนำเข้าได้ที่เมนู นำเข้า / ตั้งค่า) — กรอกเองด้านล่างได้</div>')
      +card('หลักสูตรสำคัญที่ต้องการเน้น (กรอกเพิ่มได้ไม่เกิน 4 รายการ)',rows.map((r,i)=>`<div class="pf-card" style="background:#f8f9ff"><div style="font-weight:600;margin-bottom:6px">รายการที่ ${i+1} ${ro?'':`<button type="button" class="btn sm bad" data-rm="train|${i}" style="float:right">ลบ</button>`}</div><div class="grid g2">${fld('หลักสูตร / การอบรม',inp(`form.train.${i}.course`))}${fld('หน่วยงานผู้จัด',inp(`form.train.${i}.org`))}${fld('วันที่ / ปี',inp(`form.train.${i}.date`))}${fld('ผลการพัฒนา',inp(`form.train.${i}.result`))}</div></div>`).join('')+(ro||rows.length>=4?'':`<button type="button" class="btn" data-add="train|4">＋ เพิ่มการอบรม (${rows.length}/4)</button>`))
      +card('ความพร้อมสำหรับตำแหน่งใหม่ — เปรียบเทียบตำแหน่งเดิม/ใหม่',['หน้าที่และความรับผิดชอบ','ขอบเขตอำนาจตัดสินใจ','ความซับซ้อนของงาน','การบริหารบุคลากร','การบริหารงบประมาณ / ทรัพยากร','การประสานงานภายใน / ภายนอก'].map((t,i)=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><b style="font-size:13.5px">${t}</b><div class="grid g2" style="margin-top:6px;gap:8px">${inp(`form.ready.${i}.cur`,'ตำแหน่งปัจจุบัน')}${inp(`form.ready.${i}.new`,'ตำแหน่งใหม่')}</div>${inp(`form.ready.${i}.det`,'รายละเอียด / ความแตกต่าง')}</div>`).join('')
        +`<div style="margin-top:12px"><label>สรุปความพร้อม</label>${seg('form.readyOpt',PF_READY,'seg-c')}</div><div style="margin-top:10px"><label>รายละเอียดความพร้อมและประเด็นที่ต้องพัฒนา</label>${area('form.readyDet',3)}</div>`);
@@ -1003,8 +1027,13 @@ function rPf(){
   $$('#v-pf [data-tg]').forEach(b=>b.onclick=()=>{const path=b.dataset.tg;pfSet(PF.data,path,!pfGet(PF.data,path));pfTouch(pfStepOf(path));pfSchedule();const y=window.scrollY;rPf();window.scrollTo(0,y)});
   $$('#v-pf [data-add]').forEach(b=>b.onclick=()=>{const [k,cap]=b.dataset.add.split('|'),a=(pfGet(PF.data,'form.'+k)||[]).slice();if(!a.length)a.push({});if(a.length<+cap)a.push({});pfSet(PF.data,'form.'+k,a);pfTouch(pfStepOf('form.'+k));pfSchedule();rPf()});
   $$('#v-pf [data-rm]').forEach(b=>b.onclick=()=>{const [k,i]=b.dataset.rm.split('|'),a=(pfGet(PF.data,'form.'+k)||[]).slice();a.splice(+i,1);pfSet(PF.data,'form.'+k,a);pfTouch(pfStepOf('form.'+k));pfSchedule();rPf()});
-  if($('#pfFillTrain'))$('#pfFillTrain').onclick=()=>{const TH=(db.train[e.id]||[]).slice().sort((a,b)=>(b.sort||'').localeCompare(a.sort||'')),big=TH.filter(r=>r.hrs>=6),pick=big.concat(TH.filter(r=>!(r.hrs>=6))).slice(0,4);
-    pfSet(PF.data,'form.train',pick.map(r=>({course:r.course,org:r.inst||r.place||'',date:r.date,result:r.hrs?r.hrs+' ชม.':''})));pfTouch('4');pfSchedule();rPf()};
+  if($('#pfFillTrain')){const TH=(db.train[e.id]||[]).slice().sort((a,b)=>(b.sort||'').localeCompare(a.sort||'')),cnt=()=>{const n=(PF.trSel||[]).length;$('#pfTrCnt').textContent=`เลือก ${n}/4`;$('#pfFillTrain').disabled=!n};
+    $$('#v-pf [data-trp]').forEach(c=>c.onchange=()=>{const i=+c.dataset.trp;PF.trSel=PF.trSel||[];if(c.checked){if(PF.trSel.length>=4){c.checked=false;return alert('เลือกได้สูงสุด 4 หลักสูตร (ตามจำนวนช่องในแบบฟอร์ม)')}PF.trSel.push(i)}else PF.trSel=PF.trSel.filter(x=>x!==i);cnt()});
+    $('#pfTrPre').onchange=ev=>{const v=ev.target.value;if(!v)return;if(v==='clear')PF.trSel=[];else if(v==='rel')PF.trSel=pfRelevant(TH,n,e);else if(v==='latest')PF.trSel=TH.map((_,i)=>i).slice(0,4);else PF.trSel=TH.map((r,i)=>[i,+r.hrs||0]).sort((a,b)=>b[1]-a[1]||a[0]-b[0]).slice(0,4).map(x=>x[0]);
+      const y=window.scrollY;rPf();window.scrollTo(0,y)};
+    $('#pfFillTrain').onclick=()=>{const pick=(PF.trSel||[]).slice().sort((a,b)=>a-b).map(i=>TH[i]).filter(Boolean);if(!pick.length)return;
+      const cur=arr('train').filter(r=>r&&(r.course||r.org||r.date||r.result));if(cur.length&&!confirm('แบบฟอร์มด้านล่างมีข้อมูลอยู่แล้ว ต้องการแทนที่ด้วยหลักสูตรที่เลือกหรือไม่?'))return;
+      pfSet(PF.data,'form.train',pick.map(r=>({course:r.course,org:r.inst||r.place||'',date:r.date,result:r.hrs?r.hrs+' ชม.':''})));PF.trSel=[];pfTouch('4');pfSchedule();rPf()}}
   if($('#pfFillEval'))$('#pfFillEval').onclick=()=>{pfSet(PF.data,'form.eval',pfEvalDefaults(e).map(r=>({year:r.year,kpi:r.kpi,comp:r.comp,note:r.note})));pfTouch('3');pfSchedule();rPf()};
   const upload=async(i,files)=>{if(!files.length)return;const st=$('#pfState');st.textContent='กำลังอัปโหลด…';
     try{PF.data.docs=PF.data.docs||[];const dd=PF.data.docs[i]=PF.data.docs[i]||{};dd.files=dd.files||[];
