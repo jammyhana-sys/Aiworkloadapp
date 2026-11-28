@@ -102,7 +102,9 @@ const GP={'A+':4.3,'A':4.0,'A-':3.7,'B+':3.3,'B':3.0,'B-':2.7,'C+':2.3,'C':2.0,'
 const STATUS=['ร่าง','เสนอแล้ว','ผ่านการพิจารณา','ไม่ผ่านการพิจารณา','ยกเลิก'];
 const STCLS={'ร่าง':'','เสนอแล้ว':'pri','ผ่านการพิจารณา':'ok','ไม่ผ่านการพิจารณา':'bad','ยกเลิก':'warn'};
 const GRADE_YEARS=['2564','2565','2566','2567','2568'];
-const DEF={minAvg:3.0,minGrade:2.7,gradeYears:3,minTenure:1,yearBE:2569};
+const DEF={minAvg:3.0,minGrade:2.7,gradeYears:3,minTenure:2,yearBE:2569};
+/* นโยบาย: ทุกระดับต้องมีอายุงานในตำแหน่ง (ระดับปัจจุบัน) อย่างน้อย 2 ปี — ใช้กับทุกคน ตั้งค่าให้ต่ำกว่า 2 ไม่ได้ */
+const MIN_POS_YEARS=2;const minPosY=c=>Math.max(MIN_POS_YEARS,+(c&&c.minTenure)||0);
 let db={emps:[],reqs:[],noms:[],orders:[],cfg:{...DEF},imported:null};
 /* ============ ระบบกลาง (Supabase) — ใช้ session เดียวกับแอปหลัก ============ */
 const SB_URL='https://vhhekmpkcqlgesojvlws.supabase.co',SB_KEY='sb_publishable_I5aGYPaJKemi6HP8Liijeg_Hb_M7-SQ';
@@ -406,7 +408,16 @@ const yearsBetween=(iso,to=new Date())=>{if(!iso)return null;const d=new Date(is
 const effDate=v=>{if(v==null||v==='')return '';const s=String(v).trim();if(!/^\d{5,7}$/.test(s))return s;const d=new Date(Date.UTC(1899,11,30)+(+s)*864e5);if(isNaN(d))return s;return `${String(d.getUTCDate()).padStart(2,"0")}/${String(d.getUTCMonth()+1).padStart(2,"0")}/${d.getUTCFullYear()}`};
 /* อายุงานในตำแหน่งปัจจุบัน = นับจาก "วันที่มีผล" ของการปรับตำแหน่งครั้งล่าสุด (ถ้าไม่มีประวัติ นับจากวันเริ่มงาน) */
 const beToISO=s=>{const m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(effDate(s));return m?`${+m[3]-543}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:''};
-const posSince=e=>{const ds=(e.hist||[]).map(h=>beToISO(h.date)).filter(Boolean).sort();return ds.length?{iso:ds[ds.length-1],src:'promo'}:{iso:e.start||'',src:'start'}};
+/* อายุงานในระดับปัจจุบัน: นับจากวันที่มีผล "เลื่อน/เปลี่ยนระดับ" ล่าสุด — การแต่งตั้งใหม่ที่ระดับเดิม (เช่น ประกาศ ป.002/2569 ที่ทุกคนมีผล 01/01/2569 โดยระดับ from = to) ไม่นับเป็นจุดเริ่มต้นใหม่ */
+const lvInTxt=s=>{const m=String(s||'').match(/ระดับ(?:ตำแหน่ง)?\s*(\d+)/);return m?+m[1]:null};
+const posSince=e=>{
+  const hs=(e.hist||[]).map(h=>({iso:beToISO(h.date),lf:lvInTxt(h.from),lt:lvInTxt(h.to)})).filter(x=>x.iso).sort((a,b)=>a.iso.localeCompare(b.iso));
+  if(!hs.length){/* ไม่มีประวัติเลย + ไม่อยู่ในประกาศแต่งตั้งที่นำเข้า → ถือว่าเข้าใหม่ปี 2569 (นับจาก 01/01/2569 หรือวันเริ่มงานถ้าหลังจากนั้น) */
+    if((db.orders||[]).length&&!(e.hist||[]).some(h=>h.src==='order')){const s0='2026-01-01';return{iso:(e.start&&e.start>s0)?e.start:s0,src:'new'}}
+    return{iso:e.start||'',src:'start'}}
+  for(let i=hs.length-1;i>=0;i--){const h=hs[i];if(h.lf!=null&&h.lt!=null&&h.lf===h.lt)continue;return{iso:h.iso,src:'promo'}}
+  return{iso:e.start||'',src:'start'}};
+const posSrcTxt=s=>s.src==='promo'?'นับจากวันที่มีผลเลื่อน/เปลี่ยนระดับล่าสุด '+thDate(s.iso)+' (ไม่นับการแต่งตั้งที่ระดับเดิม)':s.src==='new'?'เข้าใหม่ปี 2569 (ไม่อยู่ในประกาศแต่งตั้ง) — นับจาก '+thDate(s.iso):'ไม่มีประวัติเลื่อนระดับ — นับจากวันเริ่มงาน';
 const posTen=e=>{const s=posSince(e);return s.iso?`${ymd(s.iso)}${s.src==='start'?' *':''}`:'-'};
 const ymd=(iso,noDay)=>{if(!iso)return '-';const a=new Date(iso+'T00:00:00Z'),b=new Date();let y=b.getUTCFullYear()-a.getUTCFullYear(),m=b.getUTCMonth()-a.getUTCMonth(),d=b.getUTCDate()-a.getUTCDate();if(d<0){m--;d+=new Date(Date.UTC(b.getUTCFullYear(),b.getUTCMonth(),0)).getUTCDate()}if(m<0){y--;m+=12}return `${y} ปี ${m} ด.`+(noDay?'':` ${d} ว.`)};
 const orgLine=(e,sep)=>[[e.group,e.groupCode],[e.line,e.lineCode],[e.dept,e.deptCode],[e.section,'']].filter(x=>x[0]||x[1]).map(([n,c])=>esc(n)+(c?` <span class="hint">(${esc(c)})</span>`:'')).join(sep);
@@ -485,11 +496,11 @@ const doImport=(buf,name)=>pushImport(parseWorkbook(buf),name);
 function evalEmp(e){
   const c=db.cfg,gs=GRADE_YEARS.map(y=>({y,g:e.grades[y],p:GP[e.grades[y]]})).filter(x=>x.p!=null);
   const last=gs.slice(-c.gradeYears),avg=last.length?last.reduce((a,x)=>a+x.p,0)/last.length:null,min=last.length?Math.min(...last.map(x=>x.p)):null;
-  const ten=yearsBetween(e.start),why=[];
+  const ten=yearsBetween(e.start),posY=yearsBetween(posSince(e).iso),why=[];
   if(last.length<c.gradeYears)why.push(`มีเกรดไม่ครบ ${c.gradeYears} ปีล่าสุด (มี ${last.length} ปี)`);
   if(avg!=null&&avg<c.minAvg)why.push(`เกรดเฉลี่ย ${fmt1(avg)} < ${c.minAvg}`);
   if(min!=null&&min<c.minGrade)why.push(`มีเกรดต่ำกว่าเกณฑ์ขั้นต่ำ`);
-  if(ten!=null&&ten<c.minTenure)why.push(`อายุงาน ${fmt1(ten)} ปี < ${c.minTenure} ปี`);
+  if(posY!=null&&posY<minPosY(c))why.push(`อายุงานในตำแหน่ง ${fmt1(posY)} ปี < ${minPosY(c)} ปี (ทุกระดับ)`);
   if(e.level>=14)why.push('Level สูงสุดแล้ว');
   return{avg,min,ten,last,pass:!why.length,why};
 }
@@ -536,7 +547,7 @@ function rDash(){
     <div class="card"><h2>สถานะการเสนอชื่อ</h2>${STATUS.map(s=>`<div class="bar"><span class="n"><span class="tag ${STCLS[s]}">${s}</span></span><i class="b2" style="width:${stc[s]/Math.max(1,...Object.values(stc))*55}%"></i><span>${stc[s]}</span></div>`).join('')}
     <h2 style="margin-top:20px">เสนอชื่อแยกตามฝ่าย</h2>${Object.entries(byDept).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([d,n])=>`<div class="bar"><span class="n" style="min-width:200px">${esc(d)}</span><i style="width:${n*14}px"></i><span>${n}</span></div>`).join('')||'<div class="hint">ยังไม่มีการเสนอชื่อ</div>'}</div></div>
   ${pfDash()}
-  <div class="hint">เกณฑ์เบื้องต้นตอนนี้: เกรดเฉลี่ย ${db.cfg.gradeYears} ปีล่าสุด ≥ ${db.cfg.minAvg} · ไม่มีเกรดต่ำกว่า ${db.cfg.minGrade} (B- = 2.7) · อายุงาน ≥ ${db.cfg.minTenure} ปี — ปรับได้ที่เมนู นำเข้า / ตั้งค่า</div>`;
+  <div class="hint">เกณฑ์เบื้องต้นตอนนี้: เกรดเฉลี่ย ${db.cfg.gradeYears} ปีล่าสุด ≥ ${db.cfg.minAvg} · ไม่มีเกรดต่ำกว่า ${db.cfg.minGrade} (B- = 2.7) · อายุงานในตำแหน่ง ≥ ${minPosY(db.cfg)} ปี (ทุกระดับ) — ปรับเกณฑ์อื่นได้ที่เมนู นำเข้า / ตั้งค่า</div>`;
 }
 
 function filteredEmps(){
@@ -570,7 +581,7 @@ function rEmps(){
   $('#fcount').textContent=`พบ ${a.length} จาก ${db.emps.length} คน`;
   $('#fbody').innerHTML=a.slice(0,f.lim).map(e=>{const x=ev.get(e.id),n=anyNom(e.id);
     return `<tr><td>${esc(e.id)}</td><td><a href="#" data-d="${esc(e.id)}" style="color:var(--pri);font-weight:600;text-decoration:none">${esc(e.name)}</a>${e.nick?`<div class="hint">${esc(e.nick)}</div>`:''}</td><td>${esc(e.pos)}</td><td><span class="tag">L${e.level}</span></td>
-    <td style="white-space:nowrap">${gradeChips(e)}</td><td><b>${fmt1(x.avg)}</b></td><td style="white-space:nowrap">${compCell((db.comp[e.id]||{}).core)}</td><td style="white-space:nowrap">${compCell((db.comp[e.id]||{}).managerial)}</td><td style="white-space:nowrap">${ymd(e.start)}</td><td style="white-space:nowrap" title="${posSince(e).src==='start'?'ไม่มีประวัติปรับตำแหน่ง — นับจากวันเริ่มงาน':'นับจากวันที่มีผลล่าสุด '+esc(effDate((e.hist.slice().sort((a,b)=>beToISO(a.date).localeCompare(beToISO(b.date))).pop()||{}).date))}">${posTen(e)}</td><td style="white-space:nowrap">${ymd(e.birth,1)}</td><td>${esc(e.edu.lvl||'-')}</td><td style="min-width:260px;font-size:12.5px">${orgLine(e,'<br>')||'-'}</td><td style="min-width:170px;font-size:12.5px">${e.hist.length?`<b>${e.hist.length} ครั้ง</b><div class="hint">ล่าสุด: ${esc(e.hist[e.hist.length-1].to)} · มีผล ${esc(effDate(e.hist[e.hist.length-1].date))}</div>`:'<span class="hint">-</span>'}</td>
+    <td style="white-space:nowrap">${gradeChips(e)}</td><td><b>${fmt1(x.avg)}</b></td><td style="white-space:nowrap">${compCell((db.comp[e.id]||{}).core)}</td><td style="white-space:nowrap">${compCell((db.comp[e.id]||{}).managerial)}</td><td style="white-space:nowrap">${ymd(e.start)}</td><td style="white-space:nowrap" title="${esc(posSrcTxt(posSince(e)))}">${posTen(e)}</td><td style="white-space:nowrap">${ymd(e.birth,1)}</td><td>${esc(e.edu.lvl||'-')}</td><td style="min-width:260px;font-size:12.5px">${orgLine(e,'<br>')||'-'}</td><td style="min-width:170px;font-size:12.5px">${e.hist.length?`<b>${e.hist.length} ครั้ง</b><div class="hint">ล่าสุด: ${esc(e.hist[e.hist.length-1].to)} · มีผล ${esc(effDate(e.hist[e.hist.length-1].date))}</div>`:'<span class="hint">-</span>'}</td>
     <td>${x.pass?'<span class="tag ok">ผ่าน</span>':`<span class="tag bad" title="${esc(x.why.join(' · '))}">ไม่ผ่าน</span>`}${n?` <span class="tag ${STCLS[n.status]||'pri'}">${esc(n.status)}</span>`:''}</td>
     <td style="white-space:nowrap">${n?`${nomClosed(n)&&CAN.nom?`<button class="btn sm pri" data-reopen="${esc(n.id)}" title="พนักงานมีรายการเสนอชื่อได้รายการเดียว — เปิดรายการเดิมอีกครั้งเป็น ร่าง">↻ เปิดรายการเดิมอีกครั้ง</button> `:''}<button class="btn sm" data-n="${esc(n.id)}">ดูรายการ</button>`:(CAN.nom?(x.pass?`<button class="btn sm pri" data-nom="${esc(e.id)}" title="เลือกตำแหน่งที่ขอปรับ ตรวจคุณสมบัติ แล้วเข้าแฟ้ม Portfolio">＋ เสนอปรับ</button>`:`<button class="btn sm" data-nom="${esc(e.id)}" style="border-color:var(--warn);color:var(--warn)" title="ไม่ผ่านเกณฑ์เบื้องต้น — เสนอเป็นกรณีพิเศษได้ (ต้องระบุเหตุผล)">＋ เสนอปรับ (กรณีพิเศษ)</button>`)+` <button class="btn sm" data-pfn="${esc(e.id)}" title="ไปที่แฟ้มประวัติ Portfolio 5 ขั้นโดยตรง ไม่ต้องเลือกตำแหน่งที่ขอปรับ">📁 เสนอผลงาน (Portfolio)</button>`:'')}</td></tr>`}).join('')||'<tr><td colspan="16" class="hint">ไม่พบข้อมูล</td></tr>';
   $('#fmore').innerHTML=a.length>f.lim?`<button class="btn" id="fm">แสดงเพิ่ม (${a.length-f.lim} คน)</button>`:'';
@@ -592,7 +603,7 @@ function openEmp(id){
   const bars=GRADE_YEARS.map(y=>{const g=e.grades[y],p=GP[g]||0;return `<div class="bar"><span class="n">ปี ${y}</span><i style="width:${p/4.3*55}%"></i><span class="gr ${gcls(g)}">${esc(g||'–')}</span></div>`}).join('');
   modal(`<div style="display:flex;justify-content:space-between;gap:10px;align-items:start"><div><h2 style="margin:0;font-size:20px">${esc(e.name)} ${e.nick?`<span class="hint">(${esc(e.nick)})</span>`:''}</h2><div class="hint">รหัส ${esc(e.id)} · ${esc(e.pos)} · Level ${e.level}</div></div><button class="btn sm" onclick="closeModal()">✕ ปิด</button></div>
   <div class="grid g2" style="margin-top:14px"><div><h3 style="margin:0 0 6px;font-size:15px">ข้อมูลทั่วไป</h3><dl class="kv"><dt>กลุ่มงาน</dt><dd>${esc(e.group||'-')} ${e.groupCode?`<span class="hint">(รหัส ${esc(e.groupCode)})</span>`:''}</dd><dt>สายงาน</dt><dd>${esc(e.line||'-')} ${e.lineCode?`<span class="hint">(รหัส ${esc(e.lineCode)})</span>`:''}</dd><dt>ฝ่าย</dt><dd>${esc(e.dept||'-')} ${e.deptCode?`<span class="hint">(รหัส ${esc(e.deptCode)})</span>`:''}</dd><dt>แผนก</dt><dd>${esc(e.section||'-')}</dd>
-    <dt>เพศ</dt><dd>${esc(e.sex)}</dd><dt>วันเริ่มงาน</dt><dd>${thDate(e.start)} <b>(อายุงาน ${ymd(e.start)})</b></dd><dt>อายุงานในตำแหน่งปัจจุบัน</dt><dd><b>${posTen(e)}</b> <span class="hint">${posSince(e).src==='promo'?'นับจากวันที่มีผลล่าสุด '+thDate(posSince(e).iso):'(ไม่มีประวัติปรับตำแหน่ง — นับจากวันเริ่มงาน)'}</span></dd><dt>วันเกิด</dt><dd>${thDate(e.birth)}${e.birth?` (<b>อายุตัว ${ymd(e.birth)}</b>)`:''}</dd>
+    <dt>เพศ</dt><dd>${esc(e.sex)}</dd><dt>วันเริ่มงาน</dt><dd>${thDate(e.start)} <b>(อายุงาน ${ymd(e.start)})</b></dd><dt>อายุงานในตำแหน่งปัจจุบัน</dt><dd><b>${posTen(e)}</b> <span class="hint">${esc(posSrcTxt(posSince(e)))}</span></dd><dt>วันเกิด</dt><dd>${thDate(e.birth)}${e.birth?` (<b>อายุตัว ${ymd(e.birth)}</b>)`:''}</dd>
     <dt>การศึกษาปัจจุบัน</dt><dd>${esc([e.edu.lvl,e.edu.major,e.edu.inst,e.edu.year].filter(Boolean).join(' · ')||'-')}</dd>
     <dt>วุฒิเดิม</dt><dd>${esc([e.edu.lvl0,e.edu.major0,e.edu.inst0,e.edu.year0].filter(Boolean).join(' · ')||'-')}</dd></dl></div>
     <div><h3 style="margin:0 0 6px;font-size:15px">เกรดประเมิน</h3>${bars}<div style="margin-top:8px">เฉลี่ย ${db.cfg.gradeYears} ปีล่าสุด <b>${fmt1(x.avg)}</b> · ${x.pass?'<span class="tag ok">ผ่านเกณฑ์เบื้องต้น</span>':'<span class="tag bad">ไม่ผ่านเกณฑ์</span>'}</div>${x.why.length?`<ul class="hint" style="margin:6px 0 0 18px;padding:0">${x.why.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>`:''}</div></div>
@@ -617,7 +628,7 @@ function autoQual(e,lines){
       return {state:'manual',note:'ต้องตรวจเอง'}}
     /* ประสบการณ์ / ระยะเวลา (ปี) */
     const lv=s.match(/ระดับ\s*(\d+)[^\d]{0,40}?(?:ไม่น้อยกว่า|อย่างน้อย|ตั้งแต่)\s*(\d+)\s*ปี/),conds=[];
-    if(lv){const L7=+lv[1],yrs=+lv[2];conds.push({ok:e.level===L7?posY>=yrs:e.level>L7?null:false,txt:e.level===L7?`อยู่ในระดับ ${L7} มาแล้ว ${fmt1(posY)} ปี (ต้อง ≥ ${yrs} · ${sin.src==='start'?'นับจากวันเริ่มงานเพราะไม่มีประวัติปรับตำแหน่ง':'นับจากวันที่มีผลปรับตำแหน่งล่าสุด '+thDate(sin.iso)})`:`ปัจจุบันระดับ ${e.level} (ต้องเคยอยู่ระดับ ${L7} ≥ ${yrs} ปี — ตรวจจากประวัติเอง)`})}
+    if(lv){const L7=+lv[1],yrs=+lv[2];conds.push({ok:e.level===L7?posY>=yrs:e.level>L7?null:false,txt:e.level===L7?`อยู่ในระดับ ${L7} มาแล้ว ${fmt1(posY)} ปี (ต้อง ≥ ${yrs} ปี ตามข้อกำหนดตำแหน่ง · ${posSrcTxt(sin)})`:`ปัจจุบันระดับ ${e.level} (ต้องเคยอยู่ระดับ ${L7} ≥ ${yrs} ปี — ตรวจจากประวัติเอง)`})}
     const rest=s.replace(lv?lv[0]:'','');[...rest.matchAll(/(?:ไม่น้อยกว่า|อย่างน้อย)\s*(\d+)\s*ปี/g)].forEach(m=>conds.push({ok:ten>=+m[1],txt:`อายุงานรวม ${fmt1(ten)} ปี (ต้อง ≥ ${m[1]})`}));
     if(conds.length){const okc=conds.filter(c=>c.ok===true),unk=conds.filter(c=>c.ok==null);
       if(okc.length)return {state:'pass',note:'✓ ระบบตรวจ: '+okc.map(c=>c.txt).join(' · ')};
@@ -1198,7 +1209,7 @@ function pfGuide(n,e,d){
     if(t>60)plan.push(`เพิ่มการเรียนรู้จากการปฏิบัติงานจริง (OJL) และ Coaching/Mentoring ให้ใกล้สัดส่วน 70:20:10 — ตอนนี้การอบรมในห้องเรียนสูงถึง ${Math.round(t)}%`);
     if(IA.tot<12)plan.push(`ชั่วโมงการเรียนรู้รวม ${fmt1(IA.tot)} ชม. ยังไม่ถึงเป้าหมายขั้นต่ำ 12 ชม./ปี`)}}
   /* 6 อายุงานในตำแหน่ง */
-  const ps=posSince(e),yrs=ps.iso?(Date.now()-new Date(ps.iso).getTime())/31557600000:null,minT=cfg.minTenure||1;
+  const ps=posSince(e),yrs=ps.iso?(Date.now()-new Date(ps.iso).getTime())/31557600000:null,minT=minPosY(cfg);
   add('ten','อายุงานในตำแหน่งปัจจุบัน',yrs==null||isNaN(yrs)?'ไม่มีข้อมูล':`${yrs.toFixed(1)} ปี (เกณฑ์ ≥ ${minT})`,yrs==null||isNaN(yrs)?null:yrs>=minT+1?2:yrs>=minT?1:0);
   /* 7 คุณสมบัติตามข้อกำหนดตำแหน่ง */
   const ck=(n.checks||[]);if(real&&ck.length){const r=ck.filter(Boolean).length/ck.length;add('qual','คุณสมบัติตามข้อกำหนดตำแหน่ง',`ผ่าน ${ck.filter(Boolean).length}/${ck.length} ข้อ`,r>=0.99?2:r>=0.6?1:0);if(r<0.99)plan.push('ปิดช่องว่างคุณสมบัติที่ยังไม่ผ่านตามข้อกำหนดของตำแหน่งที่เสนอ')}
@@ -1593,7 +1604,7 @@ function rData(){
     <div><label>เกรดเฉลี่ยขั้นต่ำ (4.0 = A)</label><input id="cAvg" type="number" step="0.1" value="${c.minAvg}"></div>
     <div><label>เกรดต่ำสุดที่ยอมรับ</label><select id="cMin">${Object.entries(GP).map(([g,p])=>`<option value="${p}" ${p===c.minGrade?'selected':''}>${g} (${p})</option>`).join('')}</select></div>
     <div><label>จำนวนปีล่าสุดที่นับเกรด</label><select id="cYrs">${[1,2,3,4,5].map(n=>`<option ${n===c.gradeYears?'selected':''}>${n}</option>`).join('')}</select></div>
-    <div><label>อายุงานขั้นต่ำ (ปี)</label><input id="cTen" type="number" step="0.5" value="${c.minTenure}"></div>
+    <div><label>อายุงานในตำแหน่งขั้นต่ำ (ปี) — ทุกระดับ ต่ำกว่า 2 ไม่ได้</label><input id="cTen" type="number" step="0.5" value="${c.minTenure}"></div>
     <div style="flex:0"><button class="btn pri" id="cSave">บันทึกเกณฑ์</button></div></div>
     <div class="hint" style="margin-top:8px">แปลงเกรด: A+ 4.3 · A 4.0 · A- 3.7 · B+ 3.3 · B 3.0 · B- 2.7 · C+ 2.3 · C 2.0 · D 1.0 — เกณฑ์เหล่านี้เป็นค่าเริ่มต้นสำหรับคัดกรอง ไม่ใช่ข้อสรุปของคณะกรรมการ</div></div>
   <div class="card"><h2>สำรองข้อมูล</h2><div class="row"><div style="flex:0"><button class="btn" id="bk">⬇ สำรองทั้งหมด (JSON)</button></div></div>
@@ -1640,7 +1651,7 @@ function rData(){
   $('#fx').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('#fmsg').textContent='กำลังอ่านไฟล์และบันทึกขึ้นระบบกลาง…';
     try{if(!window.XLSX)throw new Error('โหลดไลบรารี Excel ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');const r=await doImport(await f.arrayBuffer(),f.name);
       $('#fmsg').innerHTML=`<span style="color:var(--ok)">✓ นำเข้าสำเร็จ: พนักงาน ${r.emps} คน (ใหม่ ${r.added}) · ข้อกำหนดตำแหน่ง ${r.reqs} ระดับ</span>`}catch(er){$('#fmsg').innerHTML=`<span style="color:var(--bad)">นำเข้าไม่สำเร็จ: ${esc(errTxt(er))}</span>`}};
-  $('#cSave').onclick=async()=>{const cfg={minAvg:+$('#cAvg').value||0,minGrade:+$('#cMin').value,gradeYears:+$('#cYrs').value,minTenure:+$('#cTen').value||0,yearBE:c.yearBE};
+  $('#cSave').onclick=async()=>{const cfg={minAvg:+$('#cAvg').value||0,minGrade:+$('#cMin').value,gradeYears:+$('#cYrs').value,minTenure:Math.max(MIN_POS_YEARS,+$('#cTen').value||0),yearBE:c.yearBE};
     const r=await sb.from('promo_config').upsert({k:'cfg',data:cfg,updated_at:new Date().toISOString()});if(r.error)return alert('บันทึกไม่สำเร็จ: '+errTxt(r.error));db.cfg=cfg;alert('บันทึกเกณฑ์แล้ว')};
   $('#bk').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({emps:db.emps,reqs:db.reqs,noms:db.noms,cfg:db.cfg})],{type:'application/json'}));a.download='promotion_backup_'+new Date().toISOString().slice(0,10)+'.json';a.click()};
   if($('#lgGo'))$('#lgGo').onclick=async()=>{const lg=legacyLocal();if(!lg||!confirm(`ย้ายข้อมูลในเครื่องนี้ (พนักงาน ${lg.emps.length} คน, รายการเสนอชื่อ ${lg.noms.length}) ขึ้นระบบกลาง?`))return;
