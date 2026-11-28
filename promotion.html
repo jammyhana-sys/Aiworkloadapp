@@ -60,7 +60,7 @@ tr:hover td{background:#fafbff}
     <button data-v="dash" class="on">📊 ภาพรวม</button>
     <button data-v="emps">👥 รายชื่อพนักงาน</button>
     <button data-v="noms">📝 รายการเสนอชื่อ</button>
-    <button data-v="flow">🔁 Flow อนุมัติ</button>
+    <button data-v="flow" id="navFlow" class="hide">🔁 Flow อนุมัติ</button>
     <button data-v="reqs">📘 ข้อกำหนดตำแหน่ง</button>
     <button data-v="mem" id="navMem" class="hide">👤 สมาชิก & สิทธิ์</button>
     <button data-v="data">⚙ นำเข้า / ตั้งค่า</button>
@@ -114,7 +114,7 @@ async function boot(){
     await loadAll();READY=true;
     const g=$('#gate');if(g)g.remove();$('#nav').classList.remove('hide');
     $('#who').textContent=(CAN.manage?'สิทธิ์: จัดการ':'สิทธิ์: ดูอย่างเดียว')+' · ขอบเขตข้อมูล: '+(CAN.all?'ทั้งหมด':'จำกัดตามที่ Super Admin กำหนด');
-     {const se=s&&s.session;$('#meTxt').textContent=(se&&se.user&&se.user.email)||'';if(FLOW.sup)$('#navMem').classList.remove('hide')}
+     {const se=s&&s.session;$('#meTxt').textContent=(se&&se.user&&se.user.email)||'';if(FLOW.sup){$('#navMem').classList.remove('hide');$('#navFlow').classList.remove('hide')}}
     show(V.cur);
   }catch(er){gate(`<h2 style="margin:0 0 8px">เชื่อมต่อไม่สำเร็จ</h2><div class="hint">${esc(errTxt(er))}</div><div style="margin-top:14px"><button class="btn pri" onclick="boot()">ลองใหม่</button></div>`)}
 }
@@ -223,7 +223,7 @@ const activeNom=id=>db.noms.find(n=>n.empId===id&&n.status!=='ยกเลิก
 
 /* ============ แสดงผล ============ */
 const V={cur:'dash',emp:{q:'',lv:'',dept:'',only:'',sort:'id',dir:1,lim:100},nom:{q:'',st:''}};
-function show(v){V.cur=v;$$('main>section').forEach(s=>s.classList.toggle('hide',s.id!=='v-'+v));$$('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));render()}
+function show(v){if((v==='flow'||v==='mem')&&!FLOW.sup)v='dash';V.cur=v;$$('main>section').forEach(s=>s.classList.toggle('hide',s.id!=='v-'+v));$$('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));render()}
 $('#nav').onclick=e=>{const b=e.target.closest('button');if(b)show(b.dataset.v)};
 function render(){({dash:rDash,emps:rEmps,noms:rNoms,flow:rFlow,mem:rMem,reqs:rReqs,data:rData})[V.cur]()}
 const needData=()=>db.emps.length?'':`<div class="card"><div class="drop">ยังไม่มีข้อมูลพนักงาน<br><br><button class="btn pri" onclick="show('data')">⚙ ไปนำเข้าไฟล์ Excel</button></div></div>`;
