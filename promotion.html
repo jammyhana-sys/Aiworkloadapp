@@ -92,7 +92,7 @@ const DEF={minAvg:3.0,minGrade:2.7,gradeYears:3,minTenure:1,yearBE:2569};
 let db={emps:[],reqs:[],noms:[],orders:[],cfg:{...DEF},imported:null};
 /* ============ ระบบกลาง (Supabase) — ใช้ session เดียวกับแอปหลัก ============ */
 const SB_URL='https://vhhekmpkcqlgesojvlws.supabase.co',SB_KEY='sb_publishable_I5aGYPaJKemi6HP8Liijeg_Hb_M7-SQ';
-let sb=null,CAN={view:false,manage:false,all:true},READY=false;
+let sb=null,CAN={view:false,manage:false,nom:false,all:true},READY=false;
 try{sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}})}catch(_){}
 const errTxt=e=>{const m=((e&&e.message)||String(e)).replace(/^[A-Z_]{3,}:/,'');return /promo_|can_promo|module_access/.test(m)&&/does not exist|schema cache|Could not find/.test(m)?m+' (ยังไม่ได้รัน supabase_update_hub49.sql)':/promo_nom_one_active|duplicate key/.test(m)?'พนักงานคนนี้มีรายการเสนอชื่อที่ยังดำเนินอยู่แล้ว':m};
 function gate(h){$('#nav').classList.add('hide');$$('main>section').forEach(s=>s.classList.add('hide'));let g=$('#gate');if(!g){g=document.createElement('section');g.id='gate';$('main').appendChild(g)}g.innerHTML=`<div class="card" style="text-align:center;padding:34px 18px">${h}</div>`}
@@ -150,10 +150,11 @@ async function boot(){
     const [v,m,sc]=await Promise.all([sb.rpc('can_promo',{p_need:'view'}),sb.rpc('can_promo',{p_need:'manage'}),sb.rpc('promo_scope_all')]);
     if(v.error)throw v.error;
     CAN={view:!!v.data,manage:!!m.data,all:sc.error?true:!!sc.data};   /* ยังไม่ได้รัน hub50 → ถือว่าขอบเขตทั้งหมดเหมือนเดิม */
+    CAN.nom=CAN.manage;
     if(!CAN.view)return gate('<h2 style="margin:0 0 8px">🔒 ไม่มีสิทธิ์เข้าถึงโมดูลนี้</h2><div class="hint" style="margin-bottom:14px">ติดต่อ Super Admin ให้กำหนดสิทธิ์ Promotion ที่เมนู สมาชิก › สิทธิ์การเข้าถึงโมดูล</div><a class="btn" href="./" style="text-decoration:none;display:inline-block">‹ กลับหน้าหลัก</a> <button class="btn" onclick="doLogout()">ออกจากระบบ</button>');
-    await loadAll();READY=true;
+    await loadAll();READY=true;try{const nr=await sb.rpc('promo_is_nominator');if(nr&&nr.data===true)CAN.nom=true}catch(_){}
     const g=$('#gate');if(g)g.remove();$('#nav').classList.remove('hide');
-    $('#who').textContent=(CAN.manage?'สิทธิ์: จัดการ':'สิทธิ์: ดูอย่างเดียว')+' · ขอบเขตข้อมูล: '+(CAN.all?'ทั้งหมด':'จำกัดตามที่ Super Admin กำหนด');
+    $('#who').textContent=(CAN.manage?'สิทธิ์: จัดการ':CAN.nom?'สิทธิ์: ผู้อนุมัติ (เสนอชื่อพนักงานในขอบเขตของตนได้)':'สิทธิ์: ดูอย่างเดียว')+' · ขอบเขตข้อมูล: '+(CAN.all?'ทั้งหมด':'จำกัดตามที่ Super Admin กำหนด');
      {const se=s&&s.session;$('#meTxt').textContent=(se&&se.user&&se.user.email)||'';if(FLOW.sup){$('#navMem').classList.remove('hide');$('#navFlow').classList.remove('hide')}}
     show(V.cur);
   }catch(er){gate(`<h2 style="margin:0 0 8px">เชื่อมต่อไม่สำเร็จ</h2><div class="hint">${esc(errTxt(er))}</div><div style="margin-top:14px"><button class="btn pri" onclick="boot()">ลองใหม่</button></div>`)}
@@ -322,7 +323,7 @@ function rEmps(){
     return `<tr><td>${esc(e.id)}</td><td><a href="#" data-d="${esc(e.id)}" style="color:var(--pri);font-weight:600;text-decoration:none">${esc(e.name)}</a>${e.nick?`<div class="hint">${esc(e.nick)}</div>`:''}</td><td>${esc(e.pos)}</td><td><span class="tag">L${e.level}</span></td>
     <td style="white-space:nowrap">${gradeChips(e)}</td><td><b>${fmt1(x.avg)}</b></td><td style="white-space:nowrap">${compCell((db.comp[e.id]||{}).core)}</td><td style="white-space:nowrap">${compCell((db.comp[e.id]||{}).managerial)}</td><td style="white-space:nowrap">${ymd(e.start)}</td><td style="white-space:nowrap" title="${posSince(e).src==='start'?'ไม่มีประวัติปรับตำแหน่ง — นับจากวันเริ่มงาน':'นับจากวันที่มีผลล่าสุด '+esc(effDate((e.hist.slice().sort((a,b)=>beToISO(a.date).localeCompare(beToISO(b.date))).pop()||{}).date))}">${posTen(e)}</td><td style="white-space:nowrap">${ymd(e.birth,1)}</td><td>${esc(e.edu.lvl||'-')}</td><td style="min-width:260px;font-size:12.5px">${orgLine(e,'<br>')||'-'}</td><td style="min-width:170px;font-size:12.5px">${e.hist.length?`<b>${e.hist.length} ครั้ง</b><div class="hint">ล่าสุด: ${esc(e.hist[e.hist.length-1].to)} · มีผล ${esc(effDate(e.hist[e.hist.length-1].date))}</div>`:'<span class="hint">-</span>'}</td>
     <td>${x.pass?'<span class="tag ok">ผ่าน</span>':`<span class="tag bad" title="${esc(x.why.join(' · '))}">ไม่ผ่าน</span>`}${n?` <span class="tag ${STCLS[n.status]||'pri'}">${esc(n.status)}</span>`:''}</td>
-    <td style="white-space:nowrap">${n?`<button class="btn sm" data-n="${esc(n.id)}">ดูรายการ</button>`:(CAN.manage?(x.pass?`<button class="btn sm pri" data-nom="${esc(e.id)}">＋ เสนอชื่อ</button>`:`<button class="btn sm" data-nom="${esc(e.id)}" style="border-color:var(--warn);color:var(--warn)" title="ไม่ผ่านเกณฑ์เบื้องต้น — เสนอเป็นกรณีพิเศษได้ (ต้องระบุเหตุผล)">＋ เสนอ (กรณีพิเศษ)</button>`):'')}</td></tr>`}).join('')||'<tr><td colspan="16" class="hint">ไม่พบข้อมูล</td></tr>';
+    <td style="white-space:nowrap">${n?`<button class="btn sm" data-n="${esc(n.id)}">ดูรายการ</button>`:(CAN.nom?(x.pass?`<button class="btn sm pri" data-nom="${esc(e.id)}">＋ เสนอชื่อ</button>`:`<button class="btn sm" data-nom="${esc(e.id)}" style="border-color:var(--warn);color:var(--warn)" title="ไม่ผ่านเกณฑ์เบื้องต้น — เสนอเป็นกรณีพิเศษได้ (ต้องระบุเหตุผล)">＋ เสนอ (กรณีพิเศษ)</button>`):'')}</td></tr>`}).join('')||'<tr><td colspan="16" class="hint">ไม่พบข้อมูล</td></tr>';
   $('#fmore').innerHTML=a.length>f.lim?`<button class="btn" id="fm">แสดงเพิ่ม (${a.length-f.lim} คน)</button>`:'';
   if($('#fm'))$('#fm').onclick=()=>{f.lim+=200;rEmps()};
   $$('#fbody [data-d]').forEach(x=>x.onclick=ev=>{ev.preventDefault();openEmp(x.dataset.d)});
@@ -346,7 +347,7 @@ function openEmp(id){
     <div><h3 style="margin:0 0 6px;font-size:15px">เกรดประเมิน</h3>${bars}<div style="margin-top:8px">เฉลี่ย ${db.cfg.gradeYears} ปีล่าสุด <b>${fmt1(x.avg)}</b> · ${x.pass?'<span class="tag ok">ผ่านเกณฑ์เบื้องต้น</span>':'<span class="tag bad">ไม่ผ่านเกณฑ์</span>'}</div>${x.why.length?`<ul class="hint" style="margin:6px 0 0 18px;padding:0">${x.why.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>`:''}</div></div>
   ${compBlock(e)}
   <h3 style="margin:16px 0 6px;font-size:15px">ประวัติการปรับตำแหน่ง</h3>${e.hist.length?`<div class="scroll"><table><thead><tr><th>ครั้งที่</th><th>ตำแหน่งเดิม</th><th>ตำแหน่งใหม่</th><th>สังกัดเดิม</th><th>สังกัดใหม่</th><th>เลขคำสั่ง</th><th>วันที่มีผล</th></tr></thead><tbody>${e.hist.map((h,i)=>`<tr><td>${i+1}</td><td>${esc(h.from)}</td><td>${esc(h.to)}</td><td>${esc(h.orgFrom)}</td><td>${esc(h.orgTo)}</td><td>${esc(h.order)}</td><td style="white-space:nowrap"><b>${esc(effDate(h.date))}</b></td></tr>`).join('')}</tbody></table></div>`:'<div class="hint">ไม่มีประวัติในไฟล์</div>'}
-  <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">${n?`<span class="tag ${STCLS[n.status]||'pri'}">ถูกเสนอชื่อ: ${esc(n.status)}</span>`:(nx&&CAN.manage?`<button class="btn pri" onclick="openNom('${esc(e.id)}')">＋ เสนอชื่อปรับเป็น Level ${e.level+1}</button>`:'')}</div>`);
+  <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">${n?`<span class="tag ${STCLS[n.status]||'pri'}">ถูกเสนอชื่อ: ${esc(n.status)}</span>`:(nx&&CAN.nom?`<button class="btn pri" onclick="openNom('${esc(e.id)}')">＋ เสนอชื่อปรับเป็น Level ${e.level+1}</button>`:'')}</div>`);
 }
 
 /* ---- ฟอร์มเสนอชื่อ ---- */
@@ -378,7 +379,7 @@ function openNom(id,editId){
     if(!x.pass&&!($('#nmExc')&&$('#nmExc').value.trim()))return alert('พนักงานคนนี้ไม่ผ่านเกณฑ์เบื้องต้น — ระบุเหตุผลขอพิจารณาเป็นกรณีพิเศษก่อน');
     const rec={id:ed?ed.id:'N'+Date.now().toString(36),empId:e.id,fromLevel:e.level,fromPos:e.pos,toLevel:toL,toPos:$('#nmPos').value,checks:$$('#nmQual [data-q]').map(c=>c.checked),
       why:$('#nmWhy').value.trim(),by:$('#nmBy').value.trim(),date:$('#nmDate').value,status:ed?ed.status:'ร่าง',note:$('#nmNote').value.trim(),special:!x.pass,exc:!x.pass?$('#nmExc').value.trim():'',snap:{avg:x.avg,ten:x.ten,pass:x.pass,grades:{...e.grades}},at:ed?ed.at:new Date().toISOString()};
-    if(!CAN.manage)return alert('ไม่มีสิทธิ์จัดการ');
+    if(!CAN.nom)return alert('ไม่มีสิทธิ์จัดการ');
     const btn=$('#nmSave');btn.disabled=true;btn.textContent='กำลังบันทึก…';
     (ed?sb.from('promo_nominations').update({data:rec,updated_at:new Date().toISOString()}).eq('id',rec.id):sb.from('promo_nominations').insert({id:rec.id,emp_id:rec.empId,status:'ร่าง',step:0,data:rec,created_by:rec.by||'',updated_at:new Date().toISOString()})).then(r=>{
       if(r.error){btn.disabled=false;btn.textContent='บันทึก';return alert('บันทึกไม่สำเร็จ: '+errTxt(r.error))}
@@ -486,9 +487,9 @@ function rNoms(){
       <td>${esc(n.toPos)} <span class="tag pri">L${n.toLevel}</span></td><td>${fmt1(n.snap?.avg)}</td><td>${ck.length?`${ok}/${ck.length} ข้อ`:'-'}</td><td>${esc(n.by||'')}</td>
       <td>${n.special?`<span class="tag warn" title="${esc(n.exc||'')}" style="margin-right:4px">กรณีพิเศษ</span>`:''}<span class="tag ${STCLS[n.status]}">${esc(n.status)}</span>${n.status==='เสนอแล้ว'?`<div style="font-size:12.5px;margin-top:4px">รอขั้นที่ <b>${stepPos(n)}${total?'/'+total:''}</b> ${esc(stepName(n))}</div>${apprs?`<div class="hint">ผู้อนุมัติ: ${esc(apprs)}</div>`:'<div class="hint" style="color:var(--bad)">ยังไม่มีผู้อนุมัติขั้นนี้ในขอบเขต</div>'}`:''}${n.note?`<div class="hint">${esc(n.note)}</div>`:''}</td>
       <td class="noprint" style="white-space:nowrap">
-        ${n.status==='ร่าง'&&CAN.manage?`<button class="btn sm pri" data-sub="${esc(n.id)}">ส่งขออนุมัติ</button> <button class="btn sm" data-e="${esc(n.id)}">แก้ไข</button> <button class="btn sm bad" data-x="${esc(n.id)}">ลบ</button> `:''}
+        ${n.status==='ร่าง'&&CAN.nom?`<button class="btn sm pri" data-sub="${esc(n.id)}">ส่งขออนุมัติ</button> <button class="btn sm" data-e="${esc(n.id)}">แก้ไข</button> <button class="btn sm bad" data-x="${esc(n.id)}">ลบ</button> `:''}
         ${act?`<button class="btn sm ok" data-ap="${esc(n.id)}">✓ อนุมัติ</button> <button class="btn sm" data-rt="${esc(n.id)}">↩ ส่งกลับ</button> <button class="btn sm bad" data-rj="${esc(n.id)}">✕ ไม่อนุมัติ</button> `:''}
-        ${(n.status==='เสนอแล้ว'||n.status==='ร่าง')&&CAN.manage?`<button class="btn sm" data-cx="${esc(n.id)}">ยกเลิก</button> `:''}
+        ${(n.status==='เสนอแล้ว'||n.status==='ร่าง')&&CAN.nom?`<button class="btn sm" data-cx="${esc(n.id)}">ยกเลิก</button> `:''}
         <button class="btn sm" data-pfo="${esc(n.id)}" title="แฟ้ม Promotion Portfolio: แบบฟอร์ม · Competency · Checklist หลักฐาน">📁 แฟ้ม ${pfDocDone(db.pf[n.id])}/${PF_DOCS.length}</button> <button class="btn sm" data-lg="${esc(n.id)}">ประวัติ</button></td></tr>`}).join('')||'<tr><td colspan="10" class="hint">ยังไม่มีรายการ</td></tr>'}</tbody></table></div></div>`;
   $('#nq').oninput=e=>{f.q=e.target.value;rNoms();$('#nq').focus();$('#nq').setSelectionRange(f.q.length,f.q.length)};$('#nst').onchange=e=>{f.st=e.target.value;rNoms()};
   $('#nx').onclick=exportNoms;
@@ -725,7 +726,7 @@ const pfDocDone=d=>(d&&d.docs?PF_DOCS.map((_,i)=>d.docs[i]||{}):PF_DOCS.map(()=>
 function openPf(nomId,tab){PF.nomId=nomId;PF.tab=tab||'form';PF.data=JSON.parse(JSON.stringify(db.pf[nomId]||{}));PF.state='';show('pf')}
 function pfSchedule(){PF.state='กำลังบันทึก…';const el=$('#pfState');if(el)el.textContent=PF.state;clearTimeout(PF.timer);PF.timer=setTimeout(pfSave,900)}
 async function pfSave(){
-  if(!CAN.manage)return;const id=PF.nomId;
+  if(!CAN.nom)return;const id=PF.nomId;
   const r=await sb.from('promo_portfolio').upsert({nom_id:id,data:PF.data,updated_at:new Date().toISOString(),updated_by:FLOW.me||''});
   PF.state=r.error?'บันทึกไม่สำเร็จ: '+errTxt(r.error)+(/promo_portfolio/.test(r.error.message||'')?' (ยังไม่ได้รัน supabase_update_hub63.sql)':''):'บันทึกแล้ว ✓';if(!r.error)db.pf[id]=JSON.parse(JSON.stringify(PF.data));
   const el=$('#pfState');if(el){el.textContent=PF.state;el.style.color=r.error?'var(--bad)':'var(--ok)'}
@@ -734,7 +735,7 @@ function pfEvalDefaults(e){const rows=GRADE_YEARS.slice().reverse().slice(0,4).m
   const c=db.comp[e.id];if(c&&rows.length){const r=rows.find(x=>x.year===String(db.compYear))||rows[0];r.year=String(db.compYear);r.comp=[c.core?`Core ${fmt1(c.core.score)} (${c.core.grade})`:'',c.managerial?`Managerial ${fmt1(c.managerial.score)} (${c.managerial.grade})`:''].filter(Boolean).join(' / ')}return rows}
 function rPf(){
   const el=$('#v-pf'),n=db.noms.find(x=>x.id===PF.nomId);if(!n){el.innerHTML='<div class="card hint">ไม่พบรายการเสนอชื่อ</div>';return}
-  const e=empOf(n.empId)||{name:'(ไม่พบ)',grades:{}},ro=!CAN.manage,d=PF.data,done=pfDocDone(d);
+  const e=empOf(n.empId)||{name:'(ไม่พบ)',grades:{}},ro=!CAN.nom,d=PF.data,done=pfDocDone(d);
   const ro_=ro?'disabled':'';
   const V=(path,def)=>{const v=pfGet(d,path);return v==null?(def==null?'':def):v};
   const inp=(path,ph,type,def)=>`<input data-pf="${path}" type="${type||'text'}" value="${esc(V(path,def))}" placeholder="${esc(ph||'')}" ${ro_}>`;
@@ -784,8 +785,8 @@ function rPf(){
     <div style="flex:1;min-width:240px"><b style="font-size:17px">📁 Promotion Portfolio — ${esc(e.name)}</b><div class="hint">${esc(n.empId)} · ${esc(n.fromPos)} (L${n.fromLevel}) → ${esc(n.toPos)} (L${n.toLevel}) · <span class="tag ${STCLS[n.status]||''}">${esc(n.status)}</span></div></div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="hint" id="pfState" style="min-width:110px;text-align:right">${esc(PF.state)}</span>${ro?'<span class="tag warn">ดูอย่างเดียว</span>':''}<button class="btn pri" id="pfX">⬇ ส่งออกแบบฟอร์ม (Excel)</button></div></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">${tabs.map(([k,l])=>`<button class="btn ${PF.tab===k?'pri':''}" data-pft="${k}">${l}</button>`).join('')}</div></div>${body}`;
-  $('#pfBack').onclick=async()=>{clearTimeout(PF.timer);if(CAN.manage&&PF.state==='กำลังบันทึก…')await pfSave();show('noms')};
-  $$('#v-pf [data-pft]').forEach(b=>b.onclick=async()=>{clearTimeout(PF.timer);if(CAN.manage&&PF.state==='กำลังบันทึก…')await pfSave();PF.tab=b.dataset.pft;rPf()});
+  $('#pfBack').onclick=async()=>{clearTimeout(PF.timer);if(CAN.nom&&PF.state==='กำลังบันทึก…')await pfSave();show('noms')};
+  $$('#v-pf [data-pft]').forEach(b=>b.onclick=async()=>{clearTimeout(PF.timer);if(CAN.nom&&PF.state==='กำลังบันทึก…')await pfSave();PF.tab=b.dataset.pft;rPf()});
   $$('#v-pf [data-pf]').forEach(i=>{const path=i.dataset.pf,fire=()=>{let v;if(i.dataset.bool)v=i.checked;else if(i.dataset.val!=null){if(!i.checked)return;v=i.dataset.val}else if(i.dataset.num)v=i.value===''?'':+i.value;else v=i.value;pfSet(PF.data,path,v);
       if(PF.tab==='comp'){const sc=PF_COMP.map((_,k)=>{const q=pfGet(PF.data,`comp.s.${k}`);return q===''||q==null?null:+q}),g=sc.filter(z=>z!=null),sum=g.reduce((a,b)=>a+b,0),av=g.length?sum/g.length:null;PF_COMP.forEach((_,k)=>{const c=$('#pfLv'+k);if(c)c.textContent=PF_LVL(sc[k])});$('#pfSum').textContent=sum;$('#pfAvg').textContent=av==null?'-':fmt1(av);$('#pfOv').textContent=PF_LVL(av)||'-'}
       if(PF.tab==='docs'&&/\.status$/.test(path)){pfSchedule();return setTimeout(rPf,0)}
