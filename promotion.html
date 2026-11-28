@@ -251,10 +251,77 @@ async function trainImport(files,onProg){
   await loadTrain();
   return{ok:ids.length,courses:ids.reduce((s,id)=>s+byEmp[id].rows.length,0),unmatched,failed};
 }
+/* ============ JD (ใบกำหนดหน้าที่งาน) — นำเข้าจากไฟล์ .docx แล้วใช้ดึงลง "ตำแหน่งปัจจุบัน" ในแฟ้ม Portfolio ============ */
+db.jd={};
+async function loadJd(){db.jd={};try{const r=await sb.from('promo_jd').select('*').range(0,9999);if(r.error)return;(r.data||[]).forEach(x=>{db.jd[x.emp_id]=x.data})}catch(_){}}
+const jdNsp=s=>String(s||'').replace(/\s+/g,'');
+async function jdParagraphs(buf){
+  if(!window.JSZip)throw new Error('โหลดไลบรารีอ่านไฟล์ Word ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');
+  const zip=await JSZip.loadAsync(buf),f=zip.file('word/document.xml');if(!f)throw new Error('ไม่ใช่ไฟล์ .docx');
+  const doc=new DOMParser().parseFromString(await f.async('string'),'application/xml'),W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  return [...doc.getElementsByTagNameNS(W,'p')].map(p=>[...p.getElementsByTagNameNS(W,'t')].map(t=>t.textContent).join('').replace(/\s+/g,' ').trim()).filter(Boolean)}
+function parseJdLines(L){
+  L=L.filter(x=>!/^FM\s*-?\s*HR/i.test(x));
+  const ENG=/^(ตำแหน่ง|Position|Direct To|Name|Job Family|Level|Division|Location|Effective Date|\(?Key Purpose\)?)$/i;
+  const LAB=/^(ตำแหน่งงาน|ขึ้นตรงต่อ|ชื่อพนักงาน|กลุ่มงาน\/?สายงาน|ระดับ|ฝ่าย\/สำนัก|สถานที่ทำงาน|วันที่บังคับใช้|ภารกิจหลัก|การประสานงานภายใน|การประสานงานภายนอก|คุณสมบัติและความสามารถ|บทบาทหน้าที่ความรับผิดชอบ)/;
+  const idx=re=>L.findIndex(x=>re.test(jdNsp(x)));
+  const strip=(s,re)=>String(s||'').replace(re,'').trim();
+  const after=(re,n)=>{const i=idx(re);if(i<0)return '';let line=L[i];
+    const rest=strip(line,/^.*?(Position|Direct\s*To|Name|Job\s*Family|Level|Division|Location|Effective\s*Date)\s*/i);if(rest&&rest!==line&&!LAB.test(jdNsp(rest)))return rest;
+    const out=[];let j=i+1;while(j<L.length&&ENG.test(L[j].trim()))j++;
+    while(j<L.length&&out.length<(n||1)&&!LAB.test(jdNsp(L[j]))){out.push(L[j]);j++}return out.join(' ').trim()};
+  const between=(a,b)=>{const i=idx(a);if(i<0)return [];let j=L.findIndex((x,k)=>k>i&&b.test(jdNsp(x)));if(j<0)j=L.length;return L.slice(i+1,j)};
+  const pos=after(/^ตำแหน่งงาน/),directTo=after(/^ขึ้นตรงต่อ/),name=after(/^ชื่อพนักงาน/),family=after(/^กลุ่มงาน\/?สายงาน/),lvTxt=after(/^ระดับ/),division=after(/^ฝ่าย\/สำนัก/,2);
+  const purpose=between(/^ภารกิจหลัก/,/^การประสานงานภายใน/).filter(x=>!ENG.test(x)).join(' ').trim();
+  const pairs=a=>{const o=[];for(let i=0;i+1<a.length;i+=2)o.push(a[i]+': '+a[i+1]);return o};
+  const HDR=/^(Internal Division|External Division|Subject\s*\/\s*Purpose)/i;
+  const internal=pairs(between(/^การประสานงานภายใน/,/^การประสานงานภายนอก/).filter(x=>!HDR.test(x)));
+  const external=pairs(between(/^การประสานงานภายนอก/,/^คุณสมบัติและความสามารถ/).filter(x=>!HDR.test(x)));
+  const quals=between(/^คุณสมบัติและความสามารถ/,/^บทบาทหน้าที่ความรับผิดชอบ/);
+  const roleL=between(/^บทบาทหน้าที่ความรับผิดชอบ/,/^พนักงานรับทราบ/).filter(x=>!/^Role Clarification|^\(?\s*Role/i.test(x)),roles=[];
+  roleL.forEach(x=>{const m=x.match(/^\(?\s*(\d+)\s*\)\s*(.+)$/);if(m)roles.push({h:m[2].trim(),items:[]});else if(roles.length)roles[roles.length-1].items.push(x.replace(/^[•\-·]\s*/,'').trim())});
+  if(!roles.length&&roleL.length)roles.push({h:'',items:roleL.map(x=>x.replace(/^[•\-·]\s*/,'').trim())});
+  const lm=lvTxt.match(/(\d+)/);
+  return{pos:pos.replace(/\s+/g,' ').trim(),directTo:directTo.replace(/\s+/g,' ').trim(),name:strip(name,/^(ว่าที่\s*ร้อยตรี|นางสาว|นาง|นาย|น\.\s*ส\.|ดร\.)\s*/).replace(/\s+/g,' '),nameRaw:name,family,level:lm?+lm[1]:null,division:division.replace(/\s+/g,' '),purpose,internal,external,quals,roles}}
+async function jdImport(files,onProg){
+  if(!(CAN.manage&&CAN.all))throw new Error('ต้องมีสิทธิ์จัดการและขอบเขตข้อมูลทั้งหมด');
+  /* รองรับทั้งไฟล์ .docx หลายไฟล์ และไฟล์ .zip (ดาวน์โหลดทั้งโฟลเดอร์จาก SharePoint) */
+  const items=[];
+  for(const f of files){
+    if(/\.zip$/i.test(f.name)){if(!window.JSZip)throw new Error('โหลดไลบรารีอ่านไฟล์ zip ไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ต)');
+      const z=await JSZip.loadAsync(await f.arrayBuffer());
+      for(const [path,ent] of Object.entries(z.files)){if(ent.dir||!/\.docx$/i.test(path)||/(^|\/)~\$/.test(path))continue;items.push({name:path.split('/').pop(),get:()=>ent.async('arraybuffer')})}}
+    else if(/\.docx$/i.test(f.name))items.push({name:f.name,get:()=>f.arrayBuffer()})}
+  if(!items.length)throw new Error('ไม่พบไฟล์ .docx (เลือกไฟล์ .docx หรือ .zip)');
+  const byEmp={},unmatched=[],failed=[];let n=0;
+  for(const it of items){onProg&&onProg(++n,items.length);
+    try{const j=parseJdLines(await jdParagraphs(await it.get()));if(!j.pos&&!j.roles.length)throw new Error('ไม่พบเนื้อหา JD');
+      const m=matchEmp(j.nameRaw||j.name);if(!m.e){unmatched.push(`${j.name||it.name} (${m.how})`);continue}
+      byEmp[m.e.id]={...j,file:it.name}}catch(er){failed.push(it.name+': '+((er&&er.message)||er))}}
+  const ids=Object.keys(byEmp),now=new Date().toISOString();
+  for(let i=0;i<ids.length;i+=20){const r=await sb.from('promo_jd').upsert(ids.slice(i,i+20).map(id=>({emp_id:id,data:byEmp[id],src:byEmp[id].file,updated_at:now})));if(r.error)throw r.error}
+  await loadJd();return{ok:ids.length,total:items.length,unmatched,failed}}
+/* หา JD: ของพนักงานเอง → ไม่เจอใช้ JD ของคนอื่นที่ชื่อตำแหน่งเดียวกัน (ให้ความสำคัญฝ่ายเดียวกัน) */
+function jdForTitle(title,e){const t=jdNsp(title);if(!t)return null;const c=Object.entries(db.jd).filter(([,j])=>jdNsp(j.pos)===t);if(!c.length)return null;
+  const dp=jdNsp(e&&e.dept);const pick=c.find(([id,j])=>dp&&jdNsp(j.division).includes(dp))||c.find(([id,j])=>dp&&dp.includes(jdNsp(j.division)))||c[0];return pick[1]}
+const jdFor=e=>db.jd[e.id]||jdForTitle(e.pos,e);
+function jdReadyCur(j){
+  const cut=(s,n)=>{s=String(s||'').replace(/\s+/g,' ').trim();return s.length>n?s.slice(0,n-1)+'…':s};
+  const heads=(j.roles||[]).map(r=>String(r.h).replace(/\s*\(.*?\)\s*/g,' ').trim()).filter(h=>h&&!/^งานอื่น/.test(h));
+  let sec=0;const know=[];(j.quals||[]).forEach(x=>{const k=jdNsp(x);if(/ความรู้ทักษะ/.test(k))sec=2;else if(/คุณลักษณะ|Attribute/i.test(k))sec=3;else if(/การศึกษา/.test(k))sec=1;else if(sec===2&&!/^\(?Knowledge/i.test(x)&&!/^\d[.)]?$/.test(x))know.push(x)});know.splice(3);
+  const all=(j.roles||[]).flatMap(r=>r.items||[]);
+  const ppl=all.find(x=>/ผู้ใต้บังคับบัญชา|บริหารทีม|ดูแลทีม|หัวหน้าทีม|มอบหมายงาน/.test(x)),bud=all.find(x=>/งบประมาณ/.test(x));
+  return[
+    cut((j.purpose?j.purpose+' ':'')+(heads.length?'หน้าที่หลัก: '+heads.map((h,i)=>(i+1)+') '+h).join(' ; '):''),380),
+    cut([j.directTo?'ขึ้นตรงต่อ '+j.directTo:'',j.level?'Level '+j.level:'',j.family||''].filter(Boolean).join(' · '),200),
+    cut(know.length?know.join(' ; '):'',300),
+    cut(ppl?ppl:'ตาม JD ไม่ระบุการบริหารผู้ใต้บังคับบัญชา',200),
+    cut(bud?bud:'ตาม JD ไม่ระบุงบประมาณ/ทรัพยากร',200),
+    cut([(j.internal||[]).length?'ภายใน — '+j.internal.join(' ; '):'',(j.external||[]).length?'ภายนอก — '+j.external.join(' ; '):''].filter(Boolean).join(' || '),380)]}
 async function loadAll(){
   const all=async t=>{const r=await sb.from(t).select('*').range(0,9999);if(r.error)throw r.error;return r.data||[]};
   const [E,R,N,C]=await Promise.all([all('promo_employees'),all('promo_reqs'),all('promo_nominations'),all('promo_config')]);
-  db.emps=E.map(r=>r.data);db.reqs=R.map(r=>r.data);db.noms=N.map(r=>({...r.data,id:r.id,empId:r.emp_id,status:r.status,step:r.step||0}));await loadFlow();await loadLogs();await loadComp();await loadTrain();await loadPf();
+  db.emps=E.map(r=>r.data);db.reqs=R.map(r=>r.data);db.noms=N.map(r=>({...r.data,id:r.id,empId:r.emp_id,status:r.status,step:r.step||0}));await loadFlow();await loadLogs();await loadComp();await loadTrain();await loadJd();await loadPf();
   {const od=await sb.rpc('promo_orders_for_me');db.orders=od.error?C.filter(x=>/^order:/.test(x.k)).map(x=>x.data):(od.data||[]);db.orders.forEach(applyOrder)}const cf=C.find(x=>x.k==='cfg'),im=C.find(x=>x.k==='imported');db.cfg={...DEF,...(cf?cf.data:{})};db.imported=im?im.data:null;
 }
 async function boot(){
@@ -778,7 +845,7 @@ function rFlow(){
       if(!allNodes.some(x=>x.key===bk))return alert('ไม่พบหน่วยงานนี้ในโครงสร้าง');drafts.add(key);rFlow();setTimeout(()=>{const r=[...document.querySelectorAll('#v-flow tbody tr')].find(t=>t.querySelector(`[data-pick$="|${key.includes('!')?'x:'+key:(allNodes.find(x=>x.key===key)||{}).v}"]`));if(r)r.scrollIntoView({behavior:'smooth',block:'center'})},50)};
     $$('#v-flow [data-rmrow]').forEach(a=>a.onclick=ev=>{ev.preventDefault();drafts.delete(a.dataset.rmrow);rFlow()})}
   if(!sup)return;
-  const reload=async()=>{await loadFlow();await loadLogs();await loadComp();await loadTrain();await loadPf();rFlow()},fail=er=>alert('บันทึกไม่สำเร็จ: '+errTxt(er)+(/scope_key/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub54.sql)':/ord/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub55.sql)':''));
+  const reload=async()=>{await loadFlow();await loadLogs();await loadComp();await loadTrain();await loadJd();await loadPf();rFlow()},fail=er=>alert('บันทึกไม่สำเร็จ: '+errTxt(er)+(/scope_key/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub54.sql)':/ord/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub55.sql)':''));
   $('#fAddRole').onclick=async()=>{const nm=prompt('ชื่อขั้นอนุมัติใหม่ (เช่น Committee)');if(!nm||!nm.trim())return;const nx=(steps.length?Math.max(...steps.map(s=>s.step_no)):0)+1,mo=(steps.length?Math.max(...steps.map(s=>s.ord||s.step_no)):0)+1;const r=await sb.from('promo_flow_steps').insert({step_no:nx,name:nm.trim(),active:true,ord:mo});if(r.error)return fail(r.error);reload()};
   $$('#v-flow [data-sn]').forEach(i=>i.onchange=async()=>{const v=i.value.trim();if(!v)return;const r=await sb.from('promo_flow_steps').update({name:v}).eq('step_no',+i.dataset.sn);if(r.error)return fail(r.error);reload()});
   $$('#v-flow [data-sv]').forEach(i=>i.onchange=async()=>{const r=await sb.from('promo_flow_steps').update({view_level:i.value}).eq('step_no',+i.dataset.sv);if(r.error)return alert('บันทึกไม่สำเร็จ: '+errTxt(r.error)+(/view_level/.test((r.error.message)||'')?' (ยังไม่ได้รัน supabase_update_hub68.sql)':''));reload()});
@@ -951,6 +1018,56 @@ function pfRelevant(TH,n,e){
   sc.sort((a,b)=>b.s-a.s||a.i-b.i);const out=[],seen=new Set();
   for(const x of sc){if(seen.has(x.key))continue;seen.add(x.key);out.push(x.i);if(out.length>=4)break}
   return out}
+/* ระบบแนะนำความพร้อม (Guideline) — วิเคราะห์จากข้อมูลในระบบ คำนวณในเครื่อง ผู้เสนอเป็นผู้ตัดสินใจเลือกเอง */
+function pfGuide(n,e,d){
+  const cfg=db.cfg||{},TH=db.train[e.id]||[],an=trAnalyze(TH),cp=db.comp[e.id],F=[],gaps=[],plan=[];
+  const add=(k,label,val,st)=>F.push({k,label,val,st});
+  const real=n.toPos&&n.toPos!=='-ไม่มี-';
+  /* 1 ผลประเมินเกรด */
+  const avg=n.snap&&n.snap.avg!=null?n.snap.avg:null,minAvg=cfg.minAvg||3;
+  add('grade','ผลประเมินเกรดเฉลี่ย',avg==null?'ไม่มีข้อมูล':`${avg.toFixed(2)} (เกณฑ์ ≥ ${minAvg})`,avg==null?null:avg>=minAvg+0.5?2:avg>=minAvg?1:0);
+  if(avg!=null&&avg<minAvg)plan.push('ยกระดับผลการประเมินการปฏิบัติงานให้ถึงเกณฑ์ ก่อนเสนอปรับ');
+  /* 2 Competency จากระบบ */
+  const gs=[cp&&cp.core&&cp.core.grade,cp&&cp.managerial&&cp.managerial.grade].filter(Boolean).map(g=>GP[g]).filter(v=>v!=null);
+  add('comp','ผล Competency (ระบบ)',gs.length?[cp.core?`Core ${cp.core.grade}`:'',cp.managerial?`Managerial ${cp.managerial.grade}`:''].filter(Boolean).join(' · '):'ไม่มีข้อมูล',gs.length?(()=>{const m=gs.reduce((a,b)=>a+b,0)/gs.length;return m>=3.3?2:m>=2.7?1:0})():null);
+  /* 3 ประเมินตนเอง/ผู้เสนอ ในแฟ้ม */
+  const sc=PF_COMP.map((_,i)=>{const v=pfGet(d,`comp.s.${i}`);return v===''||v==null?null:+v}),got=sc.filter(v=>v!=null),sa=got.length?got.reduce((a,b)=>a+b,0)/got.length:null;
+  add('self','คะแนน Competency & Potential (ในแฟ้ม)',got.length<PF_COMP.length?`ให้คะแนน ${got.length}/${PF_COMP.length} ข้อ`:`เฉลี่ย ${sa.toFixed(2)} / 5`,got.length<PF_COMP.length?null:sa>=4?2:sa>=3?1:0);
+  if(got.length===PF_COMP.length){sc.map((v,i)=>[v,i]).filter(x=>x[0]<=2).slice(0,3).forEach(([v,i])=>plan.push(`พัฒนาสมรรถนะ "${PF_COMP[i]}" (ให้คะแนน ${v}/5)`))}
+  /* 4 ผลงาน */
+  const as=achStat(d);add('ach','ผลงานเด่นที่บันทึกครบ',`${as.ok} รายการ`,as.ok>=3?2:as.ok>=1?1:0);
+  if(as.ok<3)plan.push('เพิ่มผลงานที่วัดผลได้พร้อมหลักฐาน (อย่างน้อย 3 รายการ) ในช่วง 1–3 ปี');
+  /* 5 การอบรมที่เกี่ยวข้องกับตำแหน่ง */
+  const ctx=[n.toPos,e.pos,e.dept,e.section,e.line].filter(Boolean).join(' '),aff={};TR_AFF.forEach(([re,w])=>{if(re.test(ctx))Object.entries(w).forEach(([k,v])=>aff[k]=(aff[k]||0)+v)});
+  const rel=an.cats.filter(c=>aff[c.k]>0),relPct=rel.reduce((s,c)=>s+c.pct,0);
+  if(!an.totN)add('train','การอบรม','ไม่มีข้อมูลในระบบ',null);
+  else if(Object.keys(aff).length)add('train','การอบรมที่ตรงกับตำแหน่ง',`${Math.round(an.tot)} ชม. · ตรงสายงาน ${Math.round(relPct)}%`,relPct>=40&&an.tot>=24?2:relPct>=20||an.tot>=16?1:0);
+  else add('train','การอบรมรวม',`${Math.round(an.tot)} ชม.`,an.tot>=40?2:an.tot>=16?1:0);
+  Object.keys(aff).forEach(k=>{const c=an.cats.find(x=>x.k===k);if(an.totN&&(!c||c.pct<10)&&aff[k]>=2)gaps.push(k)});
+  if(gaps.length)plan.push(`เพิ่มการอบรมด้าน ${gaps.join(' / ')} ที่เกี่ยวข้องกับตำแหน่ง (สัดส่วนปัจจุบันยังน้อยกว่า 10%)`);
+  /* 6 อายุงานในตำแหน่ง */
+  const ps=posSince(e),yrs=ps.iso?(Date.now()-new Date(ps.iso).getTime())/31557600000:null,minT=cfg.minTenure||1;
+  add('ten','อายุงานในตำแหน่งปัจจุบัน',yrs==null||isNaN(yrs)?'ไม่มีข้อมูล':`${yrs.toFixed(1)} ปี (เกณฑ์ ≥ ${minT})`,yrs==null||isNaN(yrs)?null:yrs>=minT+1?2:yrs>=minT?1:0);
+  /* 7 คุณสมบัติตามข้อกำหนดตำแหน่ง */
+  const ck=(n.checks||[]);if(real&&ck.length){const r=ck.filter(Boolean).length/ck.length;add('qual','คุณสมบัติตามข้อกำหนดตำแหน่ง',`ผ่าน ${ck.filter(Boolean).length}/${ck.length} ข้อ`,r>=0.99?2:r>=0.6?1:0);if(r<0.99)plan.push('ปิดช่องว่างคุณสมบัติที่ยังไม่ผ่านตามข้อกำหนดของตำแหน่งที่เสนอ')}
+  /* 8 ช่วงห่างระดับ */
+  if(real&&n.toLevel!==''&&e.level!=null){const g=n.toLevel-e.level;add('gap','ช่วงห่างระดับตำแหน่ง',`L${e.level} → L${n.toLevel} (${g>=0?'+':''}${g})`,g<=1?2:g===2?1:0);if(g>=2)plan.push('มอบหมายงานที่ขอบเขตกว้างขึ้น (stretch assignment) พร้อมพี่เลี้ยง/ผู้บังคับบัญชาติดตามผล เพราะช่วงห่างระดับมากกว่า 1 ระดับ')}
+  const known=F.filter(x=>x.st!=null),ratio=known.length?known.reduce((s,x)=>s+x.st,0)/(2*known.length):0,hasLow=F.some(x=>x.st===0&&(x.k==='grade'||x.k==='qual'));
+  let opt='';if(known.length>=3)opt=ratio>=0.75&&!hasLow?'now':ratio>=0.45?'plan':'develop';
+  if(opt==='plan'&&hasLow&&ratio<0.6)opt='develop';
+  if(opt==='plan'&&!plan.length)plan.push('จัดทำแผนพัฒนารายบุคคล (IDP) ร่วมกับผู้บังคับบัญชา และติดตามผลทุก 3–6 เดือน');
+  const label=(PF_READY.find(x=>x[0]===opt)||[0,'ข้อมูลยังไม่พอให้แนะนำ'])[1];
+  const mk=s=>s===2?'✓':s===1?'△':s===0?'✗':'?';
+  const text=[`ข้อเสนอแนะจากระบบ: ${label}${opt?` (คะแนนวิเคราะห์ ${Math.round(ratio*100)}% จาก ${known.length} ปัจจัย)`:''}`,...F.map(x=>`${mk(x.st)} ${x.label}: ${x.val}`),...(plan.length?['ประเด็นที่ควรพัฒนา / แนวทางแผนพัฒนา:',...plan.map((x,i)=>`${i+1}. ${x}`)]:[]),'(เป็นแนวทางประกอบการพิจารณาจากข้อมูลในระบบ — ผู้เสนอตรวจทานและตัดสินใจเอง)'].join('\n');
+  return{opt,label,ratio,known:known.length,F,gaps,plan,text}}
+function pfGuideHtml(G,ro){
+  const cls=G.opt==='now'?'ok':G.opt==='plan'?'warn':G.opt==='develop'?'bad':'';
+  const mk=s=>s===2?'<b style="color:var(--ok)">✓</b>':s===1?'<b style="color:var(--warn)">△</b>':s===0?'<b style="color:var(--bad)">✗</b>':'<span class="hint">?</span>';
+  return `<div class="pf-card" style="background:#f6f8ff;border:1px solid #cfd6ff;margin-top:12px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>🧭 ระบบแนะนำ (Guideline จากการวิเคราะห์ข้อมูล)</b><span class="tag ${cls}" style="font-size:13px">${esc(G.label)}</span>${G.opt?`<span class="hint">คะแนนวิเคราะห์ ${Math.round(G.ratio*100)}% · ${G.known} ปัจจัย</span>`:''}</div>
+    <div class="scroll" style="max-height:none;margin-top:8px"><table><tbody>${G.F.map(x=>`<tr><td style="width:28px;text-align:center">${mk(x.st)}</td><td>${esc(x.label)}</td><td>${esc(x.val)}</td></tr>`).join('')}</tbody></table></div>
+    ${G.plan.length?`<div style="margin-top:8px"><b style="font-size:13px">ประเด็นที่ควรพัฒนา / แนวทางแผนพัฒนา</b><ol style="margin:4px 0 0 18px;padding:0;font-size:13px;line-height:1.6">${G.plan.map(x=>`<li>${esc(x)}</li>`).join('')}</ol></div>`:''}
+    ${ro?'':`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${G.opt?'<button type="button" class="btn sm pri" id="pfGdUse">✓ ใช้คำแนะนำนี้เป็นสรุปความพร้อม</button>':''}<button type="button" class="btn sm" id="pfAuto">📝 ใส่ข้อความ Guideline ลงช่องรายละเอียด</button></div>`}
+    <div class="hint" style="margin-top:8px;font-size:12px">✓ ดี · △ พอใช้ · ✗ ต่ำกว่าเกณฑ์ · ? ไม่มีข้อมูล — เป็นแนวทางที่คำนวณจากข้อมูลในระบบเท่านั้น ไม่ใช่ข้อสรุปของคณะกรรมการ ผู้เสนอตรวจทานและเลือกเองได้</div></div>`}
 function pfEvalDefaults(e){const rows=GRADE_YEARS.slice().reverse().slice(0,4).map(y=>({year:y,kpi:e.grades[y]?('เกรดประเมิน '+e.grades[y]):'',comp:'',note:''}));
   const c=db.comp[e.id];if(c&&rows.length){const r=rows.find(x=>x.year===String(db.compYear))||rows[0];r.year=String(db.compYear);r.comp=[c.core?`Core ${fmt1(c.core.score)} (${c.core.grade})`:'',c.managerial?`Managerial ${fmt1(c.managerial.score)} (${c.managerial.grade})`:''].filter(Boolean).join(' / ')}return rows}
 const PF_STEPS=[['1','ข้อมูลและเหตุผล','🧾'],['2','ผลงานเด่น','🏆'],['3','ผลประเมิน & Competency','📊'],['4','การพัฒนา & ความพร้อม','🌱'],['5','ความเห็นและอนุมัติ','✍️']];
@@ -1021,11 +1138,17 @@ function rPf(){
     const tr=arr('train'),rows=tr.length?tr:[{}];
     const TH=(db.train[e.id]||[]).slice().sort((a,b)=>(b.sort||'').localeCompare(a.sort||''));
     if(PF.trSel==null)PF.trSel=(ro||arr('train').some(r=>r&&r.course))?[]:pfRelevant(TH,n,e);
+    /* ดึง JD ลงช่องเปรียบเทียบอัตโนมัติครั้งแรกที่เปิด (ถ้ามี JD และช่องยังว่าง) — แก้ไขหรือลบได้ ลบแล้วไม่ดึงซ้ำเอง */
+    if(!ro&&!pfGet(d,'form.jdAuto')){const jc=jdFor(e),jn=n.toPos&&n.toPos!=='-ไม่มี-'?jdForTitle(n.toPos,e):null,has=k=>[0,1,2,3,4,5].some(i=>pfGet(d,`form.ready.${i}.${k}`));let did=false;
+      if(jc&&!has('cur')){jdReadyCur(jc).forEach((t,i)=>pfSet(d,`form.ready.${i}.cur`,t));did=true}
+      if(jn&&!has('new')){jdReadyCur(jn).forEach((t,i)=>pfSet(d,`form.ready.${i}.new`,t));did=true}
+      if(did){pfSet(d,'form.jdAuto',new Date().toISOString());pfTouch('4');pfSchedule()}}
+    const G=pfGuide(n,e,d);
     body=(TH.length?card('วิเคราะห์ทักษะจากหลักสูตรฝึกอบรม (สัดส่วนตามชั่วโมง รวม 100%)',trChartHtml(TH,190)+`<div style="margin-top:10px"><div class="hint" style="margin-bottom:2px">ดูหลักสูตรในแต่ละหมวด (จัดหมวดอัตโนมัติจากคำในชื่อหลักสูตร)</div>${trCatDetails(TH)}</div>`):'')
      +card(`ประวัติการฝึกอบรมจากระบบ${TH.length?` · ${TH.length} หลักสูตร · ${fmt1(trHours(TH))} ชม.`:''}`,TH.length?`<div class="scroll" style="max-height:340px"><table><thead><tr>${ro?'':'<th style="cursor:default;width:34px">เลือก</th>'}<th style="cursor:default;width:40px">#</th><th style="cursor:default">หลักสูตร</th><th style="cursor:default;white-space:nowrap">วันที่</th><th style="cursor:default">ชม.</th><th style="cursor:default">สถาบัน / สถานที่</th></tr></thead><tbody>${TH.map((r,i)=>`<tr>${ro?'':`<td><input type="checkbox" data-trp="${i}" ${(PF.trSel||[]).includes(i)?'checked':''} style="width:18px;min-height:18px"></td>`}<td>${i+1}</td><td>${esc(r.course)}</td><td style="white-space:nowrap">${esc(r.date)}</td><td>${r.hrs||''}</td><td>${esc([r.inst,r.place].filter(Boolean).join(' · '))}</td></tr>`).join('')}</tbody></table></div>`+(ro?'':`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px"><select id="pfTrPre" style="width:auto;min-width:200px"><option value="">— เลือกอัตโนมัติ —</option><option value="rel">4 หลักสูตรที่เกี่ยวข้องกับตำแหน่งงาน (แนะนำ)</option><option value="latest">4 หลักสูตรล่าสุด</option><option value="hours">4 หลักสูตรชั่วโมงมากสุด</option><option value="clear">ล้างที่เลือก</option></select><span class="hint" id="pfTrCnt">เลือก ${(PF.trSel||[]).length}/4</span><button type="button" class="btn sm pri" id="pfFillTrain" ${(PF.trSel||[]).length?'':'disabled'}>⤓ ดึงที่เลือกเข้าแบบฟอร์มด้านล่าง</button></div><div class="hint" style="margin-top:4px">ระบบเลือก 4 หลักสูตรที่เกี่ยวข้องกับตำแหน่ง "${esc(n.toPos)}" ให้ล่วงหน้า (ดูจากตำแหน่ง สังกัด หมวดทักษะ ชั่วโมง และความใหม่) — ติ๊กเพิ่ม/เอาออกได้สูงสุด 4 รายการ แล้วกดดึงเข้าแบบฟอร์ม</div>`)+'<div class="hint" style="margin-top:6px">ประวัติทั้งหมดนี้จะพิมพ์ลงใน PDF โดยอัตโนมัติ</div>':'<div class="hint">ยังไม่มีประวัติการฝึกอบรมของพนักงานคนนี้ในระบบ (ผู้ดูแลนำเข้าได้ที่เมนู นำเข้า / ตั้งค่า) — กรอกเองด้านล่างได้</div>')
      +card('หลักสูตรสำคัญที่ต้องการเน้น (กรอกเพิ่มได้ไม่เกิน 4 รายการ)',rows.map((r,i)=>`<div class="pf-card" style="background:#f8f9ff"><div style="font-weight:600;margin-bottom:6px">รายการที่ ${i+1} ${ro?'':`<button type="button" class="btn sm bad" data-rm="train|${i}" style="float:right">ลบ</button>`}</div><div class="grid g2">${fld('หลักสูตร / การอบรม',inp(`form.train.${i}.course`))}${fld('หน่วยงานผู้จัด',inp(`form.train.${i}.org`))}${fld('วันที่ / ปี',inp(`form.train.${i}.date`))}${fld('ผลการพัฒนา',inp(`form.train.${i}.result`))}</div></div>`).join('')+(ro||rows.length>=4?'':`<button type="button" class="btn" data-add="train|4">＋ เพิ่มการอบรม (${rows.length}/4)</button>`))
-     +card('ความพร้อมสำหรับตำแหน่งใหม่ — เปรียบเทียบตำแหน่งเดิม/ใหม่',['หน้าที่และความรับผิดชอบ','ขอบเขตอำนาจตัดสินใจ','ความซับซ้อนของงาน','การบริหารบุคลากร','การบริหารงบประมาณ / ทรัพยากร','การประสานงานภายใน / ภายนอก'].map((t,i)=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><b style="font-size:13.5px">${t}</b><div class="grid g2" style="margin-top:6px;gap:8px">${inp(`form.ready.${i}.cur`,'ตำแหน่งปัจจุบัน')}${inp(`form.ready.${i}.new`,'ตำแหน่งใหม่')}</div>${inp(`form.ready.${i}.det`,'รายละเอียด / ความแตกต่าง')}</div>`).join('')
-       +`<div style="margin-top:12px"><label>สรุปความพร้อม</label>${seg('form.readyOpt',PF_READY,'seg-c')}</div><div style="margin-top:10px"><label>รายละเอียดความพร้อมและประเด็นที่ต้องพัฒนา</label>${area('form.readyDet',3)}</div>`);
+     +card('ความพร้อมสำหรับตำแหน่งใหม่ — เปรียบเทียบตำแหน่งเดิม/ใหม่',(ro?'':`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px"><button type="button" class="btn sm" id="pfJdCur" title="ดึงหน้าที่ ขอบเขต การประสานงาน จากใบกำหนดหน้าที่งาน (JD) ของตำแหน่งปัจจุบันลงช่อง ตำแหน่งปัจจุบัน">⤓ ดึง JD ตำแหน่งปัจจุบัน</button>${n.toPos&&n.toPos!=='-ไม่มี-'?'<button type="button" class="btn sm" id="pfJdNew" title="ดึงจาก JD ของตำแหน่งที่เสนอลงช่อง ตำแหน่งใหม่">⤓ ดึง JD ตำแหน่งที่เสนอ</button>':''}<span class="hint" id="pfJdMsg">${jdFor(e)?'พบ JD: '+esc(jdFor(e).pos)+(db.jd[e.id]?'':' (ใช้ JD ของตำแหน่งเดียวกัน)'):'ยังไม่มี JD ของพนักงาน/ตำแหน่งนี้ในระบบ (ผู้ดูแลนำเข้าที่เมนู นำเข้า / ตั้งค่า)'}</span></div>`)+['หน้าที่และความรับผิดชอบ','ขอบเขตอำนาจตัดสินใจ','ความซับซ้อนของงาน','การบริหารบุคลากร','การบริหารงบประมาณ / ทรัพยากร','การประสานงานภายใน / ภายนอก'].map((t,i)=>`<div style="padding:8px 0;border-top:1px solid var(--line)"><b style="font-size:13.5px">${t}</b><div class="grid g2" style="margin-top:6px;gap:8px">${area(`form.ready.${i}.cur`,3,'','ตำแหน่งปัจจุบัน')}${area(`form.ready.${i}.new`,3,'','ตำแหน่งใหม่')}</div><div style="margin-top:6px">${area(`form.ready.${i}.det`,2,'','รายละเอียด / ความแตกต่าง')}</div></div>`).join('')
+       +pfGuideHtml(G,ro)+`<div style="margin-top:12px"><label>สรุปความพร้อม</label>${seg('form.readyOpt',PF_READY,'seg-c')}</div><div style="margin-top:10px"><label>รายละเอียดความพร้อมและประเด็นที่ต้องพัฒนา</label>${area('form.readyDet',3)}</div>`);
   }else if(step==='5'){
     body=card('ส่วนที่ 7 ความเห็นและการรับรองจากผู้บังคับบัญชา (Manager Recommendation)',`<div class="hint" style="margin-bottom:8px">${MG?'คุณเป็นผู้อนุมัติขั้นที่ 1 — กรอกเฉพาะส่วนนี้ จากนั้นกด Gen Portfolio (PDF) และส่งอนุมัติขั้นถัดไป ข้อมูลส่วนอื่นผู้เสนอชื่อเป็นผู้กรอก':'ความเห็นและลายเซ็นของผู้เสนอ จากนั้นส่งขออนุมัติตามขั้นตอนใน Flow อนุมัติ (ไม่ต้องกรอกส่วน HR / ผู้อนุมัติ)'}</div><label>เหตุผลที่เห็นว่าพนักงานมีความเหมาะสมสำหรับตำแหน่งใหม่</label>${area('form.mgrReason',4)}<div style="margin-top:10px"><label>ข้อเสนอแนะ</label>${seg('form.mgrOpt',PF_MGR,'seg-c')}</div><div class="grid g2" style="margin-top:10px">${fld('ลงชื่อผู้บังคับบัญชา',inp('form.mgrName'))}${fld('วันที่',inp('form.mgrDate','','date'))}</div><div style="margin-top:10px">${sig('form.mgrSig','ลายเซ็นผู้บังคับบัญชา'+(MG?' <span style="color:var(--bad)">*</span>':''))}</div>`);
   }else if(step==='5'){
@@ -1069,6 +1192,17 @@ function rPf(){
     $('#pfFillTrain').onclick=()=>{const pick=(PF.trSel||[]).slice().sort((a,b)=>a-b).map(i=>TH[i]).filter(Boolean);if(!pick.length)return;
       const cur=arr('train').filter(r=>r&&(r.course||r.org||r.date||r.result));if(cur.length&&!confirm('แบบฟอร์มด้านล่างมีข้อมูลอยู่แล้ว ต้องการแทนที่ด้วยหลักสูตรที่เลือกหรือไม่?'))return;
       pfSet(PF.data,'form.train',pick.map(r=>({course:r.course,org:r.inst||r.place||'',date:r.date,result:r.hrs?r.hrs+' ชม.':''})));PF.trSel=[];pfTouch('4');pfSchedule();rPf()}}
+  const jdMsg=h=>{const m=$('#pfJdMsg');if(m)m.innerHTML=h},rdy=i=>[0,1,2,3,4,5].some(k=>pfGet(PF.data,`form.ready.${k}.${i}`));
+  if($('#pfJdCur'))$('#pfJdCur').onclick=()=>{const j=jdFor(e);if(!j)return jdMsg('<span style="color:var(--bad)">ไม่พบ JD ของพนักงาน/ตำแหน่งนี้ — ให้ผู้ดูแลนำเข้า JD ที่เมนู นำเข้า / ตั้งค่า</span>');
+    if(rdy('cur')&&!confirm('ช่อง "ตำแหน่งปัจจุบัน" มีข้อมูลอยู่แล้ว แทนที่ด้วยข้อมูลจาก JD หรือไม่?'))return;
+    jdReadyCur(j).forEach((t,i)=>pfSet(PF.data,`form.ready.${i}.cur`,t));pfTouch('4');pfSchedule();rPf()};
+  if($('#pfJdNew'))$('#pfJdNew').onclick=()=>{const j=jdForTitle(n.toPos,e);if(!j)return jdMsg(`<span style="color:var(--bad)">ไม่พบ JD ของตำแหน่ง "${esc(n.toPos)}" ในระบบ</span>`);
+    if(rdy('new')&&!confirm('ช่อง "ตำแหน่งใหม่" มีข้อมูลอยู่แล้ว แทนที่ด้วยข้อมูลจาก JD หรือไม่?'))return;
+    jdReadyCur(j).forEach((t,i)=>pfSet(PF.data,`form.ready.${i}.new`,t));pfTouch('4');pfSchedule();rPf()};
+  /* Guideline ความพร้อม: ใช้คำแนะนำ / ใส่ข้อความลงช่องรายละเอียด (แก้ไขหรือลบได้) */
+  if($('#pfGdUse'))$('#pfGdUse').onclick=()=>{const G=pfGuide(n,e,PF.data);if(!G.opt)return;pfSet(PF.data,'form.readyOpt',G.opt);pfTouch('4');pfSchedule();const y=window.scrollY;rPf();window.scrollTo(0,y)};
+  if($('#pfAuto'))$('#pfAuto').onclick=()=>{if(pfGet(PF.data,'form.readyDet')&&!confirm('ช่อง "รายละเอียดความพร้อมและประเด็นที่ต้องพัฒนา" มีข้อมูลอยู่แล้ว เขียนทับด้วยข้อความ Guideline หรือไม่?'))return;
+    pfSet(PF.data,'form.readyDet',pfGuide(n,e,PF.data).text);pfTouch('4');pfSchedule();const y=window.scrollY;rPf();window.scrollTo(0,y)};
   if($('#pfFillEval'))$('#pfFillEval').onclick=()=>{pfSet(PF.data,'form.eval',pfEvalDefaults(e).map(r=>({year:r.year,kpi:r.kpi,comp:r.comp,note:r.note})));pfTouch('3');pfSchedule();rPf()};
   const upload=async(i,files)=>{if(!files.length)return;const st=$('#pfState');st.textContent='กำลังอัปโหลด…';
     try{PF.data.docs=PF.data.docs||[];const dd=PF.data.docs[i]=PF.data.docs[i]||{};dd.files=dd.files||[];
@@ -1228,6 +1362,10 @@ function rData(){
     <div class="row" style="align-items:end;margin-top:12px"><div style="flex:2"><label>รายงานการอบรมจาก empeo (TRN002 .xlsx — ทั้งบริษัทในไฟล์เดียว จับคู่ด้วยรหัสพนักงาน)</label><input type="file" id="empx" accept=".xlsx"></div></div>
     <div class="hint" style="margin-top:6px">ข้อมูลจาก empeo กับจาก Excel รายบุคคลเก็บแยกแหล่ง นำเข้าซ้ำแต่ละแหล่งจะแทนที่เฉพาะของแหล่งนั้น และตัดรายการซ้ำ (วันที่ + ชื่อหลักสูตร) ออกให้</div>
     <div id="trmsg" class="hint" style="margin-top:10px">${Object.keys(db.train).length?`ข้อมูลปัจจุบัน: ${Object.keys(db.train).length} คน · ${Object.values(db.train).reduce((s,a)=>s+a.length,0)} รายการ`:'ยังไม่เคยนำเข้า'}</div></div>`:''}
+  ${CAN.manage&&CAN.all?`<div class="card"><h2>นำเข้า JD ใบกำหนดหน้าที่งาน (.docx รายบุคคล)</h2>
+    <div class="hint" style="margin-bottom:10px">เลือกไฟล์ JD (แบบฟอร์ม FM-HR-001-03) ได้หลายไฟล์ หรือเลือก <b>ไฟล์ .zip เดียว</b> ที่ดาวน์โหลดทั้งโฟลเดอร์จาก SharePoint (ปุ่ม ดาวน์โหลด ในโฟลเดอร์ "03. JOB DESCRIPTION (JD) › ต้นฉบับ JD") — จับคู่พนักงานด้วย ชื่อ + นามสกุล ในช่อง "ชื่อพนักงาน" · เก็บตำแหน่ง ขึ้นตรงต่อ Level ภารกิจหลัก การประสานงาน คุณสมบัติ และบทบาทหน้าที่ · นำเข้าซ้ำจะแทนที่ของคนนั้น · ใช้ดึงลงช่อง "ตำแหน่งปัจจุบัน" ในแฟ้ม Portfolio ขั้น 4 (ถ้าพนักงานไม่มี JD ของตัวเอง ใช้ JD ตำแหน่งเดียวกันแทน)</div>
+    <div class="row" style="align-items:end"><div style="flex:2"><label>ไฟล์ JD (.docx หลายไฟล์ หรือ .zip)</label><input type="file" id="jdx" accept=".docx,.zip" multiple></div></div>
+    <div id="jdmsg" class="hint" style="margin-top:10px">${Object.keys(db.jd).length?`ข้อมูลปัจจุบัน: JD ${Object.keys(db.jd).length} คน`:'ยังไม่เคยนำเข้า'}</div></div>`:''}
   ${CAN.manage&&CAN.all?`<div class="card"><h2>หมวดหลักสูตรฝึกอบรม (สำหรับกราฟวิเคราะห์ทักษะ)</h2>
     <div class="hint" style="margin-bottom:10px">ระบบจัดหมวดจากคำในชื่อหลักสูตร (ไม่สนตัวพิมพ์เล็ก/ใหญ่) ตรวจจากบนลงล่าง ตรงหมวดแรกที่พบก็จัดเข้าหมวดนั้น · คั่นคำด้วยเครื่องหมายจุลภาค (,) · คำที่ขึ้นต้นด้วย <b>=</b> ต้องเป็นคำเต็ม เช่น <b>=AI</b> (ไม่จับ maintenance) · เปลี่ยนชื่อ สี ลำดับ เพิ่มหรือลบหมวดได้ · ใช้ย้ายคำ เช่น "บริหารโครงการ" จาก EPC ไปไว้ Functional</div>
     <div id="tcbox"></div><div id="tcmsg" class="hint" style="margin-top:8px"></div></div>`:''}
@@ -1245,6 +1383,10 @@ function rData(){
     try{const y=+$('#cpy').value||2568;const r=await compImport(await f.arrayBuffer(),f.name,y);
       m.innerHTML=`<span style="color:var(--ok)">✓ นำเข้าสำเร็จ ปี ${y}: ผู้ถูกประเมิน ${r.n} คน (Core ${r.core} · Managerial ${r.man})${r.unmatched?` · <span style="color:var(--warn)">ไม่พบในรายชื่อพนักงาน ${r.unmatched} คน</span>`:''}</span>`}
     catch(er){m.innerHTML=`<span style="color:var(--bad)">นำเข้าไม่สำเร็จ: ${esc(errTxt(er))}${/promo_competency/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub62.sql)':''}</span>`}};
+  if($('#jdx'))$('#jdx').onchange=async e=>{const fs=[...e.target.files];if(!fs.length)return;const m=$('#jdmsg');m.textContent='กำลังอ่านไฟล์…';
+    try{const r=await jdImport(fs,(i,t)=>{m.textContent=`กำลังอ่านไฟล์ ${i}/${t}…`});
+      m.innerHTML=`<span style="color:var(--ok)">✓ นำเข้า JD สำเร็จ ${r.ok} คน จาก ${r.total} ไฟล์</span>`+(r.unmatched.length?`<div style="color:var(--warn);margin-top:6px">จับคู่พนักงานไม่ได้ ${r.unmatched.length} ไฟล์: ${esc(r.unmatched.join(' · '))}</div>`:'')+(r.failed.length?`<div style="color:var(--bad);margin-top:6px">อ่านไม่สำเร็จ: ${esc(r.failed.join(' · '))}</div>`:'')}
+    catch(er){m.innerHTML=`<span style="color:var(--bad)">นำเข้าไม่สำเร็จ: ${esc(errTxt(er))}${/promo_jd/.test((er&&er.message)||'')?' (ยังไม่ได้รัน supabase_update_hub69.sql)':''}</span>`}};
   if($('#tcbox')){
     let TC=JSON.parse(JSON.stringify(db.trCats||TR_DEFAULT));
     const allRows=()=>Object.values(db.train).flat();
